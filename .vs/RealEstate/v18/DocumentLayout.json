@@ -1,0 +1,120 @@
+{
+  "Version": 1,
+  "WorkspaceRootPath": "C:\\RE\\RealEstateApp\\backend\\",
+  "Documents": [
+    {
+      "AbsoluteMoniker": "D:0:0:{984EC4F8-2BC0-4FC2-B03B-59CC9CD29439}|src\\RealEstate.Api\\RealEstate.Api.csproj|c:\\re\\realestateapp\\backend\\src\\realestate.api\\controllers\\inquiriescontroller.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{984EC4F8-2BC0-4FC2-B03B-59CC9CD29439}|src\\RealEstate.Api\\RealEstate.Api.csproj|solutionrelative:src\\realestate.api\\controllers\\inquiriescontroller.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{984EC4F8-2BC0-4FC2-B03B-59CC9CD29439}|src\\RealEstate.Api\\RealEstate.Api.csproj|c:\\re\\realestateapp\\backend\\src\\realestate.api\\realestate.api.csproj||{FA3CD31E-987B-443A-9B81-186104E8DAC1}|",
+      "RelativeMoniker": "D:0:0:{984EC4F8-2BC0-4FC2-B03B-59CC9CD29439}|src\\RealEstate.Api\\RealEstate.Api.csproj|solutionrelative:src\\realestate.api\\realestate.api.csproj||{FA3CD31E-987B-443A-9B81-186104E8DAC1}|"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{984EC4F8-2BC0-4FC2-B03B-59CC9CD29439}|src\\RealEstate.Api\\RealEstate.Api.csproj|c:\\re\\realestateapp\\backend\\src\\realestate.api\\appsettings.json||{90A6B3A7-C1A3-4009-A288-E2FF89E96FA0}",
+      "RelativeMoniker": "D:0:0:{984EC4F8-2BC0-4FC2-B03B-59CC9CD29439}|src\\RealEstate.Api\\RealEstate.Api.csproj|solutionrelative:src\\realestate.api\\appsettings.json||{90A6B3A7-C1A3-4009-A288-E2FF89E96FA0}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{984EC4F8-2BC0-4FC2-B03B-59CC9CD29439}|src\\RealEstate.Api\\RealEstate.Api.csproj|c:\\re\\realestateapp\\backend\\src\\realestate.api\\controllers\\authcontroller.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{984EC4F8-2BC0-4FC2-B03B-59CC9CD29439}|src\\RealEstate.Api\\RealEstate.Api.csproj|solutionrelative:src\\realestate.api\\controllers\\authcontroller.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{984EC4F8-2BC0-4FC2-B03B-59CC9CD29439}|src\\RealEstate.Api\\RealEstate.Api.csproj|c:\\re\\realestateapp\\backend\\src\\realestate.api\\program.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{984EC4F8-2BC0-4FC2-B03B-59CC9CD29439}|src\\RealEstate.Api\\RealEstate.Api.csproj|solutionrelative:src\\realestate.api\\program.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{984EC4F8-2BC0-4FC2-B03B-59CC9CD29439}|src\\RealEstate.Api\\RealEstate.Api.csproj|c:\\re\\realestateapp\\backend\\src\\realestate.api\\controllers\\listingscontroller.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{984EC4F8-2BC0-4FC2-B03B-59CC9CD29439}|src\\RealEstate.Api\\RealEstate.Api.csproj|solutionrelative:src\\realestate.api\\controllers\\listingscontroller.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    }
+  ],
+  "DocumentGroupContainers": [
+    {
+      "Orientation": 0,
+      "VerticalTabListWidth": 256,
+      "DocumentGroups": [
+        {
+          "DockedWidth": 200,
+          "SelectedChildIndex": 0,
+          "Children": [
+            {
+              "$type": "Document",
+              "DocumentIndex": 0,
+              "Title": "InquiriesController.cs",
+              "DocumentMoniker": "C:\\RE\\RealEstateApp\\backend\\src\\RealEstate.Api\\Controllers\\InquiriesController.cs",
+              "RelativeDocumentMoniker": "src\\RealEstate.Api\\Controllers\\InquiriesController.cs",
+              "ToolTip": "C:\\RE\\RealEstateApp\\backend\\src\\RealEstate.Api\\Controllers\\InquiriesController.cs",
+              "RelativeToolTip": "src\\RealEstate.Api\\Controllers\\InquiriesController.cs",
+              "ViewState": "AgIAAB8AAAAAAAAAAAAtwDEAAAAlAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2026-07-20T05:15:23.956Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 1,
+              "Title": "RealEstate.Api.csproj",
+              "DocumentMoniker": "C:\\RE\\RealEstateApp\\backend\\src\\RealEstate.Api\\RealEstate.Api.csproj",
+              "RelativeDocumentMoniker": "src\\RealEstate.Api\\RealEstate.Api.csproj",
+              "ToolTip": "C:\\RE\\RealEstateApp\\backend\\src\\RealEstate.Api\\RealEstate.Api.csproj",
+              "RelativeToolTip": "src\\RealEstate.Api\\RealEstate.Api.csproj",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAABUAAAAAAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000758|",
+              "WhenOpened": "2026-07-19T18:33:35.796Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 2,
+              "Title": "appsettings.json",
+              "DocumentMoniker": "C:\\RE\\RealEstateApp\\backend\\src\\RealEstate.Api\\appsettings.json",
+              "RelativeDocumentMoniker": "src\\RealEstate.Api\\appsettings.json",
+              "ToolTip": "C:\\RE\\RealEstateApp\\backend\\src\\RealEstate.Api\\appsettings.json",
+              "RelativeToolTip": "src\\RealEstate.Api\\appsettings.json",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAAA0AAAAeAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.001642|",
+              "WhenOpened": "2026-07-19T18:18:48.311Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 3,
+              "Title": "AuthController.cs",
+              "DocumentMoniker": "C:\\RE\\RealEstateApp\\backend\\src\\RealEstate.Api\\Controllers\\AuthController.cs",
+              "RelativeDocumentMoniker": "src\\RealEstate.Api\\Controllers\\AuthController.cs",
+              "ToolTip": "C:\\RE\\RealEstateApp\\backend\\src\\RealEstate.Api\\Controllers\\AuthController.cs",
+              "RelativeToolTip": "src\\RealEstate.Api\\Controllers\\AuthController.cs",
+              "ViewState": "AgIAABMAAAAAAAAAAAAQwB8AAAAIAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2026-07-19T18:03:49.961Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 5,
+              "Title": "ListingsController.cs",
+              "DocumentMoniker": "C:\\RE\\RealEstateApp\\backend\\src\\RealEstate.Api\\Controllers\\ListingsController.cs",
+              "RelativeDocumentMoniker": "src\\RealEstate.Api\\Controllers\\ListingsController.cs",
+              "ToolTip": "C:\\RE\\RealEstateApp\\backend\\src\\RealEstate.Api\\Controllers\\ListingsController.cs",
+              "RelativeToolTip": "src\\RealEstate.Api\\Controllers\\ListingsController.cs",
+              "ViewState": "AgIAAA4AAAAAAAAAAAAAwBkAAAAgAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2026-07-19T18:00:19.776Z"
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 4,
+              "Title": "Program.cs",
+              "DocumentMoniker": "C:\\RE\\RealEstateApp\\backend\\src\\RealEstate.Api\\Program.cs",
+              "RelativeDocumentMoniker": "src\\RealEstate.Api\\Program.cs",
+              "ToolTip": "C:\\RE\\RealEstateApp\\backend\\src\\RealEstate.Api\\Program.cs",
+              "RelativeToolTip": "src\\RealEstate.Api\\Program.cs",
+              "ViewState": "AgIAAAYAAAAAAAAAAAAAABIAAAAEAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2026-07-19T18:00:09.797Z"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

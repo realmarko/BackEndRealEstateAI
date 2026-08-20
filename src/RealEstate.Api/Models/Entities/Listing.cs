@@ -1,0 +1,38 @@
+namespace RealEstate.Api.Models.Entities;
+
+public class Listing
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid OwnerId { get; set; }
+    public ApplicationUser? Owner { get; set; }
+
+    public string Title { get; set; } = string.Empty;
+    public string Description { get; set; } = string.Empty;
+
+    public ListingType ListingType { get; set; }
+    public PropertyType PropertyType { get; set; }
+    public ListingStatus Status { get; set; } = ListingStatus.Active;
+
+    public decimal Price { get; set; }
+
+    public string AddressLine { get; set; } = string.Empty;
+    public string City { get; set; } = string.Empty;
+    public string State { get; set; } = string.Empty;
+    public string ZipCode { get; set; } = string.Empty;
+
+    // Used for Google Maps pins
+    public double Latitude { get; set; }
+    public double Longitude { get; set; }
+
+    public int Bedrooms { get; set; }
+    public decimal Bathrooms { get; set; }
+    public int AreaSqFt { get; set; }
+    public int? YearBuilt { get; set; }
+
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
+
+    public ICollection<ListingImage> Images { get; set; } = new List<ListingImage>();
+    public ICollection<Favorite> Favorites { get; set; } = new List<Favorite>();
+    public ICollection<Inquiry> Inquiries { get; set; } = new List<Inquiry>();
+}
