@@ -22,3 +22,16 @@ public enum ListingStatus
     SoldOrRented = 2,
     Removed = 3
 }
+
+public enum OperationType
+{
+    Sale = 0,
+    Rent = 1
+}
+
+public enum PropertyStatus
+{
+    Available = 0,
+    Sold = 1,
+    Rented = 2
+}
