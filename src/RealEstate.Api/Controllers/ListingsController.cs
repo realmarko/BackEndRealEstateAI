@@ -112,6 +112,7 @@ public class ListingsController : ControllerBase
             ListingType = dto.ListingType,
             PropertyType = dto.PropertyType,
             Price = dto.Price,
+            Currency = dto.Currency,
             AddressLine = dto.AddressLine,
             City = dto.City,
             State = dto.State,
@@ -154,6 +155,7 @@ public class ListingsController : ControllerBase
         listing.PropertyType = dto.PropertyType;
         listing.Status = dto.Status;
         listing.Price = dto.Price;
+        listing.Currency = dto.Currency;
         listing.AddressLine = dto.AddressLine;
         listing.City = dto.City;
         listing.State = dto.State;
@@ -206,6 +208,7 @@ public class ListingsController : ControllerBase
         PropertyType = l.PropertyType.ToString(),
         Status = l.Status.ToString(),
         Price = l.Price,
+        Currency = l.Currency,
         AddressLine = l.AddressLine,
         City = l.City,
         State = l.State,

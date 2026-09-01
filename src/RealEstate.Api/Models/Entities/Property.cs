@@ -36,4 +36,5 @@ public class Property
     public List<PropertyImage> Images { get; set; } = new();
     public int AgentId { get; set; }
     public Agent? Agent { get; set; }
+    public List<Amenity> Amenities { get; set; } = new();
 }

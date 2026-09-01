@@ -21,6 +21,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, IdentityR
         builder.Entity<Listing>(entity =>
         {
             entity.Property(l => l.Price).HasColumnType("numeric(14,2)");
+            entity.Property(l => l.Currency).HasMaxLength(3).IsRequired().HasDefaultValue("MXN");
             entity.Property(l => l.Bathrooms).HasColumnType("numeric(4,1)");
             entity.HasIndex(l => l.City);
             entity.HasIndex(l => new { l.Latitude, l.Longitude });

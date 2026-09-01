@@ -9,6 +9,7 @@ public class ListingCreateDto
     public ListingType ListingType { get; set; }
     public PropertyType PropertyType { get; set; }
     public decimal Price { get; set; }
+    public string Currency { get; set; } = "MXN";
     public string AddressLine { get; set; } = string.Empty;
     public string City { get; set; } = string.Empty;
     public string State { get; set; } = string.Empty;
@@ -38,6 +39,7 @@ public class ListingDto
     public string PropertyType { get; set; } = string.Empty;
     public string Status { get; set; } = string.Empty;
     public decimal Price { get; set; }
+    public string Currency { get; set; } = "MXN";
     public string AddressLine { get; set; } = string.Empty;
     public string City { get; set; } = string.Empty;
     public string State { get; set; } = string.Empty;

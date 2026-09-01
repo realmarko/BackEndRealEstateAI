@@ -14,6 +14,7 @@ public class Listing
     public ListingStatus Status { get; set; } = ListingStatus.Active;
 
     public decimal Price { get; set; }
+    public string Currency { get; set; } = "MXN";
 
     public string AddressLine { get; set; } = string.Empty;
     public string City { get; set; } = string.Empty;

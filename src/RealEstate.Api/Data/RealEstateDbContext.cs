@@ -10,6 +10,7 @@ public class RealEstateDbContext : DbContext
     public DbSet<Property> Properties => Set<Property>();
     public DbSet<PropertyImage> PropertyImages => Set<PropertyImage>();
     public DbSet<Agent> Agents => Set<Agent>();
+    public DbSet<Amenity> Amenities => Set<Amenity>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -30,6 +31,10 @@ public class RealEstateDbContext : DbContext
                   .WithOne(i => i.Property)
                   .HasForeignKey(i => i.PropertyId)
                   .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasMany(p => p.Amenities)
+                  .WithMany(a => a.Properties)
+                  .UsingEntity(j => j.ToTable("PropertyAmenities"));
         });
     }
 }

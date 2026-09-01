@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using RealEstate.Api.Data;
@@ -11,9 +12,11 @@ using RealEstate.Api.Data;
 namespace RealEstate.Api.Migrations.RealEstate
 {
     [DbContext(typeof(RealEstateDbContext))]
-    partial class RealEstateDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260820031055_AddAmenity")]
+    partial class AddAmenity
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -25,18 +28,14 @@ namespace RealEstate.Api.Migrations.RealEstate
             modelBuilder.Entity("AmenityProperty", b =>
                 {
                     b.Property<int>("AmenitiesId")
-                        .HasColumnType("integer")
-                        .HasColumnName("amenities_id");
+                        .HasColumnType("integer");
 
                     b.Property<int>("PropertiesId")
-                        .HasColumnType("integer")
-                        .HasColumnName("properties_id");
+                        .HasColumnType("integer");
 
-                    b.HasKey("AmenitiesId", "PropertiesId")
-                        .HasName("pk_property_amenities");
+                    b.HasKey("AmenitiesId", "PropertiesId");
 
-                    b.HasIndex("PropertiesId")
-                        .HasDatabaseName("ix_property_amenities_properties_id");
+                    b.HasIndex("PropertiesId");
 
                     b.ToTable("PropertyAmenities", (string)null);
                 });
@@ -45,208 +44,165 @@ namespace RealEstate.Api.Migrations.RealEstate
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("integer")
-                        .HasColumnName("id");
+                        .HasColumnType("integer");
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
 
                     b.Property<string>("Email")
                         .IsRequired()
-                        .HasColumnType("text")
-                        .HasColumnName("email");
+                        .HasColumnType("text");
 
                     b.Property<string>("Name")
                         .IsRequired()
-                        .HasColumnType("text")
-                        .HasColumnName("name");
+                        .HasColumnType("text");
 
                     b.Property<string>("Phone")
                         .IsRequired()
-                        .HasColumnType("text")
-                        .HasColumnName("phone");
+                        .HasColumnType("text");
 
-                    b.HasKey("Id")
-                        .HasName("pk_agents");
+                    b.HasKey("Id");
 
-                    b.ToTable("agents", (string)null);
+                    b.ToTable("Agents");
                 });
 
             modelBuilder.Entity("RealEstate.Api.Models.Entities.Amenity", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("integer")
-                        .HasColumnName("id");
+                        .HasColumnType("integer");
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
 
                     b.Property<string>("Name")
                         .IsRequired()
-                        .HasColumnType("text")
-                        .HasColumnName("name");
+                        .HasColumnType("text");
 
-                    b.HasKey("Id")
-                        .HasName("pk_amenities");
+                    b.HasKey("Id");
 
-                    b.ToTable("amenities", (string)null);
+                    b.ToTable("Amenities");
                 });
 
             modelBuilder.Entity("RealEstate.Api.Models.Entities.Property", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("integer")
-                        .HasColumnName("id");
+                        .HasColumnType("integer");
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
 
                     b.Property<string>("Address")
                         .IsRequired()
-                        .HasColumnType("text")
-                        .HasColumnName("address");
+                        .HasColumnType("text");
 
                     b.Property<int>("AgentId")
-                        .HasColumnType("integer")
-                        .HasColumnName("agent_id");
+                        .HasColumnType("integer");
 
                     b.Property<double>("AreaM2")
-                        .HasColumnType("double precision")
-                        .HasColumnName("area_m2");
+                        .HasColumnType("double precision");
 
                     b.Property<int>("Bathrooms")
-                        .HasColumnType("integer")
-                        .HasColumnName("bathrooms");
+                        .HasColumnType("integer");
 
                     b.Property<int>("Bedrooms")
-                        .HasColumnType("integer")
-                        .HasColumnName("bedrooms");
+                        .HasColumnType("integer");
 
                     b.Property<string>("City")
                         .IsRequired()
-                        .HasColumnType("text")
-                        .HasColumnName("city");
+                        .HasColumnType("text");
 
                     b.Property<double>("ConstructionM2")
-                        .HasColumnType("double precision")
-                        .HasColumnName("construction_m2");
+                        .HasColumnType("double precision");
 
                     b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("created_at");
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("Currency")
                         .IsRequired()
-                        .HasColumnType("text")
-                        .HasColumnName("currency");
+                        .HasColumnType("text");
 
                     b.Property<string>("Description")
                         .IsRequired()
-                        .HasColumnType("text")
-                        .HasColumnName("description");
+                        .HasColumnType("text");
 
                     b.Property<double>("Latitude")
-                        .HasColumnType("double precision")
-                        .HasColumnName("latitude");
+                        .HasColumnType("double precision");
 
                     b.Property<double>("Longitude")
-                        .HasColumnType("double precision")
-                        .HasColumnName("longitude");
+                        .HasColumnType("double precision");
 
                     b.Property<string>("Neighborhood")
                         .IsRequired()
-                        .HasColumnType("text")
-                        .HasColumnName("neighborhood");
+                        .HasColumnType("text");
 
                     b.Property<int>("Operation")
-                        .HasColumnType("integer")
-                        .HasColumnName("operation");
+                        .HasColumnType("integer");
 
                     b.Property<int?>("ParkingSpots")
-                        .HasColumnType("integer")
-                        .HasColumnName("parking_spots");
+                        .HasColumnType("integer");
 
                     b.Property<decimal>("Price")
-                        .HasColumnType("numeric(14,2)")
-                        .HasColumnName("price");
+                        .HasColumnType("numeric(14,2)");
 
                     b.Property<string>("SourceUrl")
-                        .HasColumnType("text")
-                        .HasColumnName("source_url");
+                        .HasColumnType("text");
 
                     b.Property<string>("State")
                         .IsRequired()
-                        .HasColumnType("text")
-                        .HasColumnName("state");
+                        .HasColumnType("text");
 
                     b.Property<int>("Status")
-                        .HasColumnType("integer")
-                        .HasColumnName("status");
+                        .HasColumnType("integer");
 
                     b.Property<string>("Title")
                         .IsRequired()
-                        .HasColumnType("text")
-                        .HasColumnName("title");
+                        .HasColumnType("text");
 
                     b.Property<int>("Type")
-                        .HasColumnType("integer")
-                        .HasColumnName("type");
+                        .HasColumnType("integer");
 
                     b.Property<DateTime>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("updated_at");
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<int?>("YearBuilt")
-                        .HasColumnType("integer")
-                        .HasColumnName("year_built");
+                        .HasColumnType("integer");
 
-                    b.HasKey("Id")
-                        .HasName("pk_properties");
+                    b.HasKey("Id");
 
-                    b.HasIndex("AgentId")
-                        .HasDatabaseName("ix_properties_agent_id");
+                    b.HasIndex("AgentId");
 
-                    b.HasIndex("City")
-                        .HasDatabaseName("ix_properties_city");
+                    b.HasIndex("City");
 
-                    b.HasIndex("Latitude", "Longitude")
-                        .HasDatabaseName("ix_properties_latitude_longitude");
+                    b.HasIndex("Latitude", "Longitude");
 
-                    b.ToTable("properties", (string)null);
+                    b.ToTable("Properties");
                 });
 
             modelBuilder.Entity("RealEstate.Api.Models.Entities.PropertyImage", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("integer")
-                        .HasColumnName("id");
+                        .HasColumnType("integer");
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
 
                     b.Property<bool>("IsPrimary")
-                        .HasColumnType("boolean")
-                        .HasColumnName("is_primary");
+                        .HasColumnType("boolean");
 
                     b.Property<int>("PropertyId")
-                        .HasColumnType("integer")
-                        .HasColumnName("property_id");
+                        .HasColumnType("integer");
 
                     b.Property<int>("SortOrder")
-                        .HasColumnType("integer")
-                        .HasColumnName("sort_order");
+                        .HasColumnType("integer");
 
                     b.Property<string>("Url")
                         .IsRequired()
-                        .HasColumnType("text")
-                        .HasColumnName("url");
+                        .HasColumnType("text");
 
-                    b.HasKey("Id")
-                        .HasName("pk_property_images");
+                    b.HasKey("Id");
 
-                    b.HasIndex("PropertyId")
-                        .HasDatabaseName("ix_property_images_property_id");
+                    b.HasIndex("PropertyId");
 
-                    b.ToTable("property_images", (string)null);
+                    b.ToTable("PropertyImages");
                 });
 
             modelBuilder.Entity("AmenityProperty", b =>
@@ -255,15 +211,13 @@ namespace RealEstate.Api.Migrations.RealEstate
                         .WithMany()
                         .HasForeignKey("AmenitiesId")
                         .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired()
-                        .HasConstraintName("fk_property_amenities_amenities_amenities_id");
+                        .IsRequired();
 
                     b.HasOne("RealEstate.Api.Models.Entities.Property", null)
                         .WithMany()
                         .HasForeignKey("PropertiesId")
                         .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired()
-                        .HasConstraintName("fk_property_amenities_properties_properties_id");
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("RealEstate.Api.Models.Entities.Property", b =>
@@ -272,8 +226,7 @@ namespace RealEstate.Api.Migrations.RealEstate
                         .WithMany("Properties")
                         .HasForeignKey("AgentId")
                         .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired()
-                        .HasConstraintName("fk_properties_agents_agent_id");
+                        .IsRequired();
 
                     b.Navigation("Agent");
                 });
@@ -284,8 +237,7 @@ namespace RealEstate.Api.Migrations.RealEstate
                         .WithMany("Images")
                         .HasForeignKey("PropertyId")
                         .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired()
-                        .HasConstraintName("fk_property_images_properties_property_id");
+                        .IsRequired();
 
                     b.Navigation("Property");
                 });
