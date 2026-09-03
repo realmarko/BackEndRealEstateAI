@@ -169,13 +169,19 @@ public class ListingsController : ControllerBase
         listing.UpdatedAt = DateTime.UtcNow;
 
         _db.ListingImages.RemoveRange(listing.Images);
-        listing.Images = dto.ImageUrls.Select((url, idx) => new ListingImage
+        listing.Images.Clear();
+        await _db.SaveChangesAsync();
+
+        foreach (var (url, idx) in dto.ImageUrls.Select((url, idx) => (url, idx)))
         {
-            ListingId = listing.Id,
-            Url = url,
-            IsPrimary = idx == 0,
-            SortOrder = idx
-        }).ToList();
+            _db.ListingImages.Add(new ListingImage
+            {
+                ListingId = listing.Id,
+                Url = url,
+                IsPrimary = idx == 0,
+                SortOrder = idx
+            });
+        }
 
         await _db.SaveChangesAsync();
         return Ok(ToDto(listing));

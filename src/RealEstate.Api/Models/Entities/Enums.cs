@@ -12,7 +12,8 @@ public enum PropertyType
     Apartment = 1,
     Condo = 2,
     Townhouse = 3,
-    Land = 4
+    Land = 4,
+    Commercial = 5
 }
 
 public enum ListingStatus
