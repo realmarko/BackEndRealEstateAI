@@ -60,6 +60,8 @@ public class AgentsController : ControllerBase
                 Phone = a.Phone,
                 Company = a.Company,
                 PhotoUrl = a.PhotoUrl,
+                Bio = a.Bio,
+                Specialties = a.Specialties,
                 PropertiesCount = a.Properties.Count
             })
             .ToListAsync();
@@ -86,6 +88,8 @@ public class AgentsController : ControllerBase
                 Phone = a.Phone,
                 Company = a.Company,
                 PhotoUrl = a.PhotoUrl,
+                Bio = a.Bio,
+                Specialties = a.Specialties,
                 PropertiesCount = a.Properties.Count
             })
             .FirstOrDefaultAsync();
@@ -129,7 +133,9 @@ public class AgentsController : ControllerBase
             Email = User.FindFirstValue(ClaimTypes.Email) ?? string.Empty,
             Phone = dto.Phone,
             Company = dto.Company,
-            PhotoUrl = photoUrl
+            PhotoUrl = photoUrl,
+            Bio = dto.Bio,
+            Specialties = ParseSpecialties(dto.Specialties)
         };
 
         _db.Agents.Add(agent);
@@ -148,6 +154,11 @@ public class AgentsController : ControllerBase
         return CreatedAtAction(nameof(GetById), new { id = agent.Id }, ToDto(agent));
     }
 
+    private static List<string> ParseSpecialties(string? raw) =>
+        string.IsNullOrWhiteSpace(raw)
+            ? new List<string>()
+            : raw.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList();
+
     private static AgentDto ToDto(Agent a) => new()
     {
         Id = a.Id,
@@ -156,6 +167,8 @@ public class AgentsController : ControllerBase
         Phone = a.Phone,
         Company = a.Company,
         PhotoUrl = a.PhotoUrl,
+        Bio = a.Bio,
+        Specialties = a.Specialties,
         PropertiesCount = a.Properties.Count
     };
 }

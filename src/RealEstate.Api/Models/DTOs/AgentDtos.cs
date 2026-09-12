@@ -7,6 +7,10 @@ public class CreateAgentDto
 {
     [Required] public string Phone { get; set; } = string.Empty;
     public string? Company { get; set; }
+    public string? Bio { get; set; }
+
+    // Comma-separated from the form (e.g. "Buyer's Agent, Staging, Relocation") — split in the controller.
+    public string? Specialties { get; set; }
 
     // Uploaded from the device (multipart/form-data) and stored in S3 — see AgentsController.Create.
     public IFormFile? Photo { get; set; }
@@ -20,6 +24,8 @@ public class AgentDto
     public string Phone { get; set; } = string.Empty;
     public string? Company { get; set; }
     public string? PhotoUrl { get; set; }
+    public string? Bio { get; set; }
+    public List<string> Specialties { get; set; } = new();
     public int PropertiesCount { get; set; }
 }
 

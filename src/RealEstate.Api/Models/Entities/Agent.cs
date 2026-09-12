@@ -13,6 +13,8 @@ public class Agent
     public string Phone { get; set; } = string.Empty;
     public string? Company { get; set; }
     public string? PhotoUrl { get; set; }
+    public string? Bio { get; set; }
+    public List<string> Specialties { get; set; } = new();
 
     public List<Property> Properties { get; set; } = new();
 }

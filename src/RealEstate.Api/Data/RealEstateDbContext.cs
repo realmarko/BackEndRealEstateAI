@@ -19,6 +19,7 @@ public class RealEstateDbContext : DbContext
         builder.Entity<Agent>(entity =>
         {
             entity.HasIndex(a => a.UserId).IsUnique().HasFilter("user_id IS NOT NULL");
+            entity.Property(a => a.Specialties).HasDefaultValueSql("'{}'");
         });
 
         builder.Entity<Property>(entity =>
