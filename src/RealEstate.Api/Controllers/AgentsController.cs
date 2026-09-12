@@ -74,7 +74,17 @@ public class AgentsController : ControllerBase
         };
 
         _db.Agents.Add(agent);
-        await _db.SaveChangesAsync();
+
+        try
+        {
+            await _db.SaveChangesAsync();
+        }
+        catch (DbUpdateException)
+        {
+            // Concurrent duplicate submit raced past the AnyAsync check above and hit the
+            // unique index on UserId — treat it the same as the check finding it first.
+            return Conflict(new { message = "An agent profile already exists for this account." });
+        }
 
         return CreatedAtAction(nameof(GetById), new { id = agent.Id }, ToDto(agent));
     }
