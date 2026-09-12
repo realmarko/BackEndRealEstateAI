@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using Amazon.S3;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -6,6 +7,7 @@ using RealEstate.Api.Data;
 using RealEstate.Api.Extensions;
 using RealEstate.Api.Models.DTOs;
 using RealEstate.Api.Models.Entities;
+using RealEstate.Api.Services;
 
 namespace RealEstate.Api.Controllers;
 
@@ -13,11 +15,21 @@ namespace RealEstate.Api.Controllers;
 [Route("api/agents")]
 public class AgentsController : ControllerBase
 {
-    private readonly RealEstateDbContext _db;
+    private static readonly HashSet<string> AllowedPhotoTypes = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "image/jpeg", "image/png", "image/webp"
+    };
+    private const long MaxPhotoBytes = 5 * 1024 * 1024;
 
-    public AgentsController(RealEstateDbContext db)
+    private readonly RealEstateDbContext _db;
+    private readonly IS3UploadService _s3Service;
+    private readonly ILogger<AgentsController> _logger;
+
+    public AgentsController(RealEstateDbContext db, IS3UploadService s3Service, ILogger<AgentsController> logger)
     {
         _db = db;
+        _s3Service = s3Service;
+        _logger = logger;
     }
 
     // GET /api/agents?name=smith
@@ -84,11 +96,31 @@ public class AgentsController : ControllerBase
     // Completes the agent profile for the currently logged-in user (registered with the Agent role)
     [Authorize(Roles = "Agent")]
     [HttpPost]
-    public async Task<ActionResult<AgentDto>> Create(CreateAgentDto dto)
+    public async Task<ActionResult<AgentDto>> Create([FromForm] CreateAgentDto dto)
     {
         var userId = User.GetUserId();
         if (await _db.Agents.AnyAsync(a => a.UserId == userId))
             return Conflict(new { message = "An agent profile already exists for this account." });
+
+        string? photoUrl = null;
+        if (dto.Photo is not null)
+        {
+            if (!AllowedPhotoTypes.Contains(dto.Photo.ContentType))
+                return BadRequest(new { message = "Photo must be a JPEG, PNG, or WEBP image." });
+            if (dto.Photo.Length > MaxPhotoBytes)
+                return BadRequest(new { message = "Photo must be 5 MB or smaller." });
+
+            try
+            {
+                photoUrl = await _s3Service.UploadFileAsync(dto.Photo, $"agents/{userId}");
+            }
+            catch (AmazonS3Exception ex)
+            {
+                _logger.LogError(ex, "Failed to upload agent photo to S3 for user {UserId}", userId);
+                return StatusCode(StatusCodes.Status502BadGateway,
+                    new { message = "Could not upload the photo right now. Please try again." });
+            }
+        }
 
         var agent = new Agent
         {
@@ -97,7 +129,7 @@ public class AgentsController : ControllerBase
             Email = User.FindFirstValue(ClaimTypes.Email) ?? string.Empty,
             Phone = dto.Phone,
             Company = dto.Company,
-            PhotoUrl = dto.PhotoUrl
+            PhotoUrl = photoUrl
         };
 
         _db.Agents.Add(agent);

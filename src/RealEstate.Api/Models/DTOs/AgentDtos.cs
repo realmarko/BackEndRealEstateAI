@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using Microsoft.AspNetCore.Http;
 
 namespace RealEstate.Api.Models.DTOs;
 
@@ -6,7 +7,9 @@ public class CreateAgentDto
 {
     [Required] public string Phone { get; set; } = string.Empty;
     public string? Company { get; set; }
-    public string? PhotoUrl { get; set; }
+
+    // Uploaded from the device (multipart/form-data) and stored in S3 — see AgentsController.Create.
+    public IFormFile? Photo { get; set; }
 }
 
 public class AgentDto
