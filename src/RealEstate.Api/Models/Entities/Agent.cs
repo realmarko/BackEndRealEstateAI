@@ -11,6 +11,8 @@ public class Agent
     public string Name { get; set; } = string.Empty;
     public string Email { get; set; } = string.Empty;
     public string Phone { get; set; } = string.Empty;
+    public string? Company { get; set; }
+    public string? PhotoUrl { get; set; }
 
     public List<Property> Properties { get; set; } = new();
 }

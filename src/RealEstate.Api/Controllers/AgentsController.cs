@@ -46,6 +46,8 @@ public class AgentsController : ControllerBase
                 Name = a.Name,
                 Email = a.Email,
                 Phone = a.Phone,
+                Company = a.Company,
+                PhotoUrl = a.PhotoUrl,
                 PropertiesCount = a.Properties.Count
             })
             .ToListAsync();
@@ -70,6 +72,8 @@ public class AgentsController : ControllerBase
                 Name = a.Name,
                 Email = a.Email,
                 Phone = a.Phone,
+                Company = a.Company,
+                PhotoUrl = a.PhotoUrl,
                 PropertiesCount = a.Properties.Count
             })
             .FirstOrDefaultAsync();
@@ -91,7 +95,9 @@ public class AgentsController : ControllerBase
             UserId = userId,
             Name = $"{User.FindFirstValue("firstName")} {User.FindFirstValue("lastName")}".Trim(),
             Email = User.FindFirstValue(ClaimTypes.Email) ?? string.Empty,
-            Phone = dto.Phone
+            Phone = dto.Phone,
+            Company = dto.Company,
+            PhotoUrl = dto.PhotoUrl
         };
 
         _db.Agents.Add(agent);
@@ -116,6 +122,8 @@ public class AgentsController : ControllerBase
         Name = a.Name,
         Email = a.Email,
         Phone = a.Phone,
+        Company = a.Company,
+        PhotoUrl = a.PhotoUrl,
         PropertiesCount = a.Properties.Count
     };
 }
