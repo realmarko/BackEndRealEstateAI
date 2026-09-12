@@ -1,7 +1,9 @@
+using System.Net.Mail;
 using System.Security.Claims;
 using Amazon.S3;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using RealEstate.Api.Data;
 using RealEstate.Api.Extensions;
@@ -21,14 +23,20 @@ public class AgentsController : ControllerBase
     };
     private const long MaxPhotoBytes = 5 * 1024 * 1024;
 
+    // Every new agent starts with this seeded 5-star review so their profile isn't blank —
+    // not a real customer, always attributed as "Agente Real Estate".
+    private const string SystemReviewerName = "Agente Real Estate";
+
     private readonly RealEstateDbContext _db;
     private readonly IS3UploadService _s3Service;
+    private readonly IEmailService _emailService;
     private readonly ILogger<AgentsController> _logger;
 
-    public AgentsController(RealEstateDbContext db, IS3UploadService s3Service, ILogger<AgentsController> logger)
+    public AgentsController(RealEstateDbContext db, IS3UploadService s3Service, IEmailService emailService, ILogger<AgentsController> logger)
     {
         _db = db;
         _s3Service = s3Service;
+        _emailService = emailService;
         _logger = logger;
     }
 
@@ -59,10 +67,13 @@ public class AgentsController : ControllerBase
                 Email = a.Email,
                 Phone = a.Phone,
                 Company = a.Company,
+                IsIndependent = a.IsIndependent,
                 PhotoUrl = a.PhotoUrl,
                 Bio = a.Bio,
                 Specialties = a.Specialties,
-                PropertiesCount = a.Properties.Count
+                PropertiesCount = a.Properties.Count,
+                AverageRating = a.Reviews.Any() ? a.Reviews.Average(r => (double)r.Rating) : null,
+                ReviewsCount = a.Reviews.Count
             })
             .ToListAsync();
 
@@ -87,10 +98,13 @@ public class AgentsController : ControllerBase
                 Email = a.Email,
                 Phone = a.Phone,
                 Company = a.Company,
+                IsIndependent = a.IsIndependent,
                 PhotoUrl = a.PhotoUrl,
                 Bio = a.Bio,
                 Specialties = a.Specialties,
-                PropertiesCount = a.Properties.Count
+                PropertiesCount = a.Properties.Count,
+                AverageRating = a.Reviews.Any() ? a.Reviews.Average(r => (double)r.Rating) : null,
+                ReviewsCount = a.Reviews.Count
             })
             .FirstOrDefaultAsync();
 
@@ -126,17 +140,28 @@ public class AgentsController : ControllerBase
             }
         }
 
+        // An independent agent has no brokerage, regardless of what was typed before checking the box.
+        var company = dto.IsIndependent || string.IsNullOrWhiteSpace(dto.Company) ? null : dto.Company.Trim();
+
         var agent = new Agent
         {
             UserId = userId,
             Name = $"{User.FindFirstValue("firstName")} {User.FindFirstValue("lastName")}".Trim(),
             Email = User.FindFirstValue(ClaimTypes.Email) ?? string.Empty,
             Phone = dto.Phone,
-            Company = dto.Company,
+            Company = company,
+            IsIndependent = dto.IsIndependent,
             PhotoUrl = photoUrl,
             Bio = dto.Bio,
             Specialties = ParseSpecialties(dto.Specialties)
         };
+
+        agent.Reviews.Add(new AgentReview
+        {
+            ReviewerUserId = Guid.Empty,
+            ReviewerName = SystemReviewerName,
+            Rating = 5
+        });
 
         _db.Agents.Add(agent);
 
@@ -151,8 +176,137 @@ public class AgentsController : ControllerBase
             return Conflict(new { message = "An agent profile already exists for this account." });
         }
 
+        // Saved separately from the agent above: a concurrent signup racing to add the same
+        // brand-new brokerage name would hit its own unique index, which must not be mistaken
+        // for the UserId conflict above and must not roll back the agent that was just created.
+        if (company is not null && !await _db.Brokerages.AnyAsync(b => b.Name.ToLower() == company.ToLower()))
+        {
+            _db.Brokerages.Add(new Brokerage { Name = company });
+            try
+            {
+                await _db.SaveChangesAsync();
+            }
+            catch (DbUpdateException)
+            {
+                // Another concurrent signup already inserted this brokerage name — the catalog
+                // entry exists either way, so there's nothing left to do here.
+            }
+        }
+
         return CreatedAtAction(nameof(GetById), new { id = agent.Id }, ToDto(agent));
     }
+
+    // GET /api/agents/{id}/reviews
+    [HttpGet("{id:int}/reviews")]
+    public async Task<ActionResult<List<AgentReviewDto>>> GetReviews(int id)
+    {
+        var agentExists = await _db.Agents.AnyAsync(a => a.Id == id);
+        if (!agentExists) return NotFound();
+
+        var reviews = await _db.AgentReviews
+            .Where(r => r.AgentId == id)
+            .OrderByDescending(r => r.CreatedAt)
+            .Select(r => new AgentReviewDto
+            {
+                Id = r.Id,
+                ReviewerName = r.ReviewerName,
+                Rating = r.Rating,
+                Comment = r.Comment,
+                CreatedAt = r.CreatedAt
+            })
+            .ToListAsync();
+
+        return Ok(reviews);
+    }
+
+    // Any authenticated user can review an agent, once, as long as it isn't their own profile.
+    [Authorize]
+    [HttpPost("{id:int}/reviews")]
+    public async Task<ActionResult<AgentReviewDto>> AddReview(int id, CreateAgentReviewDto dto)
+    {
+        var agent = await _db.Agents.FindAsync(id);
+        if (agent is null) return NotFound();
+
+        var userId = User.GetUserId();
+        if (agent.UserId == userId)
+            return BadRequest(new { message = "You can't review your own agent profile." });
+
+        if (await _db.AgentReviews.AnyAsync(r => r.AgentId == id && r.ReviewerUserId == userId))
+            return Conflict(new { message = "You already reviewed this agent." });
+
+        var review = new AgentReview
+        {
+            AgentId = id,
+            ReviewerUserId = userId,
+            ReviewerName = $"{User.FindFirstValue("firstName")} {User.FindFirstValue("lastName")}".Trim(),
+            Rating = dto.Rating,
+            Comment = dto.Comment
+        };
+
+        _db.AgentReviews.Add(review);
+
+        try
+        {
+            await _db.SaveChangesAsync();
+        }
+        catch (DbUpdateException)
+        {
+            // Concurrent duplicate submit raced past the AnyAsync check above and hit the
+            // unique index on (AgentId, ReviewerUserId) — treat it the same as finding it first.
+            return Conflict(new { message = "You already reviewed this agent." });
+        }
+
+        return CreatedAtAction(nameof(GetReviews), new { id }, new AgentReviewDto
+        {
+            Id = review.Id,
+            ReviewerName = review.ReviewerName,
+            Rating = review.Rating,
+            Comment = review.Comment,
+            CreatedAt = review.CreatedAt
+        });
+    }
+
+    // Sends the visitor's message straight to the agent's email — no DB record is kept.
+    // Deliberately anonymous (like InquiriesController.Create), so it's rate-limited instead.
+    [EnableRateLimiting("contact")]
+    [HttpPost("{id:int}/contact")]
+    public async Task<IActionResult> Contact(int id, ContactAgentDto dto)
+    {
+        var agent = await _db.Agents.FindAsync(id);
+        if (agent is null) return NotFound();
+
+        if (string.IsNullOrWhiteSpace(agent.Email))
+            return StatusCode(StatusCodes.Status502BadGateway,
+                new { message = "This agent can't be reached by email right now." });
+
+        // Only the Subject line is at risk from embedded newlines (MailMessage rejects control
+        // characters there) — the body is free text, so dto.Message keeps its own line breaks.
+        var subject = $"New inquiry from {StripControlCharacters(dto.Name)} via RealEstateApp";
+        var body =
+            $"You have a new message from a potential client on RealEstateApp.\n\n" +
+            $"Name: {dto.Name}\n" +
+            $"Phone: {dto.Phone}\n" +
+            $"Email: {dto.Email}\n\n" +
+            $"Message:\n{dto.Message}";
+
+        try
+        {
+            await _emailService.SendAsync(agent.Email, agent.Name, subject, body);
+        }
+        catch (Exception ex) when (ex is SmtpException or FormatException or ArgumentException)
+        {
+            _logger.LogError(ex, "Failed to send contact email to agent {AgentId}", id);
+            return StatusCode(StatusCodes.Status502BadGateway,
+                new { message = "Could not send the message right now. Please try again." });
+        }
+
+        return NoContent();
+    }
+
+    // Removes CR/LF (and other control characters) so a Subject built from user input can never
+    // hit MailMessage's "not in the form required for a subject" ArgumentException.
+    private static string StripControlCharacters(string value) =>
+        new(value.Where(c => !char.IsControl(c)).ToArray());
 
     private static List<string> ParseSpecialties(string? raw) =>
         string.IsNullOrWhiteSpace(raw)
@@ -166,9 +320,12 @@ public class AgentsController : ControllerBase
         Email = a.Email,
         Phone = a.Phone,
         Company = a.Company,
+        IsIndependent = a.IsIndependent,
         PhotoUrl = a.PhotoUrl,
         Bio = a.Bio,
         Specialties = a.Specialties,
-        PropertiesCount = a.Properties.Count
+        PropertiesCount = a.Properties.Count,
+        AverageRating = a.Reviews.Count > 0 ? a.Reviews.Average(r => (double)r.Rating) : null,
+        ReviewsCount = a.Reviews.Count
     };
 }

@@ -3,6 +3,7 @@ using System;
 using System.Collections.Generic;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using RealEstate.Api.Data;
@@ -12,9 +13,11 @@ using RealEstate.Api.Data;
 namespace RealEstate.Api.Migrations.RealEstate
 {
     [DbContext(typeof(RealEstateDbContext))]
-    partial class RealEstateDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260912172918_AddBrokerageCatalog")]
+    partial class AddBrokerageCatalog
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -63,10 +66,6 @@ namespace RealEstate.Api.Migrations.RealEstate
                         .IsRequired()
                         .HasColumnType("text")
                         .HasColumnName("email");
-
-                    b.Property<bool>("IsIndependent")
-                        .HasColumnType("boolean")
-                        .HasColumnName("is_independent");
 
                     b.Property<string>("Name")
                         .IsRequired()

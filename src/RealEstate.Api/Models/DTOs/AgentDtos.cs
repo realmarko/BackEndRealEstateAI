@@ -7,6 +7,7 @@ public class CreateAgentDto
 {
     [Required] public string Phone { get; set; } = string.Empty;
     public string? Company { get; set; }
+    public bool IsIndependent { get; set; }
     public string? Bio { get; set; }
 
     // Comma-separated from the form (e.g. "Buyer's Agent, Staging, Relocation") — split in the controller.
@@ -23,10 +24,13 @@ public class AgentDto
     public string Email { get; set; } = string.Empty;
     public string Phone { get; set; } = string.Empty;
     public string? Company { get; set; }
+    public bool IsIndependent { get; set; }
     public string? PhotoUrl { get; set; }
     public string? Bio { get; set; }
     public List<string> Specialties { get; set; } = new();
     public int PropertiesCount { get; set; }
+    public double? AverageRating { get; set; }
+    public int ReviewsCount { get; set; }
 }
 
 public class AgentSearchQuery
@@ -34,4 +38,12 @@ public class AgentSearchQuery
     public string? Name { get; set; }
     public int Page { get; set; } = 1;
     public int PageSize { get; set; } = 20;
+}
+
+public class ContactAgentDto
+{
+    [Required] public string Name { get; set; } = string.Empty;
+    [Required] public string Phone { get; set; } = string.Empty;
+    [Required, EmailAddress] public string Email { get; set; } = string.Empty;
+    [Required] public string Message { get; set; } = string.Empty;
 }

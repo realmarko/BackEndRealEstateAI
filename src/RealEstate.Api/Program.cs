@@ -3,6 +3,7 @@ using Amazon.Extensions.NETCore.Setup;
 using Amazon.S3;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
@@ -21,6 +22,10 @@ builder.Services.Configure<S3Options>(builder.Configuration.GetSection("AWS:S3")
 builder.Services.AddDefaultAWSOptions(builder.Configuration.GetAWSOptions());
 builder.Services.AddAWSService<IAmazonS3>();
 builder.Services.AddScoped<IS3UploadService, S3UploadService>();
+
+// ---- Email (SMTP) ----
+builder.Services.Configure<EmailOptions>(builder.Configuration.GetSection("Email"));
+builder.Services.AddScoped<IEmailService, SmtpEmailService>();
 
 // ---- Database (PostgreSQL) ----
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
@@ -63,6 +68,18 @@ builder.Services
 
 builder.Services.AddAuthorization();
 builder.Services.AddScoped<ITokenService, TokenService>();
+
+// ---- Rate limiting (anonymous public endpoints that trigger an external side effect) ----
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.AddFixedWindowLimiter("contact", limiterOptions =>
+    {
+        limiterOptions.PermitLimit = 5;
+        limiterOptions.Window = TimeSpan.FromMinutes(1);
+        limiterOptions.QueueLimit = 0;
+    });
+});
 
 // ---- CORS (Angular dev server + configurable prod origin) ----
 var allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>()
@@ -109,6 +126,7 @@ app.UseHttpsRedirection();
 app.UseCors("Default");
 app.UseAuthentication();
 app.UseAuthorization();
+app.UseRateLimiter();
 app.MapControllers();
 
 app.Run();

@@ -10,6 +10,8 @@ public class RealEstateDbContext : DbContext
     public DbSet<Property> Properties => Set<Property>();
     public DbSet<PropertyImage> PropertyImages => Set<PropertyImage>();
     public DbSet<Agent> Agents => Set<Agent>();
+    public DbSet<AgentReview> AgentReviews => Set<AgentReview>();
+    public DbSet<Brokerage> Brokerages => Set<Brokerage>();
     public DbSet<Amenity> Amenities => Set<Amenity>();
 
     protected override void OnModelCreating(ModelBuilder builder)
@@ -20,6 +22,22 @@ public class RealEstateDbContext : DbContext
         {
             entity.HasIndex(a => a.UserId).IsUnique().HasFilter("user_id IS NOT NULL");
             entity.Property(a => a.Specialties).HasDefaultValueSql("'{}'");
+        });
+
+        builder.Entity<AgentReview>(entity =>
+        {
+            // One review per reviewer per agent.
+            entity.HasIndex(r => new { r.AgentId, r.ReviewerUserId }).IsUnique();
+
+            entity.HasOne(r => r.Agent)
+                  .WithMany(a => a.Reviews)
+                  .HasForeignKey(r => r.AgentId)
+                  .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        builder.Entity<Brokerage>(entity =>
+        {
+            entity.HasIndex(b => b.Name).IsUnique();
         });
 
         builder.Entity<Property>(entity =>

@@ -3,6 +3,7 @@ using System;
 using System.Collections.Generic;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using RealEstate.Api.Data;
@@ -12,9 +13,11 @@ using RealEstate.Api.Data;
 namespace RealEstate.Api.Migrations.RealEstate
 {
     [DbContext(typeof(RealEstateDbContext))]
-    partial class RealEstateDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260912163036_AddAgentReviews")]
+    partial class AddAgentReviews
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -63,10 +66,6 @@ namespace RealEstate.Api.Migrations.RealEstate
                         .IsRequired()
                         .HasColumnType("text")
                         .HasColumnName("email");
-
-                    b.Property<bool>("IsIndependent")
-                        .HasColumnType("boolean")
-                        .HasColumnName("is_independent");
 
                     b.Property<string>("Name")
                         .IsRequired()
@@ -166,30 +165,6 @@ namespace RealEstate.Api.Migrations.RealEstate
                         .HasName("pk_amenities");
 
                     b.ToTable("amenities", (string)null);
-                });
-
-            modelBuilder.Entity("RealEstate.Api.Models.Entities.Brokerage", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer")
-                        .HasColumnName("id");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasColumnType("text")
-                        .HasColumnName("name");
-
-                    b.HasKey("Id")
-                        .HasName("pk_brokerages");
-
-                    b.HasIndex("Name")
-                        .IsUnique()
-                        .HasDatabaseName("ix_brokerages_name");
-
-                    b.ToTable("brokerages", (string)null);
                 });
 
             modelBuilder.Entity("RealEstate.Api.Models.Entities.Property", b =>
