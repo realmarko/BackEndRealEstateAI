@@ -28,7 +28,10 @@ public class AuthController : ControllerBase
     [HttpPost("register")]
     public async Task<ActionResult<AuthResponseDto>> Register(RegisterDto dto)
     {
-        // Agents can also publish listings, so they get both roles.
+        // Agents can also publish listings, so they get both roles. This bundles the grant at
+        // registration time instead of having [Authorize] accept either role — simpler while
+        // Agent and Owner need identical permissions, but every Owner-only endpoint would need
+        // updating (currently: ListingsController and InquiriesController) if that ever changes.
         var roles = dto.Role switch
         {
             "Owner" => new[] { "Owner" },
