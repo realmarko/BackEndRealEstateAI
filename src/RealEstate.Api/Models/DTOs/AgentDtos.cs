@@ -1,4 +1,11 @@
+using System.ComponentModel.DataAnnotations;
+
 namespace RealEstate.Api.Models.DTOs;
+
+public class CreateAgentDto
+{
+    [Required] public string Phone { get; set; } = string.Empty;
+}
 
 public class AgentDto
 {

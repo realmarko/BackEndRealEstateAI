@@ -28,9 +28,19 @@ public class AuthController : ControllerBase
     [HttpPost("register")]
     public async Task<ActionResult<AuthResponseDto>> Register(RegisterDto dto)
     {
-        var role = dto.Role is "Owner" ? "Owner" : "Buyer";
-        if (!await _roleManager.RoleExistsAsync(role))
-            await _roleManager.CreateAsync(new IdentityRole<Guid>(role));
+        // Agents can also publish listings, so they get both roles.
+        var roles = dto.Role switch
+        {
+            "Owner" => new[] { "Owner" },
+            "Agent" => new[] { "Owner", "Agent" },
+            _ => new[] { "Buyer" }
+        };
+
+        foreach (var role in roles)
+        {
+            if (!await _roleManager.RoleExistsAsync(role))
+                await _roleManager.CreateAsync(new IdentityRole<Guid>(role));
+        }
 
         var user = new ApplicationUser
         {
@@ -44,7 +54,7 @@ public class AuthController : ControllerBase
         if (!result.Succeeded)
             return BadRequest(result.Errors.Select(e => e.Description));
 
-        await _userManager.AddToRoleAsync(user, role);
+        await _userManager.AddToRolesAsync(user, roles);
 
         return await BuildAuthResponse(user);
     }

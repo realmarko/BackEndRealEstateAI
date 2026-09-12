@@ -1,3 +1,5 @@
+using System.Security.Claims;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using RealEstate.Api.Data;
@@ -53,6 +55,32 @@ public class AgentsController : ControllerBase
         var agent = await _db.Agents.Include(a => a.Properties).FirstOrDefaultAsync(a => a.Id == id);
         return agent is null ? NotFound() : Ok(ToDto(agent));
     }
+
+    // Completes the agent profile for the currently logged-in user (registered with the Agent role)
+    [Authorize(Roles = "Agent")]
+    [HttpPost]
+    public async Task<ActionResult<AgentDto>> Create(CreateAgentDto dto)
+    {
+        var userId = CurrentUserId();
+        if (await _db.Agents.AnyAsync(a => a.UserId == userId))
+            return Conflict(new { message = "An agent profile already exists for this account." });
+
+        var agent = new Agent
+        {
+            UserId = userId,
+            Name = $"{User.FindFirstValue("firstName")} {User.FindFirstValue("lastName")}".Trim(),
+            Email = User.FindFirstValue(ClaimTypes.Email) ?? string.Empty,
+            Phone = dto.Phone
+        };
+
+        _db.Agents.Add(agent);
+        await _db.SaveChangesAsync();
+
+        return CreatedAtAction(nameof(GetById), new { id = agent.Id }, ToDto(agent));
+    }
+
+    private Guid CurrentUserId() =>
+        Guid.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier) ?? User.FindFirstValue("sub")!);
 
     private static AgentDto ToDto(Agent a) => new()
     {

@@ -16,6 +16,11 @@ public class RealEstateDbContext : DbContext
     {
         base.OnModelCreating(builder);
 
+        builder.Entity<Agent>(entity =>
+        {
+            entity.HasIndex(a => a.UserId).IsUnique().HasFilter("user_id IS NOT NULL");
+        });
+
         builder.Entity<Property>(entity =>
         {
             entity.Property(p => p.Price).HasColumnType("numeric(14,2)");

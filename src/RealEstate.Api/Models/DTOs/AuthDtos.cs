@@ -9,7 +9,7 @@ public class RegisterDto
     [Required, EmailAddress] public string Email { get; set; } = string.Empty;
     [Required, MinLength(8)] public string Password { get; set; } = string.Empty;
 
-    // "Owner" (can publish listings) or "Buyer" (browse, favorite, message)
+    // "Owner" (can publish listings), "Agent" (Owner + gets an agent directory profile), or "Buyer" (browse, favorite, message)
     public string Role { get; set; } = "Buyer";
 }
 
