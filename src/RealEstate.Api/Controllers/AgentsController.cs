@@ -191,7 +191,12 @@ public class AgentsController : ControllerBase
     public async Task<ActionResult<AgentDto>> GetMine()
     {
         var userId = User.GetUserId();
-        var agent = await _db.Agents.FirstOrDefaultAsync(a => a.UserId == userId);
+        // ToDto reads a.Reviews/a.Properties in memory, so they must be eager-loaded here —
+        // unlike Search/GetById, which compute those counts in SQL via a projection instead.
+        var agent = await _db.Agents
+            .Include(a => a.Reviews)
+            .Include(a => a.Properties)
+            .FirstOrDefaultAsync(a => a.UserId == userId);
         return agent is null ? NotFound() : Ok(ToDto(agent, isOwnProfile: true));
     }
 
@@ -202,7 +207,11 @@ public class AgentsController : ControllerBase
     public async Task<ActionResult<AgentDto>> UpdateMine([FromForm] CreateAgentDto dto)
     {
         var userId = User.GetUserId();
-        var agent = await _db.Agents.FirstOrDefaultAsync(a => a.UserId == userId);
+        // Same reasoning as GetMine: ToDto's counts need these navigations eager-loaded.
+        var agent = await _db.Agents
+            .Include(a => a.Reviews)
+            .Include(a => a.Properties)
+            .FirstOrDefaultAsync(a => a.UserId == userId);
         if (agent is null) return NotFound();
 
         if (dto.Photo is not null)
