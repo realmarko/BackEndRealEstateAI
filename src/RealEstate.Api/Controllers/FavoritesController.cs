@@ -1,8 +1,8 @@
-using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using RealEstate.Api.Data;
+using RealEstate.Api.Extensions;
 using RealEstate.Api.Models.DTOs;
 using RealEstate.Api.Models.Entities;
 
@@ -19,7 +19,7 @@ public class FavoritesController : ControllerBase
     [HttpGet]
     public async Task<ActionResult<List<FavoriteDto>>> Mine()
     {
-        var userId = CurrentUserId();
+        var userId = User.GetUserId();
         var favorites = await _db.Favorites
             .Include(f => f.Listing).ThenInclude(l => l!.Images)
             .Include(f => f.Listing).ThenInclude(l => l!.Owner)
@@ -53,7 +53,7 @@ public class FavoritesController : ControllerBase
     [HttpPost("{listingId:guid}")]
     public async Task<IActionResult> Add(Guid listingId)
     {
-        var userId = CurrentUserId();
+        var userId = User.GetUserId();
         var exists = await _db.Favorites.AnyAsync(f => f.UserId == userId && f.ListingId == listingId);
         if (exists) return NoContent();
 
@@ -68,7 +68,7 @@ public class FavoritesController : ControllerBase
     [HttpDelete("{listingId:guid}")]
     public async Task<IActionResult> Remove(Guid listingId)
     {
-        var userId = CurrentUserId();
+        var userId = User.GetUserId();
         var favorite = await _db.Favorites.FirstOrDefaultAsync(f => f.UserId == userId && f.ListingId == listingId);
         if (favorite is null) return NotFound();
 
@@ -77,6 +77,4 @@ public class FavoritesController : ControllerBase
         return NoContent();
     }
 
-    private Guid CurrentUserId() =>
-        Guid.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier) ?? User.FindFirstValue("sub")!);
 }

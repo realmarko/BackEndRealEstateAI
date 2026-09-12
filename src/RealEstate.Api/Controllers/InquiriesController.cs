@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using RealEstate.Api.Data;
+using RealEstate.Api.Extensions;
 using RealEstate.Api.Models.DTOs;
 using RealEstate.Api.Models.Entities;
 
@@ -47,7 +48,7 @@ public class InquiriesController : ControllerBase
     [HttpGet("received")]
     public async Task<ActionResult<List<InquiryDto>>> Received()
     {
-        var userId = CurrentUserId();
+        var userId = User.GetUserId();
         var inquiries = await _db.Inquiries
             .Include(i => i.Listing)
             .Where(i => i.Listing!.OwnerId == userId)
@@ -63,15 +64,12 @@ public class InquiriesController : ControllerBase
     {
         var inquiry = await _db.Inquiries.Include(i => i.Listing).FirstOrDefaultAsync(i => i.Id == id);
         if (inquiry is null) return NotFound();
-        if (inquiry.Listing!.OwnerId != CurrentUserId()) return Forbid();
+        if (inquiry.Listing!.OwnerId != User.GetUserId()) return Forbid();
 
         inquiry.IsRead = true;
         await _db.SaveChangesAsync();
         return NoContent();
     }
-
-    private Guid CurrentUserId() =>
-        Guid.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier) ?? User.FindFirstValue("sub")!);
 
     private static InquiryDto ToDto(Inquiry i) => new()
     {

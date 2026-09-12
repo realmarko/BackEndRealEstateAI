@@ -1,8 +1,8 @@
-using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using RealEstate.Api.Data;
+using RealEstate.Api.Extensions;
 using RealEstate.Api.Models.DTOs;
 using RealEstate.Api.Models.Entities;
 
@@ -89,7 +89,7 @@ public class ListingsController : ControllerBase
     [HttpGet("mine")]
     public async Task<ActionResult<List<ListingDto>>> Mine()
     {
-        var userId = CurrentUserId();
+        var userId = User.GetUserId();
         var listings = await _db.Listings
             .Include(l => l.Images)
             .Include(l => l.Owner)
@@ -106,7 +106,7 @@ public class ListingsController : ControllerBase
     {
         var listing = new Listing
         {
-            OwnerId = CurrentUserId(),
+            OwnerId = User.GetUserId(),
             Title = dto.Title,
             Description = dto.Description,
             ListingType = dto.ListingType,
@@ -147,7 +147,7 @@ public class ListingsController : ControllerBase
     {
         var listing = await _db.Listings.Include(l => l.Images).FirstOrDefaultAsync(l => l.Id == id);
         if (listing is null) return NotFound();
-        if (listing.OwnerId != CurrentUserId()) return Forbid();
+        if (listing.OwnerId != User.GetUserId()) return Forbid();
 
         listing.Title = dto.Title;
         listing.Description = dto.Description;
@@ -193,7 +193,7 @@ public class ListingsController : ControllerBase
     {
         var listing = await _db.Listings.FindAsync(id);
         if (listing is null) return NotFound();
-        if (listing.OwnerId != CurrentUserId()) return Forbid();
+        if (listing.OwnerId != User.GetUserId()) return Forbid();
 
         // Soft delete keeps the listing (and its inquiries/favorites) for history
         listing.Status = ListingStatus.Removed;
@@ -201,9 +201,6 @@ public class ListingsController : ControllerBase
         await _db.SaveChangesAsync();
         return NoContent();
     }
-
-    private Guid CurrentUserId() =>
-        Guid.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier) ?? User.FindFirstValue("sub")!);
 
     private static ListingDto ToDto(Listing l) => new()
     {

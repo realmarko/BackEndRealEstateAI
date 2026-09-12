@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using RealEstate.Api.Data;
+using RealEstate.Api.Extensions;
 using RealEstate.Api.Models.DTOs;
 using RealEstate.Api.Models.Entities;
 
@@ -23,7 +24,7 @@ public class AgentsController : ControllerBase
     [HttpGet]
     public async Task<ActionResult<PagedResult<AgentDto>>> Search([FromQuery] AgentSearchQuery q)
     {
-        var query = _db.Agents.Include(a => a.Properties).AsQueryable();
+        var query = _db.Agents.AsQueryable();
 
         if (!string.IsNullOrWhiteSpace(q.Name))
             query = query.Where(a => a.Name.ToLower().Contains(q.Name!.ToLower()));
@@ -33,11 +34,20 @@ public class AgentsController : ControllerBase
         var page = Math.Max(q.Page, 1);
         var pageSize = Math.Clamp(q.PageSize, 1, 100);
 
+        // Projects PropertiesCount directly (a SQL COUNT subquery) instead of Include()-ing
+        // every Property row just to read .Count in memory.
         var items = await query
             .OrderBy(a => a.Name)
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
-            .Select(a => ToDto(a))
+            .Select(a => new AgentDto
+            {
+                Id = a.Id,
+                Name = a.Name,
+                Email = a.Email,
+                Phone = a.Phone,
+                PropertiesCount = a.Properties.Count
+            })
             .ToListAsync();
 
         return Ok(new PagedResult<AgentDto>
@@ -52,8 +62,19 @@ public class AgentsController : ControllerBase
     [HttpGet("{id:int}")]
     public async Task<ActionResult<AgentDto>> GetById(int id)
     {
-        var agent = await _db.Agents.Include(a => a.Properties).FirstOrDefaultAsync(a => a.Id == id);
-        return agent is null ? NotFound() : Ok(ToDto(agent));
+        var agent = await _db.Agents
+            .Where(a => a.Id == id)
+            .Select(a => new AgentDto
+            {
+                Id = a.Id,
+                Name = a.Name,
+                Email = a.Email,
+                Phone = a.Phone,
+                PropertiesCount = a.Properties.Count
+            })
+            .FirstOrDefaultAsync();
+
+        return agent is null ? NotFound() : Ok(agent);
     }
 
     // Completes the agent profile for the currently logged-in user (registered with the Agent role)
@@ -61,7 +82,7 @@ public class AgentsController : ControllerBase
     [HttpPost]
     public async Task<ActionResult<AgentDto>> Create(CreateAgentDto dto)
     {
-        var userId = CurrentUserId();
+        var userId = User.GetUserId();
         if (await _db.Agents.AnyAsync(a => a.UserId == userId))
             return Conflict(new { message = "An agent profile already exists for this account." });
 
@@ -88,9 +109,6 @@ public class AgentsController : ControllerBase
 
         return CreatedAtAction(nameof(GetById), new { id = agent.Id }, ToDto(agent));
     }
-
-    private Guid CurrentUserId() =>
-        Guid.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier) ?? User.FindFirstValue("sub")!);
 
     private static AgentDto ToDto(Agent a) => new()
     {
