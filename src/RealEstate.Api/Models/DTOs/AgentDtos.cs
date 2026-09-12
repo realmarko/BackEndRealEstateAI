@@ -20,6 +20,9 @@ public class CreateAgentDto
 public class AgentDto
 {
     public int Id { get; set; }
+    // Computed server-side from the caller's own JWT — lets the frontend show an Edit button
+    // without ever exposing the agent's internal ApplicationUser id to the public API.
+    public bool IsOwnProfile { get; set; }
     public string Name { get; set; } = string.Empty;
     public string Email { get; set; } = string.Empty;
     public string Phone { get; set; } = string.Empty;
@@ -36,6 +39,9 @@ public class AgentDto
 public class AgentSearchQuery
 {
     public string? Name { get; set; }
+    public string? Specialty { get; set; }
+    public string? Company { get; set; }
+    public double? MinRating { get; set; }
     public int Page { get; set; } = 1;
     public int PageSize { get; set; } = 20;
 }

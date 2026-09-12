@@ -44,10 +44,20 @@ public class AgentsController : ControllerBase
     [HttpGet]
     public async Task<ActionResult<PagedResult<AgentDto>>> Search([FromQuery] AgentSearchQuery q)
     {
+        var currentUserId = User.TryGetUserId();
         var query = _db.Agents.AsQueryable();
 
         if (!string.IsNullOrWhiteSpace(q.Name))
             query = query.Where(a => a.Name.ToLower().Contains(q.Name!.ToLower()));
+
+        if (!string.IsNullOrWhiteSpace(q.Specialty))
+            query = query.Where(a => a.Specialties.Any(s => s.ToLower().Contains(q.Specialty!.ToLower())));
+
+        if (!string.IsNullOrWhiteSpace(q.Company))
+            query = query.Where(a => a.Company != null && a.Company.ToLower().Contains(q.Company!.ToLower()));
+
+        if (q.MinRating.HasValue)
+            query = query.Where(a => a.Reviews.Any() && a.Reviews.Average(r => (double)r.Rating) >= q.MinRating.Value);
 
         var totalCount = await query.CountAsync();
 
@@ -63,6 +73,7 @@ public class AgentsController : ControllerBase
             .Select(a => new AgentDto
             {
                 Id = a.Id,
+                IsOwnProfile = currentUserId != null && a.UserId == currentUserId,
                 Name = a.Name,
                 Email = a.Email,
                 Phone = a.Phone,
@@ -89,11 +100,13 @@ public class AgentsController : ControllerBase
     [HttpGet("{id:int}")]
     public async Task<ActionResult<AgentDto>> GetById(int id)
     {
+        var currentUserId = User.TryGetUserId();
         var agent = await _db.Agents
             .Where(a => a.Id == id)
             .Select(a => new AgentDto
             {
                 Id = a.Id,
+                IsOwnProfile = currentUserId != null && a.UserId == currentUserId,
                 Name = a.Name,
                 Email = a.Email,
                 Phone = a.Phone,
@@ -123,21 +136,9 @@ public class AgentsController : ControllerBase
         string? photoUrl = null;
         if (dto.Photo is not null)
         {
-            if (!AllowedPhotoTypes.Contains(dto.Photo.ContentType))
-                return BadRequest(new { message = "Photo must be a JPEG, PNG, or WEBP image." });
-            if (dto.Photo.Length > MaxPhotoBytes)
-                return BadRequest(new { message = "Photo must be 5 MB or smaller." });
-
-            try
-            {
-                photoUrl = await _s3Service.UploadFileAsync(dto.Photo, $"agents/{userId}");
-            }
-            catch (AmazonS3Exception ex)
-            {
-                _logger.LogError(ex, "Failed to upload agent photo to S3 for user {UserId}", userId);
-                return StatusCode(StatusCodes.Status502BadGateway,
-                    new { message = "Could not upload the photo right now. Please try again." });
-            }
+            var (uploadedUrl, uploadError) = await TryUploadPhotoAsync(dto.Photo, $"agents/{userId}");
+            if (uploadError is not null) return uploadError;
+            photoUrl = uploadedUrl;
         }
 
         // An independent agent has no brokerage, regardless of what was typed before checking the box.
@@ -179,21 +180,95 @@ public class AgentsController : ControllerBase
         // Saved separately from the agent above: a concurrent signup racing to add the same
         // brand-new brokerage name would hit its own unique index, which must not be mistaken
         // for the UserId conflict above and must not roll back the agent that was just created.
-        if (company is not null && !await _db.Brokerages.AnyAsync(b => b.Name.ToLower() == company.ToLower()))
+        await UpsertBrokerageAsync(company);
+
+        return CreatedAtAction(nameof(GetById), new { id = agent.Id }, ToDto(agent, isOwnProfile: true));
+    }
+
+    // Returns the current user's own agent profile — lets the edit form load without knowing its id.
+    [Authorize(Roles = "Agent")]
+    [HttpGet("me")]
+    public async Task<ActionResult<AgentDto>> GetMine()
+    {
+        var userId = User.GetUserId();
+        var agent = await _db.Agents.FirstOrDefaultAsync(a => a.UserId == userId);
+        return agent is null ? NotFound() : Ok(ToDto(agent, isOwnProfile: true));
+    }
+
+    // Updates the current user's own agent profile. Never takes an id from the client — the row
+    // to update is found by UserId from the token, so an agent can only ever edit their own.
+    [Authorize(Roles = "Agent")]
+    [HttpPut("me")]
+    public async Task<ActionResult<AgentDto>> UpdateMine([FromForm] CreateAgentDto dto)
+    {
+        var userId = User.GetUserId();
+        var agent = await _db.Agents.FirstOrDefaultAsync(a => a.UserId == userId);
+        if (agent is null) return NotFound();
+
+        if (dto.Photo is not null)
         {
-            _db.Brokerages.Add(new Brokerage { Name = company });
-            try
-            {
-                await _db.SaveChangesAsync();
-            }
-            catch (DbUpdateException)
-            {
-                // Another concurrent signup already inserted this brokerage name — the catalog
-                // entry exists either way, so there's nothing left to do here.
-            }
+            var (uploadedUrl, uploadError) = await TryUploadPhotoAsync(dto.Photo, $"agents/{userId}");
+            if (uploadError is not null) return uploadError;
+            agent.PhotoUrl = uploadedUrl;
         }
 
-        return CreatedAtAction(nameof(GetById), new { id = agent.Id }, ToDto(agent));
+        // An independent agent has no brokerage, regardless of what was typed before checking the box.
+        var company = dto.IsIndependent || string.IsNullOrWhiteSpace(dto.Company) ? null : dto.Company.Trim();
+
+        agent.Phone = dto.Phone;
+        agent.Company = company;
+        agent.IsIndependent = dto.IsIndependent;
+        agent.Bio = dto.Bio;
+        agent.Specialties = ParseSpecialties(dto.Specialties);
+
+        await _db.SaveChangesAsync();
+
+        // Saved separately, same reasoning as Create: a concurrent request adding the same
+        // brand-new brokerage name must not roll back the profile update that just succeeded.
+        await UpsertBrokerageAsync(company);
+
+        return Ok(ToDto(agent, isOwnProfile: true));
+    }
+
+    // Adds a brokerage name to the catalog if it's new, saved in its own SaveChangesAsync so a
+    // concurrent request hitting the unique index on Name can't be mistaken for — or roll back —
+    // whatever the caller just saved (an agent create/update). Shared by Create and UpdateMine.
+    private async Task UpsertBrokerageAsync(string? company)
+    {
+        if (company is null || await _db.Brokerages.AnyAsync(b => b.Name.ToLower() == company.ToLower()))
+            return;
+
+        _db.Brokerages.Add(new Brokerage { Name = company });
+        try
+        {
+            await _db.SaveChangesAsync();
+        }
+        catch (DbUpdateException)
+        {
+            // Another concurrent request already inserted this brokerage name — fine either way.
+        }
+    }
+
+    // Validates and uploads a photo to S3, returning either the resulting URL or an error result
+    // ready to return as-is — shared by Create and UpdateMine so the rules can't drift apart.
+    private async Task<(string? Url, ActionResult? Error)> TryUploadPhotoAsync(IFormFile photo, string keyPrefix)
+    {
+        if (!AllowedPhotoTypes.Contains(photo.ContentType))
+            return (null, BadRequest(new { message = "Photo must be a JPEG, PNG, or WEBP image." }));
+        if (photo.Length > MaxPhotoBytes)
+            return (null, BadRequest(new { message = "Photo must be 5 MB or smaller." }));
+
+        try
+        {
+            var url = await _s3Service.UploadFileAsync(photo, keyPrefix);
+            return (url, null);
+        }
+        catch (AmazonS3Exception ex)
+        {
+            _logger.LogError(ex, "Failed to upload agent photo to S3 for prefix {KeyPrefix}", keyPrefix);
+            return (null, StatusCode(StatusCodes.Status502BadGateway,
+                new { message = "Could not upload the photo right now. Please try again." }));
+        }
     }
 
     // GET /api/agents/{id}/reviews
@@ -256,6 +331,28 @@ public class AgentsController : ControllerBase
             return Conflict(new { message = "You already reviewed this agent." });
         }
 
+        // Best-effort notification — the review is already saved, so an email failure here must
+        // never turn into an error response for a review that succeeded.
+        if (!string.IsNullOrWhiteSpace(agent.Email))
+        {
+            try
+            {
+                var subject = $"New review from {StripControlCharacters(review.ReviewerName)} on RealEstateApp";
+                var body =
+                    $"{review.ReviewerName} left you a {review.Rating}-star review on RealEstateApp.\n\n" +
+                    (review.Comment is not null ? $"\"{review.Comment}\"\n\n" : "") +
+                    "Log in to your profile to see it.";
+                await _emailService.SendAsync(agent.Email, agent.Name, subject, body);
+            }
+            catch (Exception ex) when (ex is SmtpException or FormatException or ArgumentException or InvalidOperationException)
+            {
+                // Same severity as Contact's failure log below — a silently-broken agent email
+                // (e.g. a misconfigured SMTP host) should be just as visible here, since without
+                // it the agent never finds out they were reviewed, indefinitely.
+                _logger.LogError(ex, "Failed to send review-notification email to agent {AgentId}", id);
+            }
+        }
+
         return CreatedAtAction(nameof(GetReviews), new { id }, new AgentReviewDto
         {
             Id = review.Id,
@@ -264,6 +361,32 @@ public class AgentsController : ControllerBase
             Comment = review.Comment,
             CreatedAt = review.CreatedAt
         });
+    }
+
+    // Only the agent being reviewed can moderate their own reviews — not the reviewer, not anyone else.
+    [Authorize]
+    [HttpDelete("{id:int}/reviews/{reviewId:int}")]
+    public async Task<IActionResult> DeleteReview(int id, int reviewId)
+    {
+        var agent = await _db.Agents.FindAsync(id);
+        if (agent is null) return NotFound();
+
+        if (agent.UserId != User.GetUserId())
+            return Forbid();
+
+        var review = await _db.AgentReviews.FirstOrDefaultAsync(r => r.Id == reviewId && r.AgentId == id);
+        if (review is null) return NotFound();
+
+        // An agent can hide a legitimate negative review this way, so at minimum this needs to be
+        // reconstructible after the fact — logged rather than silently vanishing without a trace.
+        _logger.LogInformation(
+            "Agent {AgentId} deleted review {ReviewId} (rating {Rating}, from reviewer {ReviewerUserId})",
+            id, reviewId, review.Rating, review.ReviewerUserId);
+
+        _db.AgentReviews.Remove(review);
+        await _db.SaveChangesAsync();
+
+        return NoContent();
     }
 
     // Sends the visitor's message straight to the agent's email — no DB record is kept.
@@ -293,7 +416,7 @@ public class AgentsController : ControllerBase
         {
             await _emailService.SendAsync(agent.Email, agent.Name, subject, body);
         }
-        catch (Exception ex) when (ex is SmtpException or FormatException or ArgumentException)
+        catch (Exception ex) when (ex is SmtpException or FormatException or ArgumentException or InvalidOperationException)
         {
             _logger.LogError(ex, "Failed to send contact email to agent {AgentId}", id);
             return StatusCode(StatusCodes.Status502BadGateway,
@@ -313,9 +436,10 @@ public class AgentsController : ControllerBase
             ? new List<string>()
             : raw.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList();
 
-    private static AgentDto ToDto(Agent a) => new()
+    private static AgentDto ToDto(Agent a, bool isOwnProfile = false) => new()
     {
         Id = a.Id,
+        IsOwnProfile = isOwnProfile,
         Name = a.Name,
         Email = a.Email,
         Phone = a.Phone,
