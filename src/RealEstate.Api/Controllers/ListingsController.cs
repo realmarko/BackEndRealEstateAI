@@ -72,7 +72,7 @@ public class ListingsController : ControllerBase
             .OrderByDescending(l => l.CreatedAt)
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
-            .Select(l => ToDto(l))
+            .Select(l => l.ToDto())
             .ToListAsync();
 
         return Ok(new PagedResult<ListingDto>
@@ -92,7 +92,7 @@ public class ListingsController : ControllerBase
             .Include(l => l.Owner)
             .FirstOrDefaultAsync(l => l.Id == id);
 
-        return listing is null ? NotFound() : Ok(ToDto(listing));
+        return listing is null ? NotFound() : Ok(listing.ToDto());
     }
 
     // Listings owned by the current user (for the "My Listings" dashboard)
@@ -108,7 +108,7 @@ public class ListingsController : ControllerBase
             .OrderByDescending(l => l.CreatedAt)
             .ToListAsync();
 
-        return Ok(listings.Select(ToDto));
+        return Ok(listings.Select(l => l.ToDto()));
     }
 
     [Authorize(Roles = "Owner")]
@@ -157,7 +157,7 @@ public class ListingsController : ControllerBase
             .Include(l => l.Images).Include(l => l.Owner)
             .FirstAsync(l => l.Id == listing.Id);
 
-        return CreatedAtAction(nameof(GetById), new { id = listing.Id }, ToDto(created));
+        return CreatedAtAction(nameof(GetById), new { id = listing.Id }, created.ToDto());
     }
 
     [Authorize(Roles = "Owner")]
@@ -208,7 +208,7 @@ public class ListingsController : ControllerBase
         }
 
         await _db.SaveChangesAsync();
-        return Ok(ToDto(listing));
+        return Ok(listing.ToDto());
     }
 
     [Authorize(Roles = "Owner")]
@@ -283,30 +283,4 @@ public class ListingsController : ControllerBase
             }
         }
     }
-
-    private static ListingDto ToDto(Listing l) => new()
-    {
-        Id = l.Id,
-        Title = l.Title,
-        Description = l.Description,
-        ListingType = l.ListingType.ToString(),
-        PropertyType = l.PropertyType.ToString(),
-        Status = l.Status.ToString(),
-        Price = l.Price,
-        Currency = l.Currency,
-        AddressLine = l.AddressLine,
-        City = l.City,
-        State = l.State,
-        ZipCode = l.ZipCode,
-        Latitude = l.Latitude,
-        Longitude = l.Longitude,
-        Bedrooms = l.Bedrooms,
-        Bathrooms = l.Bathrooms,
-        AreaSqFt = l.AreaSqFt,
-        YearBuilt = l.YearBuilt,
-        OwnerId = l.OwnerId,
-        OwnerName = l.Owner is null ? string.Empty : $"{l.Owner.FirstName} {l.Owner.LastName}",
-        CreatedAt = l.CreatedAt,
-        ImageUrls = l.Images.OrderBy(i => i.SortOrder).Select(i => i.Url).ToList()
-    };
 }

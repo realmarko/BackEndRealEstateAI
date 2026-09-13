@@ -28,13 +28,23 @@ public class AgentsController : ControllerBase
     private const string SystemReviewerName = "Agente Real Estate";
 
     private readonly RealEstateDbContext _db;
+    // Agent lives in RealEstateDbContext; Listing lives in ApplicationDbContext (it's really
+    // just the Identity DbContext, reused for listings) — there's no EF-enforced FK between
+    // them, so linking an agent to their listings takes two round trips, not one join.
+    private readonly ApplicationDbContext _listingsDb;
     private readonly IS3UploadService _s3Service;
     private readonly IEmailService _emailService;
     private readonly ILogger<AgentsController> _logger;
 
-    public AgentsController(RealEstateDbContext db, IS3UploadService s3Service, IEmailService emailService, ILogger<AgentsController> logger)
+    public AgentsController(
+        RealEstateDbContext db,
+        ApplicationDbContext listingsDb,
+        IS3UploadService s3Service,
+        IEmailService emailService,
+        ILogger<AgentsController> logger)
     {
         _db = db;
+        _listingsDb = listingsDb;
         _s3Service = s3Service;
         _emailService = emailService;
         _logger = logger;
@@ -122,6 +132,24 @@ public class AgentsController : ControllerBase
             .FirstOrDefaultAsync();
 
         return agent is null ? NotFound() : Ok(agent);
+    }
+
+    // GET /api/agents/5/listings — the agent's own listings (Listing.OwnerId == Agent.UserId),
+    // shown on their public profile so a visitor can see the real properties, not just a count.
+    [HttpGet("{id:int}/listings")]
+    public async Task<ActionResult<List<ListingDto>>> GetListings(int id)
+    {
+        var userId = await _db.Agents.Where(a => a.Id == id).Select(a => a.UserId).FirstOrDefaultAsync();
+        if (userId is null) return Ok(new List<ListingDto>());
+
+        var listings = await _listingsDb.Listings
+            .Include(l => l.Images)
+            .Include(l => l.Owner)
+            .Where(l => l.OwnerId == userId && l.Status != ListingStatus.Removed)
+            .OrderByDescending(l => l.CreatedAt)
+            .ToListAsync();
+
+        return Ok(listings.Select(l => l.ToDto()));
     }
 
     // Completes the agent profile for the currently logged-in user (registered with the Agent role)
