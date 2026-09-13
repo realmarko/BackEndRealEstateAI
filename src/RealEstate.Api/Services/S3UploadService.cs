@@ -38,4 +38,14 @@ public class S3UploadService : IS3UploadService
         var region = _s3Client.Config.RegionEndpoint?.SystemName ?? "us-east-1";
         return $"https://{_bucketName}.s3.{region}.amazonaws.com/{key}";
     }
+
+    public async Task DeleteFileAsync(string fileUrl)
+    {
+        var key = new Uri(fileUrl).AbsolutePath.TrimStart('/');
+        await _s3Client.DeleteObjectAsync(new DeleteObjectRequest
+        {
+            BucketName = _bucketName,
+            Key = key
+        });
+    }
 }

@@ -5,6 +5,7 @@ using RealEstate.Api.Data;
 using RealEstate.Api.Extensions;
 using RealEstate.Api.Models.DTOs;
 using RealEstate.Api.Models.Entities;
+using RealEstate.Api.Services;
 
 namespace RealEstate.Api.Controllers;
 
@@ -12,11 +13,21 @@ namespace RealEstate.Api.Controllers;
 [Route("api/listings")]
 public class ListingsController : ControllerBase
 {
-    private readonly ApplicationDbContext _db;
+    private static readonly HashSet<string> AllowedPhotoTypes = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "image/jpeg", "image/png", "image/webp"
+    };
+    private const long MaxPhotoBytes = 5 * 1024 * 1024;
 
-    public ListingsController(ApplicationDbContext db)
+    private readonly ApplicationDbContext _db;
+    private readonly IS3UploadService _s3Service;
+    private readonly ILogger<ListingsController> _logger;
+
+    public ListingsController(ApplicationDbContext db, IS3UploadService s3Service, ILogger<ListingsController> logger)
     {
         _db = db;
+        _s3Service = s3Service;
+        _logger = logger;
     }
 
     // GET /api/listings?city=Austin&listingType=Sale&minPrice=100000&...
@@ -102,10 +113,18 @@ public class ListingsController : ControllerBase
 
     [Authorize(Roles = "Owner")]
     [HttpPost]
-    public async Task<ActionResult<ListingDto>> Create(ListingCreateDto dto)
+    public async Task<ActionResult<ListingDto>> Create([FromForm] ListingCreateDto dto)
     {
+        // Generated up front so newly uploaded photos can be namespaced under this listing's
+        // own id in S3 from the very first upload, rather than a temp/owner-scoped prefix.
+        var listingId = Guid.NewGuid();
+
+        var (imageUrls, uploadError) = await BuildImageUrlsAsync(dto.ExistingImageUrls, dto.Photos, $"listings/{listingId}");
+        if (uploadError is not null) return uploadError;
+
         var listing = new Listing
         {
+            Id = listingId,
             OwnerId = User.GetUserId(),
             Title = dto.Title,
             Description = dto.Description,
@@ -116,14 +135,14 @@ public class ListingsController : ControllerBase
             AddressLine = dto.AddressLine,
             City = dto.City,
             State = dto.State,
-            ZipCode = dto.ZipCode,
+            ZipCode = dto.ZipCode ?? string.Empty,
             Latitude = dto.Latitude,
             Longitude = dto.Longitude,
             Bedrooms = dto.Bedrooms,
             Bathrooms = dto.Bathrooms,
             AreaSqFt = dto.AreaSqFt,
             YearBuilt = dto.YearBuilt,
-            Images = dto.ImageUrls.Select((url, idx) => new ListingImage
+            Images = imageUrls.Select((url, idx) => new ListingImage
             {
                 Url = url,
                 IsPrimary = idx == 0,
@@ -143,11 +162,16 @@ public class ListingsController : ControllerBase
 
     [Authorize(Roles = "Owner")]
     [HttpPut("{id:guid}")]
-    public async Task<ActionResult<ListingDto>> Update(Guid id, ListingUpdateDto dto)
+    public async Task<ActionResult<ListingDto>> Update(Guid id, [FromForm] ListingUpdateDto dto)
     {
         var listing = await _db.Listings.Include(l => l.Images).FirstOrDefaultAsync(l => l.Id == id);
         if (listing is null) return NotFound();
         if (listing.OwnerId != User.GetUserId()) return Forbid();
+
+        // Upload before touching any existing rows, so a failed upload never destroys photos
+        // that were already saved.
+        var (imageUrls, uploadError) = await BuildImageUrlsAsync(dto.ExistingImageUrls, dto.Photos, $"listings/{id}");
+        if (uploadError is not null) return uploadError;
 
         listing.Title = dto.Title;
         listing.Description = dto.Description;
@@ -159,7 +183,7 @@ public class ListingsController : ControllerBase
         listing.AddressLine = dto.AddressLine;
         listing.City = dto.City;
         listing.State = dto.State;
-        listing.ZipCode = dto.ZipCode;
+        listing.ZipCode = dto.ZipCode ?? string.Empty;
         listing.Latitude = dto.Latitude;
         listing.Longitude = dto.Longitude;
         listing.Bedrooms = dto.Bedrooms;
@@ -172,7 +196,7 @@ public class ListingsController : ControllerBase
         listing.Images.Clear();
         await _db.SaveChangesAsync();
 
-        foreach (var (url, idx) in dto.ImageUrls.Select((url, idx) => (url, idx)))
+        foreach (var (url, idx) in imageUrls.Select((url, idx) => (url, idx)))
         {
             _db.ListingImages.Add(new ListingImage
             {
@@ -200,6 +224,64 @@ public class ListingsController : ControllerBase
         listing.UpdatedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync();
         return NoContent();
+    }
+
+    // Combines already-hosted photo URLs (pasted links, or S3 URLs kept from a previous edit)
+    // with newly uploaded files, uploading the latter to S3 and returning one ordered list —
+    // existing photos first, then new ones in selection order. The first URL is the primary
+    // photo. Returns an error result as-is if any file fails validation or the S3 upload fails.
+    private async Task<(List<string> Urls, ActionResult? Error)> BuildImageUrlsAsync(
+        List<string>? existingImageUrls, List<IFormFile>? photos, string keyPrefix)
+    {
+        var urls = new List<string>(existingImageUrls ?? new List<string>());
+        if (photos is null || photos.Count == 0) return (urls, null);
+
+        foreach (var photo in photos)
+        {
+            if (!AllowedPhotoTypes.Contains(photo.ContentType))
+                return (urls, BadRequest(new { message = "Photos must be JPEG, PNG, or WEBP images." }));
+            if (photo.Length > MaxPhotoBytes)
+                return (urls, BadRequest(new { message = "Each photo must be 5 MB or smaller." }));
+        }
+
+        // Tracked separately from `urls` so that if upload N of M fails, the ones that already
+        // succeeded (1..N-1) can be rolled back instead of left as billable, unreferenced
+        // objects in the bucket.
+        var uploadedUrls = new List<string>();
+        try
+        {
+            foreach (var photo in photos)
+            {
+                uploadedUrls.Add(await _s3Service.UploadFileAsync(photo, keyPrefix));
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to upload listing photo to S3 for prefix {KeyPrefix}", keyPrefix);
+            await RollbackUploadsAsync(uploadedUrls);
+            return (urls, StatusCode(StatusCodes.Status502BadGateway,
+                new { message = "Could not upload one or more photos right now. Please try again." }));
+        }
+
+        urls.AddRange(uploadedUrls);
+        return (urls, null);
+    }
+
+    // Best-effort: a delete failure here shouldn't mask the original upload error, and an
+    // orphaned object is a cheaper failure mode than losing the real error to a new exception.
+    private async Task RollbackUploadsAsync(List<string> uploadedUrls)
+    {
+        foreach (var url in uploadedUrls)
+        {
+            try
+            {
+                await _s3Service.DeleteFileAsync(url);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to roll back orphaned S3 object {Url} after a failed listing photo upload", url);
+            }
+        }
     }
 
     private static ListingDto ToDto(Listing l) => new()
