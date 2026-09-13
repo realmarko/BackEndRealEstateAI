@@ -1,6 +1,5 @@
 using System.Net.Mail;
 using System.Security.Claims;
-using Amazon.S3;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
@@ -17,12 +16,6 @@ namespace RealEstate.Api.Controllers;
 [Route("api/agents")]
 public class AgentsController : ControllerBase
 {
-    private static readonly HashSet<string> AllowedPhotoTypes = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "image/jpeg", "image/png", "image/webp"
-    };
-    private const long MaxPhotoBytes = 5 * 1024 * 1024;
-
     // Every new agent starts with this seeded 5-star review so their profile isn't blank —
     // not a real customer, always attributed as "Agente Real Estate".
     private const string SystemReviewerName = "Agente Real Estate";
@@ -32,20 +25,20 @@ public class AgentsController : ControllerBase
     // just the Identity DbContext, reused for listings) — there's no EF-enforced FK between
     // them, so linking an agent to their listings takes two round trips, not one join.
     private readonly ApplicationDbContext _listingsDb;
-    private readonly IS3UploadService _s3Service;
+    private readonly IPhotoUploadService _photoUploadService;
     private readonly IEmailService _emailService;
     private readonly ILogger<AgentsController> _logger;
 
     public AgentsController(
         RealEstateDbContext db,
         ApplicationDbContext listingsDb,
-        IS3UploadService s3Service,
+        IPhotoUploadService photoUploadService,
         IEmailService emailService,
         ILogger<AgentsController> logger)
     {
         _db = db;
         _listingsDb = listingsDb;
-        _s3Service = s3Service;
+        _photoUploadService = photoUploadService;
         _emailService = emailService;
         _logger = logger;
     }
@@ -290,22 +283,10 @@ public class AgentsController : ControllerBase
     // ready to return as-is — shared by Create and UpdateMine so the rules can't drift apart.
     private async Task<(string? Url, ActionResult? Error)> TryUploadPhotoAsync(IFormFile photo, string keyPrefix)
     {
-        if (!AllowedPhotoTypes.Contains(photo.ContentType))
-            return (null, BadRequest(new { message = "Photo must be a JPEG, PNG, or WEBP image." }));
-        if (photo.Length > MaxPhotoBytes)
-            return (null, BadRequest(new { message = "Photo must be 5 MB or smaller." }));
+        var result = await _photoUploadService.UploadAsync(photo, keyPrefix);
+        if (result.ErrorKind is not null) return (null, result.ErrorKind.Value.ToActionResult(this));
 
-        try
-        {
-            var url = await _s3Service.UploadFileAsync(photo, keyPrefix);
-            return (url, null);
-        }
-        catch (AmazonS3Exception ex)
-        {
-            _logger.LogError(ex, "Failed to upload agent photo to S3 for prefix {KeyPrefix}", keyPrefix);
-            return (null, StatusCode(StatusCodes.Status502BadGateway,
-                new { message = "Could not upload the photo right now. Please try again." }));
-        }
+        return (result.Urls.FirstOrDefault(), null);
     }
 
     // GET /api/agents/{id}/reviews

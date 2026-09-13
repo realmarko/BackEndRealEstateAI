@@ -13,21 +13,13 @@ namespace RealEstate.Api.Controllers;
 [Route("api/listings")]
 public class ListingsController : ControllerBase
 {
-    private static readonly HashSet<string> AllowedPhotoTypes = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "image/jpeg", "image/png", "image/webp"
-    };
-    private const long MaxPhotoBytes = 5 * 1024 * 1024;
-
     private readonly ApplicationDbContext _db;
-    private readonly IS3UploadService _s3Service;
-    private readonly ILogger<ListingsController> _logger;
+    private readonly IPhotoUploadService _photoUploadService;
 
-    public ListingsController(ApplicationDbContext db, IS3UploadService s3Service, ILogger<ListingsController> logger)
+    public ListingsController(ApplicationDbContext db, IPhotoUploadService photoUploadService)
     {
         _db = db;
-        _s3Service = s3Service;
-        _logger = logger;
+        _photoUploadService = photoUploadService;
     }
 
     // GET /api/listings?city=Austin&listingType=Sale&minPrice=100000&...
@@ -236,51 +228,10 @@ public class ListingsController : ControllerBase
         var urls = new List<string>(existingImageUrls ?? new List<string>());
         if (photos is null || photos.Count == 0) return (urls, null);
 
-        foreach (var photo in photos)
-        {
-            if (!AllowedPhotoTypes.Contains(photo.ContentType))
-                return (urls, BadRequest(new { message = "Photos must be JPEG, PNG, or WEBP images." }));
-            if (photo.Length > MaxPhotoBytes)
-                return (urls, BadRequest(new { message = "Each photo must be 5 MB or smaller." }));
-        }
+        var result = await _photoUploadService.UploadManyAsync(photos, keyPrefix);
+        if (result.ErrorKind is not null) return (urls, result.ErrorKind.Value.ToActionResult(this));
 
-        // Tracked separately from `urls` so that if upload N of M fails, the ones that already
-        // succeeded (1..N-1) can be rolled back instead of left as billable, unreferenced
-        // objects in the bucket.
-        var uploadedUrls = new List<string>();
-        try
-        {
-            foreach (var photo in photos)
-            {
-                uploadedUrls.Add(await _s3Service.UploadFileAsync(photo, keyPrefix));
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Failed to upload listing photo to S3 for prefix {KeyPrefix}", keyPrefix);
-            await RollbackUploadsAsync(uploadedUrls);
-            return (urls, StatusCode(StatusCodes.Status502BadGateway,
-                new { message = "Could not upload one or more photos right now. Please try again." }));
-        }
-
-        urls.AddRange(uploadedUrls);
+        urls.AddRange(result.Urls);
         return (urls, null);
-    }
-
-    // Best-effort: a delete failure here shouldn't mask the original upload error, and an
-    // orphaned object is a cheaper failure mode than losing the real error to a new exception.
-    private async Task RollbackUploadsAsync(List<string> uploadedUrls)
-    {
-        foreach (var url in uploadedUrls)
-        {
-            try
-            {
-                await _s3Service.DeleteFileAsync(url);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Failed to roll back orphaned S3 object {Url} after a failed listing photo upload", url);
-            }
-        }
     }
 }
