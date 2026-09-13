@@ -13,6 +13,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, IdentityR
     public DbSet<ListingImage> ListingImages => Set<ListingImage>();
     public DbSet<Favorite> Favorites => Set<Favorite>();
     public DbSet<Inquiry> Inquiries => Set<Inquiry>();
+    public DbSet<ListingPriceHistory> ListingPriceHistories => Set<ListingPriceHistory>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -35,6 +36,18 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, IdentityR
                   .WithOne(i => i.Listing)
                   .HasForeignKey(i => i.ListingId)
                   .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasMany(l => l.PriceHistory)
+                  .WithOne(h => h.Listing)
+                  .HasForeignKey(h => h.ListingId)
+                  .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        builder.Entity<ListingPriceHistory>(entity =>
+        {
+            entity.Property(h => h.Price).HasColumnType("numeric(14,2)");
+            entity.Property(h => h.Currency).HasMaxLength(3).IsRequired().HasDefaultValue("MXN");
+            entity.HasIndex(h => new { h.ListingId, h.RecordedAt });
         });
 
         builder.Entity<Favorite>(entity =>

@@ -67,6 +67,13 @@ public class ListingDto
     public List<string> ImageUrls { get; set; } = new();
 }
 
+public class ListingPriceHistoryDto
+{
+    public decimal Price { get; set; }
+    public string Currency { get; set; } = "MXN";
+    public DateTime RecordedAt { get; set; }
+}
+
 public class ListingSearchQuery
 {
     public string? City { get; set; }

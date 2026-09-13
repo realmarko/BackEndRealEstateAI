@@ -87,6 +87,28 @@ public class ListingsController : ControllerBase
         return listing is null ? NotFound() : Ok(listing.ToDto());
     }
 
+    // GET /api/listings/5/price-history — oldest first, so the frontend can render it as a
+    // timeline (or compute deltas between consecutive entries) without re-sorting.
+    [HttpGet("{id:guid}/price-history")]
+    public async Task<ActionResult<List<ListingPriceHistoryDto>>> GetPriceHistory(Guid id)
+    {
+        var listingExists = await _db.Listings.AnyAsync(l => l.Id == id);
+        if (!listingExists) return NotFound();
+
+        var history = await _db.ListingPriceHistories
+            .Where(h => h.ListingId == id)
+            .OrderBy(h => h.RecordedAt)
+            .Select(h => new ListingPriceHistoryDto
+            {
+                Price = h.Price,
+                Currency = h.Currency,
+                RecordedAt = h.RecordedAt
+            })
+            .ToListAsync();
+
+        return Ok(history);
+    }
+
     // Listings owned by the current user (for the "My Listings" dashboard)
     [Authorize(Roles = "Owner")]
     [HttpGet("mine")]
@@ -142,6 +164,14 @@ public class ListingsController : ControllerBase
             }).ToList()
         };
 
+        listing.PriceHistory.Add(new ListingPriceHistory
+        {
+            ListingId = listing.Id,
+            Price = listing.Price,
+            Currency = listing.Currency,
+            RecordedAt = listing.CreatedAt
+        });
+
         _db.Listings.Add(listing);
         await _db.SaveChangesAsync();
 
@@ -159,6 +189,12 @@ public class ListingsController : ControllerBase
         var listing = await _db.Listings.Include(l => l.Images).FirstOrDefaultAsync(l => l.Id == id);
         if (listing is null) return NotFound();
         if (listing.OwnerId != User.GetUserId()) return Forbid();
+
+        // Captured before the fields below overwrite them, so RecordPriceChangeIfNeeded can
+        // tell whether this edit actually changed the price/currency — an edit that leaves
+        // them untouched must not add a new history row every time the listing is saved.
+        var previousPrice = listing.Price;
+        var previousCurrency = listing.Currency;
 
         // Upload before touching any existing rows, so a failed upload never destroys photos
         // that were already saved.
@@ -183,6 +219,7 @@ public class ListingsController : ControllerBase
         listing.AreaSqFt = dto.AreaSqFt;
         listing.YearBuilt = dto.YearBuilt;
         listing.UpdatedAt = DateTime.UtcNow;
+        RecordPriceChangeIfNeeded(listing, previousPrice, previousCurrency);
 
         _db.ListingImages.RemoveRange(listing.Images);
         listing.Images.Clear();
@@ -201,6 +238,22 @@ public class ListingsController : ControllerBase
 
         await _db.SaveChangesAsync();
         return Ok(listing.ToDto());
+    }
+
+    // Adds a price-history row only if this edit actually changed the price or currency —
+    // called after both fields are assigned, so it reads the listing's own new values rather
+    // than needing them passed in separately.
+    private void RecordPriceChangeIfNeeded(Listing listing, decimal previousPrice, string previousCurrency)
+    {
+        if (listing.Price == previousPrice && listing.Currency == previousCurrency) return;
+
+        _db.ListingPriceHistories.Add(new ListingPriceHistory
+        {
+            ListingId = listing.Id,
+            Price = listing.Price,
+            Currency = listing.Currency,
+            RecordedAt = listing.UpdatedAt
+        });
     }
 
     [Authorize(Roles = "Owner")]

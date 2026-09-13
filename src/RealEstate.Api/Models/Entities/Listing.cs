@@ -36,4 +36,5 @@ public class Listing
     public ICollection<ListingImage> Images { get; set; } = new List<ListingImage>();
     public ICollection<Favorite> Favorites { get; set; } = new List<Favorite>();
     public ICollection<Inquiry> Inquiries { get; set; } = new List<Inquiry>();
+    public ICollection<ListingPriceHistory> PriceHistory { get; set; } = new List<ListingPriceHistory>();
 }
