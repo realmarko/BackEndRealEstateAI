@@ -13,7 +13,18 @@ public enum PropertyType
     Condo = 2,
     Townhouse = 3,
     Land = 4,
-    Commercial = 5
+    Commercial = 5,
+    ResidentialLand = 6,
+    Ranch = 7,
+    Office = 8,
+    IndustrialWarehouse = 9,
+    CommercialLand = 10,
+    IndustrialStorage = 11,
+    RetailSpace = 12,
+    Building = 13,
+    Room = 14,
+    CommercialStorage = 15,
+    IndustrialLand = 16
 }
 
 public enum ListingStatus
