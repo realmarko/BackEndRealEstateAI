@@ -47,3 +47,21 @@ public enum PropertyStatus
     Sold = 1,
     Rented = 2
 }
+
+// Buyer-qualification questions asked when someone contacts an agent/owner about a listing —
+// see Inquiry.FundingMethod/Timeline and InquiriesController.
+public enum FundingMethod
+{
+    Cash = 0,
+    BankLoan = 1,
+    InfonavitFovissste = 2,
+    NotSure = 3
+}
+
+public enum PurchaseTimeline
+{
+    ReadyNow = 0,
+    OneToThreeMonths = 1,
+    ThreeToSixMonths = 2,
+    JustBrowsing = 3
+}

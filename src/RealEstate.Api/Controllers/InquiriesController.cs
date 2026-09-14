@@ -37,7 +37,10 @@ public class InquiriesController : ControllerBase
             SenderName = dto.SenderName,
             SenderEmail = dto.SenderEmail,
             SenderPhone = dto.SenderPhone,
-            Message = dto.Message
+            Message = dto.Message,
+            FundingMethod = dto.FundingMethod,
+            Timeline = dto.Timeline,
+            HasAgent = dto.HasAgent
         });
         await _db.SaveChangesAsync();
         return NoContent();
@@ -80,6 +83,9 @@ public class InquiriesController : ControllerBase
         SenderEmail = i.SenderEmail,
         SenderPhone = i.SenderPhone,
         Message = i.Message,
+        FundingMethod = i.FundingMethod?.ToString(),
+        Timeline = i.Timeline?.ToString(),
+        HasAgent = i.HasAgent,
         IsRead = i.IsRead,
         CreatedAt = i.CreatedAt
     };

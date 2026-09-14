@@ -15,6 +15,12 @@ public class Inquiry
     public string? SenderPhone { get; set; }
     public string Message { get; set; } = string.Empty;
 
+    // Buyer-qualification answers, all optional — asked in the contact form so the listing
+    // owner/agent can tell a serious, ready-to-buy lead from someone just browsing.
+    public FundingMethod? FundingMethod { get; set; }
+    public PurchaseTimeline? Timeline { get; set; }
+    public bool? HasAgent { get; set; }
+
     public bool IsRead { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }

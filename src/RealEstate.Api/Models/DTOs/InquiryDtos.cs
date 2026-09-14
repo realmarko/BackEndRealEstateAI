@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using RealEstate.Api.Models.Entities;
 
 namespace RealEstate.Api.Models.DTOs;
 
@@ -9,6 +10,9 @@ public class InquiryCreateDto
     [Required, EmailAddress] public string SenderEmail { get; set; } = string.Empty;
     public string? SenderPhone { get; set; }
     [Required] public string Message { get; set; } = string.Empty;
+    public FundingMethod? FundingMethod { get; set; }
+    public PurchaseTimeline? Timeline { get; set; }
+    public bool? HasAgent { get; set; }
 }
 
 public class InquiryDto
@@ -20,6 +24,9 @@ public class InquiryDto
     public string SenderEmail { get; set; } = string.Empty;
     public string? SenderPhone { get; set; }
     public string Message { get; set; } = string.Empty;
+    public string? FundingMethod { get; set; }
+    public string? Timeline { get; set; }
+    public bool? HasAgent { get; set; }
     public bool IsRead { get; set; }
     public DateTime CreatedAt { get; set; }
 }
