@@ -57,7 +57,7 @@ public class AgentsController : ControllerBase
             query = query.Where(a => a.Specialties.Any(s => s.ToLower().Contains(q.Specialty!.ToLower())));
 
         if (!string.IsNullOrWhiteSpace(q.Company))
-            query = query.Where(a => a.Company != null && a.Company.ToLower().Contains(q.Company!.ToLower()));
+            query = query.Where(a => a.Brokerage != null && a.Brokerage.Name.ToLower().Contains(q.Company!.ToLower()));
 
         if (q.MinRating.HasValue)
             query = query.Where(a => a.Reviews.Any() && a.Reviews.Average(r => (double)r.Rating) >= q.MinRating.Value);
@@ -80,7 +80,7 @@ public class AgentsController : ControllerBase
                 Name = a.Name,
                 Email = a.Email,
                 Phone = a.Phone,
-                Company = a.Company,
+                Company = a.Brokerage != null ? a.Brokerage.Name : null,
                 IsIndependent = a.IsIndependent,
                 PhotoUrl = a.PhotoUrl,
                 Bio = a.Bio,
@@ -113,7 +113,7 @@ public class AgentsController : ControllerBase
                 Name = a.Name,
                 Email = a.Email,
                 Phone = a.Phone,
-                Company = a.Company,
+                Company = a.Brokerage != null ? a.Brokerage.Name : null,
                 IsIndependent = a.IsIndependent,
                 PhotoUrl = a.PhotoUrl,
                 Bio = a.Bio,
@@ -164,6 +164,10 @@ public class AgentsController : ControllerBase
 
         // An independent agent has no brokerage, regardless of what was typed before checking the box.
         var company = dto.IsIndependent || string.IsNullOrWhiteSpace(dto.Company) ? null : dto.Company.Trim();
+        // Resolved/created before the agent so the FK has a real row to point at — a concurrent
+        // signup racing to add the same brand-new brokerage name hits its own unique index,
+        // handled inside the helper, and never rolls back the agent below.
+        var brokerage = await ResolveOrCreateBrokerageAsync(company);
 
         var agent = new Agent
         {
@@ -171,7 +175,7 @@ public class AgentsController : ControllerBase
             Name = $"{User.FindFirstValue("firstName")} {User.FindFirstValue("lastName")}".Trim(),
             Email = User.FindFirstValue(ClaimTypes.Email) ?? string.Empty,
             Phone = dto.Phone,
-            Company = company,
+            Brokerage = brokerage,
             IsIndependent = dto.IsIndependent,
             PhotoUrl = photoUrl,
             Bio = dto.Bio,
@@ -198,11 +202,6 @@ public class AgentsController : ControllerBase
             return Conflict(new { message = "An agent profile already exists for this account." });
         }
 
-        // Saved separately from the agent above: a concurrent signup racing to add the same
-        // brand-new brokerage name would hit its own unique index, which must not be mistaken
-        // for the UserId conflict above and must not roll back the agent that was just created.
-        await UpsertBrokerageAsync(company);
-
         return CreatedAtAction(nameof(GetById), new { id = agent.Id }, ToDto(agent, isOwnProfile: true));
     }
 
@@ -212,11 +211,12 @@ public class AgentsController : ControllerBase
     public async Task<ActionResult<AgentDto>> GetMine()
     {
         var userId = User.GetUserId();
-        // ToDto reads a.Reviews/a.Properties in memory, so they must be eager-loaded here —
-        // unlike Search/GetById, which compute those counts in SQL via a projection instead.
+        // ToDto reads a.Reviews/a.Properties/a.Company (via a.Brokerage) in memory, so they
+        // must be eager-loaded here — unlike Search/GetById, which project straight to SQL.
         var agent = await _db.Agents
             .Include(a => a.Reviews)
             .Include(a => a.Properties)
+            .Include(a => a.Brokerage)
             .FirstOrDefaultAsync(a => a.UserId == userId);
         return agent is null ? NotFound() : Ok(ToDto(agent, isOwnProfile: true));
     }
@@ -228,10 +228,15 @@ public class AgentsController : ControllerBase
     public async Task<ActionResult<AgentDto>> UpdateMine([FromForm] CreateAgentDto dto)
     {
         var userId = User.GetUserId();
-        // Same reasoning as GetMine: ToDto's counts need these navigations eager-loaded.
+        // Same reasoning as GetMine: ToDto's counts need Reviews/Properties eager-loaded, and
+        // Brokerage must be loaded too — assigning agent.Brokerage below only updates the FK
+        // correctly if EF has a prior snapshot of that navigation to compare against; on a
+        // not-yet-loaded reference navigation, EF's change tracker can't tell "changed to null"
+        // from "was already null", and BrokerageId would silently keep its old database value.
         var agent = await _db.Agents
             .Include(a => a.Reviews)
             .Include(a => a.Properties)
+            .Include(a => a.Brokerage)
             .FirstOrDefaultAsync(a => a.UserId == userId);
         if (agent is null) return NotFound();
 
@@ -246,36 +251,58 @@ public class AgentsController : ControllerBase
         var company = dto.IsIndependent || string.IsNullOrWhiteSpace(dto.Company) ? null : dto.Company.Trim();
 
         agent.Phone = dto.Phone;
-        agent.Company = company;
         agent.IsIndependent = dto.IsIndependent;
         agent.Bio = dto.Bio;
         agent.Specialties = ParseSpecialties(dto.Specialties);
 
-        await _db.SaveChangesAsync();
+        // Skip the lookup/insert entirely when the company text didn't actually change —
+        // otherwise every profile save (even one only touching Bio or Phone) pays for a
+        // Brokerages round trip. Case-insensitive, matching ResolveOrCreateBrokerageAsync itself.
+        if (!string.Equals(company, agent.Brokerage?.Name, StringComparison.OrdinalIgnoreCase))
+        {
+            // Resolved last, and only the navigation is set: Brokerage is loaded above, so EF's
+            // normal change-tracking correctly derives the BrokerageId update from it. Resolving
+            // after the scalar fields above means a brand-new-brokerage insert's own SaveChanges
+            // (inside the helper) persists those fields as a side effect before the FK is set, so
+            // a crash between the two only ever leaves Brokerage stale — never Phone/Bio/etc.
+            agent.Brokerage = await ResolveOrCreateBrokerageAsync(company);
+        }
 
-        // Saved separately, same reasoning as Create: a concurrent request adding the same
-        // brand-new brokerage name must not roll back the profile update that just succeeded.
-        await UpsertBrokerageAsync(company);
+        await _db.SaveChangesAsync();
 
         return Ok(ToDto(agent, isOwnProfile: true));
     }
 
-    // Adds a brokerage name to the catalog if it's new, saved in its own SaveChangesAsync so a
-    // concurrent request hitting the unique index on Name can't be mistaken for — or roll back —
-    // whatever the caller just saved (an agent create/update). Shared by Create and UpdateMine.
-    private async Task UpsertBrokerageAsync(string? company)
+    // Resolves an existing brokerage by name (case-insensitive, so "Century 21" and "century 21"
+    // always land on the same row instead of silently forking the catalog) or creates one.
+    // Saved in its own SaveChangesAsync, before the caller's own agent create/update, so the FK
+    // has a row to point at; a concurrent request racing to insert the same brand-new name hits
+    // its own unique index here, which must not be mistaken for — or roll back — anything the
+    // caller does afterwards. Shared by Create and UpdateMine.
+    private async Task<Brokerage?> ResolveOrCreateBrokerageAsync(string? company)
     {
-        if (company is null || await _db.Brokerages.AnyAsync(b => b.Name.ToLower() == company.ToLower()))
-            return;
+        if (company is null) return null;
 
-        _db.Brokerages.Add(new Brokerage { Name = company });
+        var existing = await _db.Brokerages.FirstOrDefaultAsync(b => b.Name.ToLower() == company.ToLower());
+        if (existing is not null) return existing;
+
+        var brokerage = new Brokerage { Name = company };
+        _db.Brokerages.Add(brokerage);
         try
         {
             await _db.SaveChangesAsync();
+            return brokerage;
         }
         catch (DbUpdateException)
         {
-            // Another concurrent request already inserted this brokerage name — fine either way.
+            // Only a concurrent insert of this same name explains a failure here (the unique
+            // index on Brokerage.Name is the only constraint this insert can violate) — but
+            // don't just assume it: if no matching row actually exists, this wasn't that race
+            // (a transient DB error, say), so surface the real exception instead of masking it
+            // behind a confusing "sequence contains no elements" from a blind FirstAsync.
+            var wonByConcurrentRequest = await _db.Brokerages.FirstOrDefaultAsync(b => b.Name.ToLower() == company.ToLower());
+            if (wonByConcurrentRequest is not null) return wonByConcurrentRequest;
+            throw;
         }
     }
 

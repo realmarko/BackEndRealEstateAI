@@ -22,6 +22,13 @@ public class RealEstateDbContext : DbContext
         {
             entity.HasIndex(a => a.UserId).IsUnique().HasFilter("user_id IS NOT NULL");
             entity.Property(a => a.Specialties).HasDefaultValueSql("'{}'");
+
+            // SetNull (not Restrict/Cascade): a brokerage being removed from the catalog should
+            // fall the agent back to independent, not block the deletion or delete the agent.
+            entity.HasOne(a => a.Brokerage)
+                  .WithMany(b => b.Agents)
+                  .HasForeignKey(a => a.BrokerageId)
+                  .OnDelete(DeleteBehavior.SetNull);
         });
 
         builder.Entity<AgentReview>(entity =>
@@ -37,6 +44,12 @@ public class RealEstateDbContext : DbContext
 
         builder.Entity<Brokerage>(entity =>
         {
+            // Declared here so `dotnet ef migrations add` keeps seeing "unique index on Name"
+            // as unchanged and never tries to touch it. The actual index in the database is a
+            // case-insensitive one (unique on LOWER(name)), swapped in via raw SQL in the
+            // AddAgentBrokerageId migration — EF's fluent API has no first-class way to express
+            // a Postgres expression index, and this line can't be safely edited to match without
+            // scaffolding a spurious drop/recreate of that functional index.
             entity.HasIndex(b => b.Name).IsUnique();
         });
 
