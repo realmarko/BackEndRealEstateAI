@@ -34,6 +34,7 @@ public static class ListingExtensions
         GardenSizeSqm = l.GardenSizeSqm,
         HasHeatingCooling = l.HasHeatingCooling,
         HoaFee = l.HoaFee,
+        VideoTourUrl = l.VideoTourUrl,
         OwnerId = l.OwnerId,
         OwnerName = l.Owner is null ? string.Empty : $"{l.Owner.FirstName} {l.Owner.LastName}",
         CreatedAt = l.CreatedAt,

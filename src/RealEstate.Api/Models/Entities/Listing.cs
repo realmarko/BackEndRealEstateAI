@@ -35,6 +35,7 @@ public class Listing
     public decimal? GardenSizeSqm { get; set; }
     public bool HasHeatingCooling { get; set; }
     public decimal? HoaFee { get; set; }
+    public string? VideoTourUrl { get; set; }
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
