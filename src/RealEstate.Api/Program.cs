@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
+using System.Threading.RateLimiting;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using RealEstate.Api.Data;
@@ -30,6 +31,13 @@ builder.Services.AddScoped<IEmailService, SmtpEmailService>();
 
 // ---- Frontend (for building links back into the app from server-sent emails) ----
 builder.Services.Configure<FrontendOptions>(builder.Configuration.GetSection("Frontend"));
+
+// ---- INEGI DENUE (business-density lookups for the map's opportunity-analysis tools) ----
+builder.Services.Configure<DenueOptions>(builder.Configuration.GetSection("Inegi:Denue"));
+// 5s, not the default 100s or the 10s first tried: the map fires this on every click with no
+// debounce, and DENUE is best-effort (Places is the guaranteed fallback), so a slow/unreachable
+// DENUE should not make every click feel stuck for long.
+builder.Services.AddHttpClient<IDenueService, DenueService>(client => client.Timeout = TimeSpan.FromSeconds(5));
 
 // ---- Database (PostgreSQL) ----
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
@@ -83,6 +91,17 @@ builder.Services.AddRateLimiter(options =>
         limiterOptions.Window = TimeSpan.FromMinutes(1);
         limiterOptions.QueueLimit = 0;
     });
+    // Per-IP, not AddFixedWindowLimiter's single shared window: the map fires this on every
+    // click with no debounce, so a global limit would let one visitor clicking around exhaust
+    // the whole site's budget and silently 429 every other concurrent visitor's requests too.
+    options.AddPolicy("geomarketing", httpContext => RateLimitPartition.GetFixedWindowLimiter(
+        partitionKey: httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+        factory: _ => new FixedWindowRateLimiterOptions
+        {
+            PermitLimit = 20,
+            Window = TimeSpan.FromMinutes(1),
+            QueueLimit = 0
+        }));
 });
 
 // ---- CORS (Angular dev server + configurable prod origin) ----
