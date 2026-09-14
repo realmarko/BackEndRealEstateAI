@@ -28,6 +28,9 @@ builder.Services.AddScoped<IPhotoUploadService, PhotoUploadService>();
 builder.Services.Configure<EmailOptions>(builder.Configuration.GetSection("Email"));
 builder.Services.AddScoped<IEmailService, SmtpEmailService>();
 
+// ---- Frontend (for building links back into the app from server-sent emails) ----
+builder.Services.Configure<FrontendOptions>(builder.Configuration.GetSection("Frontend"));
+
 // ---- Database (PostgreSQL) ----
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
 builder.Services.AddDbContext<ApplicationDbContext>(options =>

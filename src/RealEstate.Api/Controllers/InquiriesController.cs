@@ -1,10 +1,13 @@
+using System.Net.Mail;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using RealEstate.Api.Data;
 using RealEstate.Api.Extensions;
 using RealEstate.Api.Models.DTOs;
 using RealEstate.Api.Models.Entities;
+using RealEstate.Api.Services;
 
 namespace RealEstate.Api.Controllers;
 
@@ -13,7 +16,21 @@ namespace RealEstate.Api.Controllers;
 public class InquiriesController : ControllerBase
 {
     private readonly ApplicationDbContext _db;
-    public InquiriesController(ApplicationDbContext db) => _db = db;
+    private readonly IEmailService _emailService;
+    private readonly string _frontendBaseUrl;
+    private readonly ILogger<InquiriesController> _logger;
+
+    public InquiriesController(
+        ApplicationDbContext db,
+        IEmailService emailService,
+        IOptions<FrontendOptions> frontendOptions,
+        ILogger<InquiriesController> logger)
+    {
+        _db = db;
+        _emailService = emailService;
+        _frontendBaseUrl = frontendOptions.Value.BaseUrl;
+        _logger = logger;
+    }
 
     // Must be signed in to send an inquiry — the sender's account is what lets a listing owner
     // trust who's asking and lets the sender find their own sent messages later.
@@ -21,8 +38,8 @@ public class InquiriesController : ControllerBase
     [HttpPost]
     public async Task<IActionResult> Create(InquiryCreateDto dto)
     {
-        var listingExists = await _db.Listings.AnyAsync(l => l.Id == dto.ListingId);
-        if (!listingExists) return NotFound(new { message = "Listing not found" });
+        var listing = await _db.Listings.FirstOrDefaultAsync(l => l.Id == dto.ListingId);
+        if (listing is null) return NotFound(new { message = "Listing not found" });
 
         _db.Inquiries.Add(new Inquiry
         {
@@ -37,7 +54,39 @@ public class InquiriesController : ControllerBase
             HasAgent = dto.HasAgent
         });
         await _db.SaveChangesAsync();
+
+        // Best-effort, same reasoning as NotifySavedSearchesAsync: the inquiry is already
+        // saved, so a failure here must never turn into an error response for it. Only sent to
+        // leads who actually answered the qualifying questions with real intent — a Timeline of
+        // null (the quick-message box never asks) or JustBrowsing doesn't count as "passing".
+        if (dto.Timeline is PurchaseTimeline.ReadyNow or PurchaseTimeline.OneToThreeMonths or PurchaseTimeline.ThreeToSixMonths)
+        {
+            await SendFactSheetLinkAsync(dto.SenderEmail, dto.SenderName, listing);
+        }
+
         return NoContent();
+    }
+
+    // Emails the sender a link back to the listing's own detail page (photos, full spec sheet,
+    // mortgage calculator, etc. all already live there) rather than generating a separate
+    // document — the page is always up to date and this needs no new dependency.
+    private async Task SendFactSheetLinkAsync(string toEmail, string toName, Listing listing)
+    {
+        try
+        {
+            var listingUrl = $"{_frontendBaseUrl.TrimEnd('/')}/listings/{listing.Id}";
+            var subject = $"Ficha técnica: {listing.Title}";
+            var body =
+                $"Gracias por tu interés en esta propiedad:\n\n" +
+                $"{listing.Title}\n{listing.AddressLine}, {listing.City}\n{listing.Currency} {listing.Price}\n\n" +
+                $"Consulta la ficha técnica completa (fotos, características y más) aquí:\n{listingUrl}\n\n" +
+                "Un agente se pondrá en contacto contigo pronto.";
+            await _emailService.SendAsync(toEmail, toName, subject, body);
+        }
+        catch (Exception ex) when (ex is SmtpException or FormatException or ArgumentException or InvalidOperationException)
+        {
+            _logger.LogError(ex, "Failed to send fact-sheet email to {Email} for listing {ListingId}", toEmail, listing.Id);
+        }
     }
 
     // Inquiries received on listings owned by the current user
