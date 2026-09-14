@@ -185,6 +185,8 @@ public class ListingsController : ControllerBase
             Floors = dto.Floors,
             LotSizeSqm = dto.LotSizeSqm,
             GardenSizeSqm = dto.GardenSizeSqm,
+            HasHeatingCooling = dto.HasHeatingCooling,
+            HoaFee = dto.HoaFee,
             Images = imageUrls.Select((url, idx) => new ListingImage
             {
                 Url = url,
@@ -251,6 +253,8 @@ public class ListingsController : ControllerBase
         listing.Floors = dto.Floors;
         listing.LotSizeSqm = dto.LotSizeSqm;
         listing.GardenSizeSqm = dto.GardenSizeSqm;
+        listing.HasHeatingCooling = dto.HasHeatingCooling;
+        listing.HoaFee = dto.HoaFee;
         listing.UpdatedAt = DateTime.UtcNow;
         RecordPriceChangeIfNeeded(listing, previousPrice, previousCurrency);
 

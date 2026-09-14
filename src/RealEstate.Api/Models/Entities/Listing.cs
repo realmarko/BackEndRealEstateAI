@@ -33,6 +33,8 @@ public class Listing
     public int? Floors { get; set; }
     public decimal? LotSizeSqm { get; set; }
     public decimal? GardenSizeSqm { get; set; }
+    public bool HasHeatingCooling { get; set; }
+    public decimal? HoaFee { get; set; }
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
