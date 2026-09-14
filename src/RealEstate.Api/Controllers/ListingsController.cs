@@ -14,11 +14,17 @@ namespace RealEstate.Api.Controllers;
 public class ListingsController : ControllerBase
 {
     private readonly ApplicationDbContext _db;
+    // Agent lives in RealEstateDbContext; Listing lives in ApplicationDbContext (it's really
+    // just the Identity DbContext, reused for listings) — same split as AgentsController.
+    // There's no EF-enforced FK between a listing's owner and an agent, so OwnerCompany is
+    // attached after the fact by matching OwnerId to Agent.UserId (see AttachOwnerCompaniesAsync).
+    private readonly RealEstateDbContext _agentsDb;
     private readonly IPhotoUploadService _photoUploadService;
 
-    public ListingsController(ApplicationDbContext db, IPhotoUploadService photoUploadService)
+    public ListingsController(ApplicationDbContext db, RealEstateDbContext agentsDb, IPhotoUploadService photoUploadService)
     {
         _db = db;
+        _agentsDb = agentsDb;
         _photoUploadService = photoUploadService;
     }
 
@@ -67,6 +73,8 @@ public class ListingsController : ControllerBase
             .Select(l => l.ToDto())
             .ToListAsync();
 
+        await AttachOwnerCompaniesAsync(items);
+
         return Ok(new PagedResult<ListingDto>
         {
             Items = items,
@@ -74,6 +82,28 @@ public class ListingsController : ControllerBase
             PageSize = pageSize,
             TotalCount = totalCount
         });
+    }
+
+    // Brokerage/company isn't a Listing field, so the "show properties by brokerage" filter
+    // (client-side, alongside the map/listings page's other filters) needs it attached here —
+    // one dictionary lookup instead of a per-listing round trip.
+    private async Task AttachOwnerCompaniesAsync(List<ListingDto> items)
+    {
+        if (items.Count == 0) return;
+
+        var ownerIds = items.Select(i => i.OwnerId).Distinct().ToList();
+        // ToDictionaryAsync's key/value selectors run against already-materialized Agent
+        // entities, not translated to SQL, so a.Company (sourced from a.Brokerage.Name) needs
+        // the navigation eager-loaded here or it would read back null for every agent.
+        var companies = await _agentsDb.Agents
+            .Include(a => a.Brokerage)
+            .Where(a => a.UserId != null && ownerIds.Contains(a.UserId.Value))
+            .ToDictionaryAsync(a => a.UserId!.Value, a => a.Company);
+
+        foreach (var item in items)
+        {
+            item.OwnerCompany = companies.GetValueOrDefault(item.OwnerId);
+        }
     }
 
     [HttpGet("{id:guid}")]
@@ -211,7 +241,11 @@ public class ListingsController : ControllerBase
             .Include(l => l.Images).Include(l => l.Owner)
             .FirstAsync(l => l.Id == listing.Id);
 
-        return CreatedAtAction(nameof(GetById), new { id = listing.Id }, created.ToDto());
+        var createdDto = created.ToDto();
+        // ListingService.create() splices this response straight into the same client-side
+        // listings signal the company filter reads, so it needs OwnerCompany just like Search.
+        await AttachOwnerCompaniesAsync([createdDto]);
+        return CreatedAtAction(nameof(GetById), new { id = listing.Id }, createdDto);
     }
 
     [Authorize(Roles = "Owner")]
@@ -276,7 +310,12 @@ public class ListingsController : ControllerBase
         }
 
         await _db.SaveChangesAsync();
-        return Ok(listing.ToDto());
+
+        var updatedDto = listing.ToDto();
+        // Same reason as Create: ListingService.update() splices this response into the
+        // client-side listings signal, overwriting whatever OwnerCompany Search had attached.
+        await AttachOwnerCompaniesAsync([updatedDto]);
+        return Ok(updatedDto);
     }
 
     // Adds a price-history row only if this edit actually changed the price or currency —

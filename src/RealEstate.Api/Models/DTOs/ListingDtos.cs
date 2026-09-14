@@ -77,6 +77,12 @@ public class ListingDto
     public string? VideoTourUrl { get; set; }
     public Guid OwnerId { get; set; }
     public string OwnerName { get; set; } = string.Empty;
+
+    // Not a Listing field — the owner isn't necessarily even an Agent (could be an Owner-role
+    // user). Populated after the fact by matching OwnerId to an Agent.UserId (see
+    // ListingsController.AttachOwnerCompaniesAsync); null when there's no matching agent, or
+    // the matching agent has no company set.
+    public string? OwnerCompany { get; set; }
     public DateTime CreatedAt { get; set; }
     public List<string> ImageUrls { get; set; } = new();
 }
