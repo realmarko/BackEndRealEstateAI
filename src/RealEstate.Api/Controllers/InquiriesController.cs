@@ -1,4 +1,3 @@
-using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -16,24 +15,19 @@ public class InquiriesController : ControllerBase
     private readonly ApplicationDbContext _db;
     public InquiriesController(ApplicationDbContext db) => _db = db;
 
-    // Anyone (including anonymous visitors) can send an inquiry about a listing
+    // Must be signed in to send an inquiry — the sender's account is what lets a listing owner
+    // trust who's asking and lets the sender find their own sent messages later.
+    [Authorize]
     [HttpPost]
     public async Task<IActionResult> Create(InquiryCreateDto dto)
     {
         var listingExists = await _db.Listings.AnyAsync(l => l.Id == dto.ListingId);
         if (!listingExists) return NotFound(new { message = "Listing not found" });
 
-        Guid? senderId = null;
-        if (User.Identity?.IsAuthenticated == true)
-        {
-            var idClaim = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? User.FindFirstValue("sub");
-            if (Guid.TryParse(idClaim, out var parsed)) senderId = parsed;
-        }
-
         _db.Inquiries.Add(new Inquiry
         {
             ListingId = dto.ListingId,
-            SenderId = senderId,
+            SenderId = User.GetUserId(),
             SenderName = dto.SenderName,
             SenderEmail = dto.SenderEmail,
             SenderPhone = dto.SenderPhone,
