@@ -14,6 +14,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, IdentityR
     public DbSet<Favorite> Favorites => Set<Favorite>();
     public DbSet<Inquiry> Inquiries => Set<Inquiry>();
     public DbSet<ListingPriceHistory> ListingPriceHistories => Set<ListingPriceHistory>();
+    public DbSet<SavedSearch> SavedSearches => Set<SavedSearch>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -76,6 +77,18 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, IdentityR
                   .WithMany()
                   .HasForeignKey(i => i.SenderId)
                   .OnDelete(DeleteBehavior.SetNull);
+        });
+
+        builder.Entity<SavedSearch>(entity =>
+        {
+            entity.Property(s => s.MinPrice).HasColumnType("numeric(14,2)");
+            entity.Property(s => s.MaxPrice).HasColumnType("numeric(14,2)");
+            entity.HasIndex(s => s.UserId);
+
+            entity.HasOne(s => s.User)
+                  .WithMany(u => u.SavedSearches)
+                  .HasForeignKey(s => s.UserId)
+                  .OnDelete(DeleteBehavior.Cascade);
         });
     }
 }

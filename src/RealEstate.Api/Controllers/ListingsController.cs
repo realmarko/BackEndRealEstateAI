@@ -1,3 +1,4 @@
+using System.Net.Mail;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -20,12 +21,21 @@ public class ListingsController : ControllerBase
     // attached after the fact by matching OwnerId to Agent.UserId (see AttachOwnerCompaniesAsync).
     private readonly RealEstateDbContext _agentsDb;
     private readonly IPhotoUploadService _photoUploadService;
+    private readonly IEmailService _emailService;
+    private readonly ILogger<ListingsController> _logger;
 
-    public ListingsController(ApplicationDbContext db, RealEstateDbContext agentsDb, IPhotoUploadService photoUploadService)
+    public ListingsController(
+        ApplicationDbContext db,
+        RealEstateDbContext agentsDb,
+        IPhotoUploadService photoUploadService,
+        IEmailService emailService,
+        ILogger<ListingsController> logger)
     {
         _db = db;
         _agentsDb = agentsDb;
         _photoUploadService = photoUploadService;
+        _emailService = emailService;
+        _logger = logger;
     }
 
     // GET /api/listings?city=Austin&listingType=Sale&minPrice=100000&...
@@ -245,7 +255,61 @@ public class ListingsController : ControllerBase
         // ListingService.create() splices this response straight into the same client-side
         // listings signal the company filter reads, so it needs OwnerCompany just like Search.
         await AttachOwnerCompaniesAsync([createdDto]);
+
+        // Best-effort, same as AgentsController's review-notification email: the listing is
+        // already saved, so a failure here must never turn into an error response for it. Unlike
+        // that email (always exactly one recipient), this one fans out to every matching saved
+        // search and is awaited inline before responding — fine at this app's current scale, but
+        // a real bottleneck once the saved-searches table is large; a background job/queue would
+        // be the right fix then, not something to build ahead of actual need here.
+        await NotifySavedSearchesAsync(listing);
+
         return CreatedAtAction(nameof(GetById), new { id = listing.Id }, createdDto);
+    }
+
+    // Emails every user whose saved search matches this brand-new listing (skipping the
+    // listing's own owner, in case they also happen to have a matching saved search). Only
+    // Create calls this — Update deliberately doesn't re-run it, so an edit that lowers a
+    // listing's price into a saved search's range (a real, likely-common scenario, not just an
+    // edge case) won't trigger an alert. Left out to keep the matching trigger simple; worth
+    // revisiting if saved-search alerts turn out to matter more for price drops than for new listings.
+    private async Task NotifySavedSearchesAsync(Listing listing)
+    {
+        var matches = await _db.SavedSearches
+            .Include(s => s.User)
+            .Where(s =>
+                s.UserId != listing.OwnerId &&
+                (s.ListingType == null || s.ListingType == listing.ListingType) &&
+                (s.PropertyType == null || s.PropertyType == listing.PropertyType) &&
+                (s.MinPrice == null || listing.Price >= s.MinPrice) &&
+                (s.MaxPrice == null || listing.Price <= s.MaxPrice) &&
+                (s.MinBedrooms == null || listing.Bedrooms >= s.MinBedrooms) &&
+                (s.MinBathrooms == null || listing.Bathrooms >= s.MinBathrooms) &&
+                (s.City == null || s.City.ToLower() == listing.City.ToLower()))
+            // Caps the worst case for the synchronous per-request email loop below — without
+            // this, a widely-matched search criteria (e.g. no filters at all) could block the
+            // response for as long as it takes to attempt hundreds of SMTP sends one at a time.
+            .Take(200)
+            .ToListAsync();
+
+        foreach (var match in matches)
+        {
+            if (match.User is null || string.IsNullOrWhiteSpace(match.User.Email)) continue;
+
+            try
+            {
+                var subject = $"New listing matches your saved search \"{match.Name}\" on RealEstateApp";
+                var body =
+                    $"A new listing matches your saved search \"{match.Name}\":\n\n" +
+                    $"{listing.Title}\n{listing.AddressLine}, {listing.City}\n{listing.Currency} {listing.Price}\n\n" +
+                    "Log in to RealEstateApp to see it.";
+                await _emailService.SendAsync(match.User.Email, match.User.FirstName, subject, body);
+            }
+            catch (Exception ex) when (ex is SmtpException or FormatException or ArgumentException or InvalidOperationException)
+            {
+                _logger.LogError(ex, "Failed to send saved-search alert email to user {UserId} for saved search {SavedSearchId}", match.UserId, match.Id);
+            }
+        }
     }
 
     [Authorize(Roles = "Owner")]
