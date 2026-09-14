@@ -27,26 +27,15 @@ public class FavoritesController : ControllerBase
             .OrderByDescending(f => f.CreatedAt)
             .ToListAsync();
 
+        // Full ToDto() (same extension every other listing-returning endpoint uses) instead of
+        // a hand-rolled partial projection — the frontend's favorites page renders listing
+        // cards through the exact same Listing model/adapter as every other page, so it needs
+        // the same fields (address, year built, etc.), not a trimmed-down subset.
         return Ok(favorites.Select(f => new FavoriteDto
         {
             Id = f.Id,
             CreatedAt = f.CreatedAt,
-            Listing = new ListingDto
-            {
-                Id = f.Listing!.Id,
-                Title = f.Listing.Title,
-                Price = f.Listing.Price,
-                City = f.Listing.City,
-                State = f.Listing.State,
-                Bedrooms = f.Listing.Bedrooms,
-                Bathrooms = f.Listing.Bathrooms,
-                Latitude = f.Listing.Latitude,
-                Longitude = f.Listing.Longitude,
-                ListingType = f.Listing.ListingType.ToString(),
-                PropertyType = f.Listing.PropertyType.ToString(),
-                Status = f.Listing.Status.ToString(),
-                ImageUrls = f.Listing.Images.OrderBy(i => i.SortOrder).Select(i => i.Url).ToList()
-            }
+            Listing = f.Listing!.ToDto()
         }));
     }
 
