@@ -109,6 +109,31 @@ public class ListingsController : ControllerBase
         return Ok(history);
     }
 
+    // Same city, listing type, and property type, ranked by how close the price is — a cheap
+    // stand-in for a real recommendation engine, matching what the listing detail page's
+    // "similar properties" section actually needs.
+    [HttpGet("{id:guid}/similar")]
+    public async Task<ActionResult<List<ListingDto>>> GetSimilar(Guid id)
+    {
+        var listing = await _db.Listings.FindAsync(id);
+        if (listing is null) return NotFound();
+
+        var similar = await _db.Listings
+            .Include(l => l.Images)
+            .Include(l => l.Owner)
+            .Where(l => l.Id != id
+                && l.Status == ListingStatus.Active
+                && l.ListingType == listing.ListingType
+                && l.PropertyType == listing.PropertyType
+                && l.City.ToLower() == listing.City.ToLower())
+            .OrderBy(l => Math.Abs(l.Price - listing.Price))
+            .Take(4)
+            .Select(l => l.ToDto())
+            .ToListAsync();
+
+        return Ok(similar);
+    }
+
     // Listings owned by the current user (for the "My Listings" dashboard)
     [Authorize(Roles = "Owner")]
     [HttpGet("mine")]
