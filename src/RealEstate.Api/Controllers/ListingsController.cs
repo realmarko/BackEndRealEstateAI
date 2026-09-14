@@ -156,6 +156,10 @@ public class ListingsController : ControllerBase
             Bathrooms = dto.Bathrooms,
             AreaSqFt = dto.AreaSqFt,
             YearBuilt = dto.YearBuilt,
+            ParkingSpaces = dto.ParkingSpaces,
+            Floors = dto.Floors,
+            LotSizeSqm = dto.LotSizeSqm,
+            GardenSizeSqm = dto.GardenSizeSqm,
             Images = imageUrls.Select((url, idx) => new ListingImage
             {
                 Url = url,
@@ -218,6 +222,10 @@ public class ListingsController : ControllerBase
         listing.Bathrooms = dto.Bathrooms;
         listing.AreaSqFt = dto.AreaSqFt;
         listing.YearBuilt = dto.YearBuilt;
+        listing.ParkingSpaces = dto.ParkingSpaces;
+        listing.Floors = dto.Floors;
+        listing.LotSizeSqm = dto.LotSizeSqm;
+        listing.GardenSizeSqm = dto.GardenSizeSqm;
         listing.UpdatedAt = DateTime.UtcNow;
         RecordPriceChangeIfNeeded(listing, previousPrice, previousCurrency);
 

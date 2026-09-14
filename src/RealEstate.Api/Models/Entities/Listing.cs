@@ -29,6 +29,10 @@ public class Listing
     public decimal Bathrooms { get; set; }
     public int AreaSqFt { get; set; }
     public int? YearBuilt { get; set; }
+    public int? ParkingSpaces { get; set; }
+    public int? Floors { get; set; }
+    public decimal? LotSizeSqm { get; set; }
+    public decimal? GardenSizeSqm { get; set; }
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;

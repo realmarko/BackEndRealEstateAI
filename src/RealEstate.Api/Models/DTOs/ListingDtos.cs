@@ -26,6 +26,10 @@ public class ListingCreateDto
     public decimal Bathrooms { get; set; }
     public int AreaSqFt { get; set; }
     public int? YearBuilt { get; set; }
+    public int? ParkingSpaces { get; set; }
+    public int? Floors { get; set; }
+    public decimal? LotSizeSqm { get; set; }
+    public decimal? GardenSizeSqm { get; set; }
 
     // Photos already hosted somewhere — a pasted external link, or an S3 URL kept from a
     // previous edit — sent through as-is, in order, before any newly uploaded photo.
@@ -61,6 +65,10 @@ public class ListingDto
     public decimal Bathrooms { get; set; }
     public int AreaSqFt { get; set; }
     public int? YearBuilt { get; set; }
+    public int? ParkingSpaces { get; set; }
+    public int? Floors { get; set; }
+    public decimal? LotSizeSqm { get; set; }
+    public decimal? GardenSizeSqm { get; set; }
     public Guid OwnerId { get; set; }
     public string OwnerName { get; set; } = string.Empty;
     public DateTime CreatedAt { get; set; }
