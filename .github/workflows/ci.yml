@@ -1,0 +1,28 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Restore
+        run: dotnet restore RealEstate.sln
+
+      - name: Build
+        run: dotnet build RealEstate.sln --no-restore --configuration Release
+
+      # No test project exists yet (RealEstate.sln has only RealEstate.Api) — this is a no-op
+      # until one is added, kept here so tests start running in CI the moment one lands instead
+      # of needing a second PR to wire up the workflow.
+      - name: Test
+        run: dotnet test RealEstate.sln --no-build --configuration Release
