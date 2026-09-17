@@ -66,6 +66,18 @@ public class ListingsController : ControllerBase
         // Google Maps viewport bounding box filter (pan/zoom search)
         if (q.SwLat.HasValue && q.SwLng.HasValue && q.NeLat.HasValue && q.NeLng.HasValue)
         {
+            // .NET's query-string double binder accepts NaN/Infinity/out-of-range values as
+            // "valid" doubles — without this, a malformed corner silently returns zero results
+            // (or every row, if the comparisons happen to invert) instead of a clear 400.
+            if (!GeoValidation.IsValidLat(q.SwLat.Value))
+                return BadRequest(new { message = "swLat must be a finite number between -90 and 90." });
+            if (!GeoValidation.IsValidLat(q.NeLat.Value))
+                return BadRequest(new { message = "neLat must be a finite number between -90 and 90." });
+            if (!GeoValidation.IsValidLng(q.SwLng.Value))
+                return BadRequest(new { message = "swLng must be a finite number between -180 and 180." });
+            if (!GeoValidation.IsValidLng(q.NeLng.Value))
+                return BadRequest(new { message = "neLng must be a finite number between -180 and 180." });
+
             query = query.Where(l =>
                 l.Latitude >= q.SwLat && l.Latitude <= q.NeLat &&
                 l.Longitude >= q.SwLng && l.Longitude <= q.NeLng);
