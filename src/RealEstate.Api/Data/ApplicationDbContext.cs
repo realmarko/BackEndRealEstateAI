@@ -15,6 +15,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, IdentityR
     public DbSet<Inquiry> Inquiries => Set<Inquiry>();
     public DbSet<ListingPriceHistory> ListingPriceHistories => Set<ListingPriceHistory>();
     public DbSet<SavedSearch> SavedSearches => Set<SavedSearch>();
+    public DbSet<AgebPopulation> AgebPopulations => Set<AgebPopulation>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -89,6 +90,15 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, IdentityR
                   .WithMany(u => u.SavedSearches)
                   .HasForeignKey(s => s.UserId)
                   .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        builder.Entity<AgebPopulation>(entity =>
+        {
+            entity.HasKey(a => a.Cvegeo);
+            entity.Property(a => a.Cvegeo).HasMaxLength(13);
+            // GIST, not the default B-tree — required for PostGIS's ST_Contains to use an index
+            // instead of scanning every AGEB polygon on every opportunity-analysis map click.
+            entity.HasIndex(a => a.Boundary).HasMethod("GIST");
         });
     }
 }

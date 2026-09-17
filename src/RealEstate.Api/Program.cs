@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
+using Npgsql;
 using System.Threading.RateLimiting;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
@@ -38,13 +39,25 @@ builder.Services.Configure<DenueOptions>(builder.Configuration.GetSection("Inegi
 // debounce, and DENUE is best-effort (Places is the guaranteed fallback), so a slow/unreachable
 // DENUE should not make every click feel stuck for long.
 builder.Services.AddHttpClient<IDenueService, DenueService>(client => client.Timeout = TimeSpan.FromSeconds(5));
+builder.Services.AddScoped<IPopulationDensityService, PopulationDensityService>();
 
 // ---- Database (PostgreSQL) ----
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
-builder.Services.AddDbContext<ApplicationDbContext>(options =>
-    options.UseNpgsql(connectionString).UseSnakeCaseNamingConvention());
-builder.Services.AddDbContext<RealEstateDbContext>(options =>
-    options.UseNpgsql(connectionString).UseSnakeCaseNamingConvention());
+// The NTS plugin must be registered on the NpgsqlDataSource itself — passing UseNetTopologySuite
+// as a UseNpgsql(...) callback silently fails to wire it into Npgsql 8's type-info resolver
+// pipeline, so a NetTopologySuite.Geometries.Point parameter throws InvalidCastException instead
+// of mapping to the "geometry" column type PostGIS expects.
+// Registered as a singleton (not just a local variable) so the container disposes its connection
+// pool on shutdown, and shared by both contexts so the app opens one pool against Postgres
+// instead of two — RealEstateDbContext has no geometry columns, but NTS support is additive and
+// doesn't affect its plain entities.
+var npgsqlDataSourceBuilder = new NpgsqlDataSourceBuilder(connectionString);
+npgsqlDataSourceBuilder.UseNetTopologySuite();
+builder.Services.AddSingleton(npgsqlDataSourceBuilder.Build());
+builder.Services.AddDbContext<ApplicationDbContext>((sp, options) =>
+    options.UseNpgsql(sp.GetRequiredService<NpgsqlDataSource>(), npgsql => npgsql.UseNetTopologySuite()).UseSnakeCaseNamingConvention());
+builder.Services.AddDbContext<RealEstateDbContext>((sp, options) =>
+    options.UseNpgsql(sp.GetRequiredService<NpgsqlDataSource>()).UseSnakeCaseNamingConvention());
 
 // ---- Identity ----
 builder.Services
@@ -99,6 +112,19 @@ builder.Services.AddRateLimiter(options =>
         factory: _ => new FixedWindowRateLimiterOptions
         {
             PermitLimit = 20,
+            Window = TimeSpan.FromMinutes(1),
+            QueueLimit = 0
+        }));
+    // Separate budget from "geomarketing": that one exists to protect INEGI DENUE's external
+    // quota, which population-density never touches — it's just an indexed query against our own
+    // Postgres. Sharing the same bucket would mean the map's opportunity-analysis click now spends
+    // 2 of that budget's 20/min instead of 1, silently halving how many DENUE lookups a visitor
+    // gets before falling back to Places. This one exists only to bound load on our own DB.
+    options.AddPolicy("population-density", httpContext => RateLimitPartition.GetFixedWindowLimiter(
+        partitionKey: httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+        factory: _ => new FixedWindowRateLimiterOptions
+        {
+            PermitLimit = 60,
             Window = TimeSpan.FromMinutes(1),
             QueueLimit = 0
         }));

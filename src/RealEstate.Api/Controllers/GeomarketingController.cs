@@ -1,5 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
+using Npgsql;
+using RealEstate.Api.Extensions;
 using RealEstate.Api.Models.DTOs;
 using RealEstate.Api.Services;
 
@@ -20,11 +22,16 @@ public class GeomarketingController : ControllerBase
     private static readonly HashSet<string> AllowedSearchTerms = new(StringComparer.OrdinalIgnoreCase) { "farmacia" };
 
     private readonly IDenueService _denueService;
+    private readonly IPopulationDensityService _populationDensityService;
     private readonly ILogger<GeomarketingController> _logger;
 
-    public GeomarketingController(IDenueService denueService, ILogger<GeomarketingController> logger)
+    public GeomarketingController(
+        IDenueService denueService,
+        IPopulationDensityService populationDensityService,
+        ILogger<GeomarketingController> logger)
     {
         _denueService = denueService;
+        _populationDensityService = populationDensityService;
         _logger = logger;
     }
 
@@ -42,13 +49,8 @@ public class GeomarketingController : ControllerBase
         if (string.IsNullOrWhiteSpace(searchTerm) || !AllowedSearchTerms.Contains(searchTerm))
             return BadRequest(new { message = "searchTerm is not a supported business category." });
 
-        // .NET's query-string double binder accepts NaN/Infinity and any out-of-range number as
-        // a "valid" double — without this check those would sail through to DenueService and
-        // waste an external call (and a shared rate-limit slot) on a request INEGI can only reject.
-        if (double.IsNaN(lat) || double.IsInfinity(lat) || lat is < -90 or > 90)
-            return BadRequest(new { message = "lat must be a finite number between -90 and 90." });
-        if (double.IsNaN(lng) || double.IsInfinity(lng) || lng is < -180 or > 180)
-            return BadRequest(new { message = "lng must be a finite number between -180 and 180." });
+        var latLngError = GeoValidation.ValidateLatLng(lat, lng);
+        if (latLngError is not null) return BadRequest(new { message = latLngError });
 
         // Same upper bound as the frontend's own opportunity-analysis radius, generously
         // doubled — nothing legitimate needs a much wider single query, and DENUE's result set
@@ -70,6 +72,43 @@ public class GeomarketingController : ControllerBase
             // needs to be more than a 502 and a log line.
             _logger.LogError(ex, "DENUE lookup failed for {SearchTerm} at {Lat},{Lng}", searchTerm, lat, lng);
             return StatusCode(StatusCodes.Status502BadGateway, new { message = "Could not reach INEGI DENUE right now." });
+        }
+    }
+
+    // GET /api/geomarketing/population-density?lat=19.04&lng=-98.20
+    // Looks up the real 2020-census population of the INEGI AGEB (their smallest census
+    // geography) containing the point — official demographic counterpart to business-density
+    // above. Returns 404 for a point outside any imported AGEB, which today means outside
+    // Puebla state (the only one imported so far) rather than a genuine error.
+    // Its own rate-limit policy, not "geomarketing": this queries our own indexed Postgres data,
+    // not INEGI's DENUE quota, so it has no reason to share (and halve) that budget.
+    [HttpGet("population-density")]
+    [EnableRateLimiting("population-density")]
+    public async Task<ActionResult<PopulationDensityDto>> PopulationDensity(
+        [FromQuery] double lat,
+        [FromQuery] double lng,
+        CancellationToken cancellationToken)
+    {
+        var latLngError = GeoValidation.ValidateLatLng(lat, lng);
+        if (latLngError is not null) return BadRequest(new { message = latLngError });
+
+        try
+        {
+            var result = await _populationDensityService.GetAsync(lat, lng, cancellationToken);
+            return result is null
+                ? NotFound(new { message = "No population data covers this location yet." })
+                : Ok(result);
+        }
+        catch (Exception ex) when (ex is NpgsqlException or InvalidOperationException)
+        {
+            // Unlike "not found" (a normal, expected result for anywhere outside the imported
+            // states), this is the query itself failing — connection-pool exhaustion, a timeout,
+            // or a malformed AGEB polygon from the import tripping PostGIS. The frontend already
+            // treats any error here as "population unavailable" (see searchPopulationDensity's
+            // .catch), so surfacing it as a 500 with a log line — not letting it bubble up as an
+            // unhandled exception — matches business-density's own failure-handling shape.
+            _logger.LogError(ex, "Population-density lookup failed at {Lat},{Lng}", lat, lng);
+            return StatusCode(StatusCodes.Status500InternalServerError, new { message = "Could not look up population data right now." });
         }
     }
 }

@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using NetTopologySuite.Geometries;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
@@ -12,9 +13,11 @@ using RealEstate.Api.Data;
 namespace RealEstate.Api.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260914234528_AddAgebPopulation")]
+    partial class AddAgebPopulation
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -193,6 +196,12 @@ namespace RealEstate.Api.Migrations
                         .HasColumnType("character varying(13)")
                         .HasColumnName("cvegeo");
 
+                    b.Property<string>("AgebCode")
+                        .IsRequired()
+                        .HasMaxLength(4)
+                        .HasColumnType("character varying(4)")
+                        .HasColumnName("ageb_code");
+
                     b.Property<double>("AreaSqKm")
                         .HasColumnType("double precision")
                         .HasColumnName("area_sq_km");
@@ -202,13 +211,27 @@ namespace RealEstate.Api.Migrations
                         .HasColumnType("geometry")
                         .HasColumnName("boundary");
 
-                    b.Property<int>("CensusYear")
-                        .HasColumnType("integer")
-                        .HasColumnName("census_year");
+                    b.Property<string>("LocalityCode")
+                        .IsRequired()
+                        .HasMaxLength(4)
+                        .HasColumnType("character varying(4)")
+                        .HasColumnName("locality_code");
+
+                    b.Property<string>("MunicipalityCode")
+                        .IsRequired()
+                        .HasMaxLength(3)
+                        .HasColumnType("character varying(3)")
+                        .HasColumnName("municipality_code");
 
                     b.Property<int>("Population")
                         .HasColumnType("integer")
                         .HasColumnName("population");
+
+                    b.Property<string>("StateCode")
+                        .IsRequired()
+                        .HasMaxLength(2)
+                        .HasColumnType("character varying(2)")
+                        .HasColumnName("state_code");
 
                     b.HasKey("Cvegeo")
                         .HasName("pk_ageb_populations");
