@@ -240,6 +240,30 @@ public class ListingsController : ControllerBase
             HasHeatingCooling = dto.HasHeatingCooling,
             HoaFee = dto.HoaFee,
             VideoTourUrl = dto.VideoTourUrl,
+            LandUseZoning = dto.LandUseZoning,
+            LandTenure = dto.LandTenure,
+            CosCoefficient = dto.CosCoefficient,
+            CusCoefficient = dto.CusCoefficient,
+            MaxHeightMeters = dto.MaxHeightMeters,
+            IsFreeOfLiens = dto.IsFreeOfLiens,
+            HasPropertyTaxDebt = dto.HasPropertyTaxDebt,
+            HasWaterDebt = dto.HasWaterDebt,
+            FrontageWidthMeters = dto.FrontageWidthMeters,
+            FrontageDepthMeters = dto.FrontageDepthMeters,
+            HasPotableWater = dto.HasPotableWater,
+            HasDrainage = dto.HasDrainage,
+            HasElectricity = dto.HasElectricity,
+            HasThreePhaseElectricity = dto.HasThreePhaseElectricity,
+            HasTelecomService = dto.HasTelecomService,
+            HasVehicleAccess = dto.HasVehicleAccess,
+            HasNearbyUTurn = dto.HasNearbyUTurn,
+            IsCornerLot = dto.IsCornerLot,
+            StreetFrontageCount = dto.StreetFrontageCount,
+            PrimaryVialidadType = dto.PrimaryVialidadType,
+            LotShape = dto.LotShape,
+            Topography = dto.Topography,
+            IsFloodRiskZone = dto.IsFloodRiskZone,
+            CadastralValue = dto.CadastralValue,
             Images = imageUrls.Select((url, idx) => new ListingImage
             {
                 Url = url,
@@ -367,6 +391,30 @@ public class ListingsController : ControllerBase
         listing.HasHeatingCooling = dto.HasHeatingCooling;
         listing.HoaFee = dto.HoaFee;
         listing.VideoTourUrl = dto.VideoTourUrl;
+        listing.LandUseZoning = dto.LandUseZoning;
+        listing.LandTenure = dto.LandTenure;
+        listing.CosCoefficient = dto.CosCoefficient;
+        listing.CusCoefficient = dto.CusCoefficient;
+        listing.MaxHeightMeters = dto.MaxHeightMeters;
+        listing.IsFreeOfLiens = dto.IsFreeOfLiens;
+        listing.HasPropertyTaxDebt = dto.HasPropertyTaxDebt;
+        listing.HasWaterDebt = dto.HasWaterDebt;
+        listing.FrontageWidthMeters = dto.FrontageWidthMeters;
+        listing.FrontageDepthMeters = dto.FrontageDepthMeters;
+        listing.HasPotableWater = dto.HasPotableWater;
+        listing.HasDrainage = dto.HasDrainage;
+        listing.HasElectricity = dto.HasElectricity;
+        listing.HasThreePhaseElectricity = dto.HasThreePhaseElectricity;
+        listing.HasTelecomService = dto.HasTelecomService;
+        listing.HasVehicleAccess = dto.HasVehicleAccess;
+        listing.HasNearbyUTurn = dto.HasNearbyUTurn;
+        listing.IsCornerLot = dto.IsCornerLot;
+        listing.StreetFrontageCount = dto.StreetFrontageCount;
+        listing.PrimaryVialidadType = dto.PrimaryVialidadType;
+        listing.LotShape = dto.LotShape;
+        listing.Topography = dto.Topography;
+        listing.IsFloodRiskZone = dto.IsFloodRiskZone;
+        listing.CadastralValue = dto.CadastralValue;
         listing.UpdatedAt = DateTime.UtcNow;
         RecordPriceChangeIfNeeded(listing, previousPrice, previousCurrency);
 

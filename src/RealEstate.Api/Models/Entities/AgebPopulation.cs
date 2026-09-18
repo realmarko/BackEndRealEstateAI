@@ -27,4 +27,19 @@ public class AgebPopulation
     // built from this instead of a hardcoded year that would go silently stale the moment a
     // future import uses a different vintage.
     public int CensusYear { get; set; }
+
+    // Raw INEGI Census 2020 indicators used to estimate SocioeconomicLevel below — kept alongside
+    // the derived score/level so the proxy's inputs stay inspectable, not just its output. Null
+    // for the handful of AGEBs where INEGI itself masks or omits the source cell (see the import
+    // script). Percentages are of total occupied dwellings (TVIVHAB) in the AGEB.
+    public double? AvgSchoolingYears { get; set; }
+    public double? PctHomesWithInternet { get; set; }
+    public double? PctHomesWithCar { get; set; }
+    public double? PctHomesWithComputer { get; set; }
+    public double? AvgOccupantsPerHome { get; set; }
+
+    // 0-100 composite built from percentile-ranking the fields above across all imported AGEBs —
+    // see SocioeconomicLevel for why this is a proxy, not an official AMAI NSE score.
+    public double? SocioeconomicScore { get; set; }
+    public SocioeconomicLevel? EstimatedSocioeconomicLevel { get; set; }
 }

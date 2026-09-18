@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using NetTopologySuite.Geometries;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
@@ -12,9 +13,11 @@ using RealEstate.Api.Data;
 namespace RealEstate.Api.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260918025933_AddAgebSocioeconomicData")]
+    partial class AddAgebSocioeconomicData
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -535,18 +538,10 @@ namespace RealEstate.Api.Migrations
                         .HasColumnType("integer")
                         .HasColumnName("bedrooms");
 
-                    b.Property<decimal?>("CadastralValue")
-                        .HasColumnType("numeric")
-                        .HasColumnName("cadastral_value");
-
                     b.Property<string>("City")
                         .IsRequired()
                         .HasColumnType("text")
                         .HasColumnName("city");
-
-                    b.Property<decimal?>("CosCoefficient")
-                        .HasColumnType("numeric")
-                        .HasColumnName("cos_coefficient");
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone")
@@ -560,10 +555,6 @@ namespace RealEstate.Api.Migrations
                         .HasDefaultValue("MXN")
                         .HasColumnName("currency");
 
-                    b.Property<decimal?>("CusCoefficient")
-                        .HasColumnType("numeric")
-                        .HasColumnName("cus_coefficient");
-
                     b.Property<string>("Description")
                         .IsRequired()
                         .HasColumnType("text")
@@ -573,81 +564,17 @@ namespace RealEstate.Api.Migrations
                         .HasColumnType("integer")
                         .HasColumnName("floors");
 
-                    b.Property<decimal?>("FrontageDepthMeters")
-                        .HasColumnType("numeric")
-                        .HasColumnName("frontage_depth_meters");
-
-                    b.Property<decimal?>("FrontageWidthMeters")
-                        .HasColumnType("numeric")
-                        .HasColumnName("frontage_width_meters");
-
                     b.Property<decimal?>("GardenSizeSqm")
                         .HasColumnType("numeric")
                         .HasColumnName("garden_size_sqm");
-
-                    b.Property<bool?>("HasDrainage")
-                        .HasColumnType("boolean")
-                        .HasColumnName("has_drainage");
-
-                    b.Property<bool?>("HasElectricity")
-                        .HasColumnType("boolean")
-                        .HasColumnName("has_electricity");
 
                     b.Property<bool>("HasHeatingCooling")
                         .HasColumnType("boolean")
                         .HasColumnName("has_heating_cooling");
 
-                    b.Property<bool?>("HasNearbyUTurn")
-                        .HasColumnType("boolean")
-                        .HasColumnName("has_nearby_u_turn");
-
-                    b.Property<bool?>("HasPotableWater")
-                        .HasColumnType("boolean")
-                        .HasColumnName("has_potable_water");
-
-                    b.Property<bool?>("HasPropertyTaxDebt")
-                        .HasColumnType("boolean")
-                        .HasColumnName("has_property_tax_debt");
-
-                    b.Property<bool?>("HasTelecomService")
-                        .HasColumnType("boolean")
-                        .HasColumnName("has_telecom_service");
-
-                    b.Property<bool?>("HasThreePhaseElectricity")
-                        .HasColumnType("boolean")
-                        .HasColumnName("has_three_phase_electricity");
-
-                    b.Property<bool?>("HasVehicleAccess")
-                        .HasColumnType("boolean")
-                        .HasColumnName("has_vehicle_access");
-
-                    b.Property<bool?>("HasWaterDebt")
-                        .HasColumnType("boolean")
-                        .HasColumnName("has_water_debt");
-
                     b.Property<decimal?>("HoaFee")
                         .HasColumnType("numeric")
                         .HasColumnName("hoa_fee");
-
-                    b.Property<bool?>("IsCornerLot")
-                        .HasColumnType("boolean")
-                        .HasColumnName("is_corner_lot");
-
-                    b.Property<bool?>("IsFloodRiskZone")
-                        .HasColumnType("boolean")
-                        .HasColumnName("is_flood_risk_zone");
-
-                    b.Property<bool?>("IsFreeOfLiens")
-                        .HasColumnType("boolean")
-                        .HasColumnName("is_free_of_liens");
-
-                    b.Property<int?>("LandTenure")
-                        .HasColumnType("integer")
-                        .HasColumnName("land_tenure");
-
-                    b.Property<string>("LandUseZoning")
-                        .HasColumnType("text")
-                        .HasColumnName("land_use_zoning");
 
                     b.Property<double>("Latitude")
                         .HasColumnType("double precision")
@@ -661,17 +588,9 @@ namespace RealEstate.Api.Migrations
                         .HasColumnType("double precision")
                         .HasColumnName("longitude");
 
-                    b.Property<int?>("LotShape")
-                        .HasColumnType("integer")
-                        .HasColumnName("lot_shape");
-
                     b.Property<decimal?>("LotSizeSqm")
                         .HasColumnType("numeric")
                         .HasColumnName("lot_size_sqm");
-
-                    b.Property<decimal?>("MaxHeightMeters")
-                        .HasColumnType("numeric")
-                        .HasColumnName("max_height_meters");
 
                     b.Property<Guid>("OwnerId")
                         .HasColumnType("uuid")
@@ -684,10 +603,6 @@ namespace RealEstate.Api.Migrations
                     b.Property<decimal>("Price")
                         .HasColumnType("numeric(14,2)")
                         .HasColumnName("price");
-
-                    b.Property<int?>("PrimaryVialidadType")
-                        .HasColumnType("integer")
-                        .HasColumnName("primary_vialidad_type");
 
                     b.Property<int>("PropertyType")
                         .HasColumnType("integer")
@@ -702,18 +617,10 @@ namespace RealEstate.Api.Migrations
                         .HasColumnType("integer")
                         .HasColumnName("status");
 
-                    b.Property<int?>("StreetFrontageCount")
-                        .HasColumnType("integer")
-                        .HasColumnName("street_frontage_count");
-
                     b.Property<string>("Title")
                         .IsRequired()
                         .HasColumnType("text")
                         .HasColumnName("title");
-
-                    b.Property<int?>("Topography")
-                        .HasColumnType("integer")
-                        .HasColumnName("topography");
 
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("timestamp with time zone")

@@ -42,7 +42,9 @@ public class PopulationDensityService : IPopulationDensityService
             Population = ageb.Population,
             AreaSqKm = ageb.AreaSqKm,
             DensityPerSqKm = ageb.AreaSqKm > 0 ? ageb.Population / ageb.AreaSqKm : 0,
-            CensusYear = ageb.CensusYear
+            CensusYear = ageb.CensusYear,
+            SocioeconomicScore = ageb.SocioeconomicScore,
+            EstimatedSocioeconomicLevel = ageb.EstimatedSocioeconomicLevel?.ToString()
         };
     }
 }

@@ -1,3 +1,4 @@
+using System.ComponentModel.DataAnnotations;
 using Microsoft.AspNetCore.Http;
 using RealEstate.Api.Models.Entities;
 
@@ -33,6 +34,34 @@ public class ListingCreateDto
     public bool HasHeatingCooling { get; set; }
     public decimal? HoaFee { get; set; }
     public string? VideoTourUrl { get; set; }
+
+    public string? LandUseZoning { get; set; }
+    public LandTenureType? LandTenure { get; set; }
+    // Generous, sanity-check bounds (not precise Mexican zoning limits, which vary by
+    // municipality) — just enough to reject obvious data-entry errors like a misplaced decimal
+    // point or a negative value, not to enforce a specific jurisdiction's actual rules.
+    [Range(0, 10)] public decimal? CosCoefficient { get; set; }
+    [Range(0, 50)] public decimal? CusCoefficient { get; set; }
+    [Range(0, 1000)] public decimal? MaxHeightMeters { get; set; }
+    public bool? IsFreeOfLiens { get; set; }
+    public bool? HasPropertyTaxDebt { get; set; }
+    public bool? HasWaterDebt { get; set; }
+    [Range(0, 10000)] public decimal? FrontageWidthMeters { get; set; }
+    [Range(0, 10000)] public decimal? FrontageDepthMeters { get; set; }
+    public bool? HasPotableWater { get; set; }
+    public bool? HasDrainage { get; set; }
+    public bool? HasElectricity { get; set; }
+    public bool? HasThreePhaseElectricity { get; set; }
+    public bool? HasTelecomService { get; set; }
+    public bool? HasVehicleAccess { get; set; }
+    public bool? HasNearbyUTurn { get; set; }
+    public bool? IsCornerLot { get; set; }
+    [Range(0, 20)] public int? StreetFrontageCount { get; set; }
+    public VialidadType? PrimaryVialidadType { get; set; }
+    public LotShapeType? LotShape { get; set; }
+    public TopographyType? Topography { get; set; }
+    public bool? IsFloodRiskZone { get; set; }
+    [Range(0, double.MaxValue)] public decimal? CadastralValue { get; set; }
 
     // Photos already hosted somewhere — a pasted external link, or an S3 URL kept from a
     // previous edit — sent through as-is, in order, before any newly uploaded photo.
@@ -75,6 +104,30 @@ public class ListingDto
     public bool HasHeatingCooling { get; set; }
     public decimal? HoaFee { get; set; }
     public string? VideoTourUrl { get; set; }
+    public string? LandUseZoning { get; set; }
+    public string? LandTenure { get; set; }
+    public decimal? CosCoefficient { get; set; }
+    public decimal? CusCoefficient { get; set; }
+    public decimal? MaxHeightMeters { get; set; }
+    public bool? IsFreeOfLiens { get; set; }
+    public bool? HasPropertyTaxDebt { get; set; }
+    public bool? HasWaterDebt { get; set; }
+    public decimal? FrontageWidthMeters { get; set; }
+    public decimal? FrontageDepthMeters { get; set; }
+    public bool? HasPotableWater { get; set; }
+    public bool? HasDrainage { get; set; }
+    public bool? HasElectricity { get; set; }
+    public bool? HasThreePhaseElectricity { get; set; }
+    public bool? HasTelecomService { get; set; }
+    public bool? HasVehicleAccess { get; set; }
+    public bool? HasNearbyUTurn { get; set; }
+    public bool? IsCornerLot { get; set; }
+    public int? StreetFrontageCount { get; set; }
+    public string? PrimaryVialidadType { get; set; }
+    public string? LotShape { get; set; }
+    public string? Topography { get; set; }
+    public bool? IsFloodRiskZone { get; set; }
+    public decimal? CadastralValue { get; set; }
     public Guid OwnerId { get; set; }
     public string OwnerName { get; set; } = string.Empty;
 
