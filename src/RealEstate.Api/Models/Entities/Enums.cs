@@ -65,3 +65,18 @@ public enum PurchaseTimeline
     ThreeToSixMonths = 2,
     JustBrowsing = 3
 }
+
+// See ErrorLog — where an error was caught: an unhandled exception in the API, or a JS error
+// the frontend reported itself (nothing here catches the frontend's errors for it).
+public enum ErrorSource
+{
+    Backend = 0,
+    Frontend = 1
+}
+
+public enum ErrorSeverity
+{
+    Warning = 0,
+    Error = 1,
+    Critical = 2
+}

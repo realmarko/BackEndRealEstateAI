@@ -10,10 +10,23 @@ using System.Threading.RateLimiting;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using RealEstate.Api.Data;
+using RealEstate.Api.Middleware;
 using RealEstate.Api.Models.Entities;
 using RealEstate.Api.Services;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// ---- Error tracking (Sentry) ----
+// Dsn left empty (CHANGE_ME below) until a real Sentry project exists — the SDK no-ops silently
+// with an empty Dsn instead of throwing, so this is safe to leave unconfigured. ErrorLogService
+// (below) covers the in-app "what broke, for whom" view either way; Sentry adds full stack
+// traces, breadcrumbs, and alerting on top once a real Dsn is set.
+builder.WebHost.UseSentry(options =>
+{
+    options.Dsn = builder.Configuration["Sentry:Dsn"] ?? "";
+    options.Environment = builder.Environment.EnvironmentName;
+    options.TracesSampleRate = 0.1;
+});
 
 // ---- Configuration ----
 builder.Services.Configure<JwtOptions>(builder.Configuration.GetSection("Jwt"));
@@ -40,6 +53,9 @@ builder.Services.Configure<DenueOptions>(builder.Configuration.GetSection("Inegi
 // DENUE should not make every click feel stuck for long.
 builder.Services.AddHttpClient<IDenueService, DenueService>(client => client.Timeout = TimeSpan.FromSeconds(5));
 builder.Services.AddScoped<IPopulationDensityService, PopulationDensityService>();
+
+// ---- Error logging (in-app admin view, alongside Sentry above) ----
+builder.Services.AddScoped<IErrorLogService, ErrorLogService>();
 
 // ---- Database (PostgreSQL) ----
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
@@ -104,6 +120,17 @@ builder.Services.AddRateLimiter(options =>
         limiterOptions.Window = TimeSpan.FromMinutes(1);
         limiterOptions.QueueLimit = 0;
     });
+    // Per-IP: an anonymous write endpoint (POST /api/errors) is exactly the shape that gets
+    // abused to flood a database/Sentry quota — a global window would let one bad actor block
+    // every real visitor's own error reports too.
+    options.AddPolicy("errors", httpContext => RateLimitPartition.GetFixedWindowLimiter(
+        partitionKey: httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+        factory: _ => new FixedWindowRateLimiterOptions
+        {
+            PermitLimit = 10,
+            Window = TimeSpan.FromMinutes(1),
+            QueueLimit = 0
+        }));
     // Per-IP, not AddFixedWindowLimiter's single shared window: the map fires this on every
     // click with no debounce, so a global limit would let one visitor clicking around exhaust
     // the whole site's budget and silently 429 every other concurrent visitor's requests too.
@@ -171,6 +198,7 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
+app.UseMiddleware<GlobalExceptionMiddleware>();
 app.UseHttpsRedirection();
 app.UseCors("Default");
 app.UseAuthentication();

@@ -1,3 +1,4 @@
+using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 
 namespace RealEstate.Api.Extensions;
@@ -15,4 +16,10 @@ public static class ClaimsPrincipalExtensions
         var raw = user.FindFirstValue(ClaimTypes.NameIdentifier) ?? user.FindFirstValue("sub");
         return Guid.TryParse(raw, out var id) ? id : null;
     }
+
+    /// <summary>The authenticated user's email, or null for an anonymous caller. Checks both claim
+    /// spellings since whether the JWT handler remaps "email" to ClaimTypes.Email depends on
+    /// MapInboundClaims configuration — TokenService issues the JWT-standard name.</summary>
+    public static string? TryGetEmail(this ClaimsPrincipal user) =>
+        user.FindFirstValue(JwtRegisteredClaimNames.Email) ?? user.FindFirstValue(ClaimTypes.Email);
 }

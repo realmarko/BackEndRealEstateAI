@@ -16,6 +16,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, IdentityR
     public DbSet<ListingPriceHistory> ListingPriceHistories => Set<ListingPriceHistory>();
     public DbSet<SavedSearch> SavedSearches => Set<SavedSearch>();
     public DbSet<AgebPopulation> AgebPopulations => Set<AgebPopulation>();
+    public DbSet<ErrorLog> ErrorLogs => Set<ErrorLog>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -99,6 +100,15 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, IdentityR
             // GIST, not the default B-tree — required for PostGIS's ST_Contains to use an index
             // instead of scanning every AGEB polygon on every opportunity-analysis map click.
             entity.HasIndex(a => a.Boundary).HasMethod("GIST");
+        });
+
+        builder.Entity<ErrorLog>(entity =>
+        {
+            // No FK to ApplicationUser on purpose: an error log is an audit trail, not a live
+            // relationship — it should survive (with UserEmail as the readable trace) even if the
+            // account is later deleted, rather than being cascade-deleted or blocking the delete.
+            entity.HasIndex(e => e.OccurredAt);
+            entity.HasIndex(e => e.Resolved);
         });
     }
 }

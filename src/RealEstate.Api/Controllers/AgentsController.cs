@@ -173,7 +173,7 @@ public class AgentsController : ControllerBase
         {
             UserId = userId,
             Name = $"{User.FindFirstValue("firstName")} {User.FindFirstValue("lastName")}".Trim(),
-            Email = User.FindFirstValue(ClaimTypes.Email) ?? string.Empty,
+            Email = User.TryGetEmail() ?? string.Empty,
             Phone = dto.Phone,
             Brokerage = brokerage,
             IsIndependent = dto.IsIndependent,

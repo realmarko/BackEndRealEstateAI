@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
+using RealEstate.Api.Extensions;
 using RealEstate.Api.Models.DTOs;
 using RealEstate.Api.Models.Entities;
 using RealEstate.Api.Services;
@@ -76,8 +77,7 @@ public class AuthController : ControllerBase
     [HttpGet("me")]
     public async Task<ActionResult<UserDto>> Me()
     {
-        var email = User.FindFirst(System.Security.Claims.ClaimTypes.Email)?.Value
-                    ?? User.Identity?.Name;
+        var email = User.TryGetEmail() ?? User.Identity?.Name;
         var user = await _userManager.FindByEmailAsync(email!);
         if (user is null) return Unauthorized();
 
