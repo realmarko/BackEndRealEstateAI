@@ -6,21 +6,21 @@ namespace RealEstate.Api.Models.DTOs;
 
 public class ListingCreateDto
 {
-    public string Title { get; set; } = string.Empty;
-    public string Description { get; set; } = string.Empty;
+    [MaxLength(200)] public string Title { get; set; } = string.Empty;
+    [MaxLength(5000)] public string Description { get; set; } = string.Empty;
     public ListingType ListingType { get; set; }
     public PropertyType PropertyType { get; set; }
     public decimal Price { get; set; }
-    public string Currency { get; set; } = "MXN";
-    public string AddressLine { get; set; } = string.Empty;
-    public string City { get; set; } = string.Empty;
-    public string State { get; set; } = string.Empty;
+    [MaxLength(3)] public string Currency { get; set; } = "MXN";
+    [MaxLength(300)] public string AddressLine { get; set; } = string.Empty;
+    [MaxLength(100)] public string City { get; set; } = string.Empty;
+    [MaxLength(100)] public string State { get; set; } = string.Empty;
 
     // Nullable, unlike the other address fields: not yet collected from the form, so it's
     // always sent as an empty string. [FromForm] binding treats an empty string as "no value
     // supplied", which trips the implicit-required check ASP.NET Core adds for non-nullable
     // reference types — making this nullable avoids that false validation failure.
-    public string? ZipCode { get; set; }
+    [MaxLength(20)] public string? ZipCode { get; set; }
     public double Latitude { get; set; }
     public double Longitude { get; set; }
     public int Bedrooms { get; set; }
@@ -33,9 +33,9 @@ public class ListingCreateDto
     public decimal? GardenSizeSqm { get; set; }
     public bool HasHeatingCooling { get; set; }
     public decimal? HoaFee { get; set; }
-    public string? VideoTourUrl { get; set; }
+    [MaxLength(2048)] public string? VideoTourUrl { get; set; }
 
-    public string? LandUseZoning { get; set; }
+    [MaxLength(50)] public string? LandUseZoning { get; set; }
     public LandTenureType? LandTenure { get; set; }
     // Generous, sanity-check bounds (not precise Mexican zoning limits, which vary by
     // municipality) — just enough to reject obvious data-entry errors like a misplaced decimal

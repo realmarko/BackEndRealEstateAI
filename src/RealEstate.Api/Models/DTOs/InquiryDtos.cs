@@ -6,10 +6,10 @@ namespace RealEstate.Api.Models.DTOs;
 public class InquiryCreateDto
 {
     [Required] public Guid ListingId { get; set; }
-    [Required] public string SenderName { get; set; } = string.Empty;
-    [Required, EmailAddress] public string SenderEmail { get; set; } = string.Empty;
-    public string? SenderPhone { get; set; }
-    [Required] public string Message { get; set; } = string.Empty;
+    [Required, MaxLength(200)] public string SenderName { get; set; } = string.Empty;
+    [Required, EmailAddress, MaxLength(320)] public string SenderEmail { get; set; } = string.Empty;
+    [MaxLength(30)] public string? SenderPhone { get; set; }
+    [Required, MaxLength(5000)] public string Message { get; set; } = string.Empty;
     public FundingMethod? FundingMethod { get; set; }
     public PurchaseTimeline? Timeline { get; set; }
     public bool? HasAgent { get; set; }

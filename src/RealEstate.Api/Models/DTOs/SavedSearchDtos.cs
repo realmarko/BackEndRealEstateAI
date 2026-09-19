@@ -5,14 +5,14 @@ namespace RealEstate.Api.Models.DTOs;
 
 public class CreateSavedSearchDto
 {
-    [Required] public string Name { get; set; } = string.Empty;
+    [Required, MaxLength(200)] public string Name { get; set; } = string.Empty;
     public ListingType? ListingType { get; set; }
     public PropertyType? PropertyType { get; set; }
     public decimal? MinPrice { get; set; }
     public decimal? MaxPrice { get; set; }
     public int? MinBedrooms { get; set; }
     public int? MinBathrooms { get; set; }
-    public string? City { get; set; }
+    [MaxLength(100)] public string? City { get; set; }
 }
 
 public class SavedSearchDto

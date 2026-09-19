@@ -5,13 +5,13 @@ namespace RealEstate.Api.Models.DTOs;
 
 public class CreateAgentDto
 {
-    [Required] public string Phone { get; set; } = string.Empty;
-    public string? Company { get; set; }
+    [Required, MaxLength(30)] public string Phone { get; set; } = string.Empty;
+    [MaxLength(200)] public string? Company { get; set; }
     public bool IsIndependent { get; set; }
-    public string? Bio { get; set; }
+    [MaxLength(2000)] public string? Bio { get; set; }
 
     // Comma-separated from the form (e.g. "Buyer's Agent, Staging, Relocation") — split in the controller.
-    public string? Specialties { get; set; }
+    [MaxLength(500)] public string? Specialties { get; set; }
 
     // Uploaded from the device (multipart/form-data) and stored in S3 — see AgentsController.Create.
     public IFormFile? Photo { get; set; }
@@ -48,8 +48,8 @@ public class AgentSearchQuery
 
 public class ContactAgentDto
 {
-    [Required] public string Name { get; set; } = string.Empty;
-    [Required] public string Phone { get; set; } = string.Empty;
-    [Required, EmailAddress] public string Email { get; set; } = string.Empty;
-    [Required] public string Message { get; set; } = string.Empty;
+    [Required, MaxLength(200)] public string Name { get; set; } = string.Empty;
+    [Required, MaxLength(30)] public string Phone { get; set; } = string.Empty;
+    [Required, EmailAddress, MaxLength(320)] public string Email { get; set; } = string.Empty;
+    [Required, MaxLength(5000)] public string Message { get; set; } = string.Empty;
 }

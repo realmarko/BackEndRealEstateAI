@@ -4,10 +4,10 @@ namespace RealEstate.Api.Models.DTOs;
 
 public class RegisterDto
 {
-    [Required] public string FirstName { get; set; } = string.Empty;
-    [Required] public string LastName { get; set; } = string.Empty;
-    [Required, EmailAddress] public string Email { get; set; } = string.Empty;
-    [Required, MinLength(8)] public string Password { get; set; } = string.Empty;
+    [Required, MaxLength(100)] public string FirstName { get; set; } = string.Empty;
+    [Required, MaxLength(100)] public string LastName { get; set; } = string.Empty;
+    [Required, EmailAddress, MaxLength(320)] public string Email { get; set; } = string.Empty;
+    [Required, MinLength(8), MaxLength(128)] public string Password { get; set; } = string.Empty;
 
     // "Owner" (can publish listings), "Agent" (Owner + gets an agent directory profile), or "Buyer" (browse, favorite, message)
     public string Role { get; set; } = "Buyer";
@@ -15,7 +15,13 @@ public class RegisterDto
 
 public class LoginDto
 {
-    [Required, EmailAddress] public string Email { get; set; } = string.Empty;
+    [Required, EmailAddress, MaxLength(320)] public string Email { get; set; } = string.Empty;
+
+    // No MaxLength here on purpose: this validates a login attempt against whatever password
+    // an account already has, not a new one — RegisterDto.Password's cap only applies going
+    // forward. Nothing enforced a length limit before this change, so an existing account could
+    // genuinely have a password longer than any cap added here; rejecting it at model-binding
+    // would lock that user out before CheckPasswordAsync ever gets to compare hashes.
     [Required] public string Password { get; set; } = string.Empty;
 }
 
