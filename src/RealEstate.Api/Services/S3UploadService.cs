@@ -22,15 +22,20 @@ public class S3UploadService : IS3UploadService
 
     public async Task<string> UploadFileAsync(IFormFile file, string keyPrefix)
     {
-        var key = $"{keyPrefix}/{Guid.NewGuid()}{Path.GetExtension(file.FileName)}";
-
         using var stream = file.OpenReadStream();
+        return await UploadFileAsync(stream, file.ContentType, Path.GetExtension(file.FileName), keyPrefix);
+    }
+
+    public async Task<string> UploadFileAsync(Stream content, string contentType, string fileExtension, string keyPrefix)
+    {
+        var key = $"{keyPrefix}/{Guid.NewGuid()}{fileExtension}";
+
         var request = new PutObjectRequest
         {
             BucketName = _bucketName,
             Key = key,
-            InputStream = stream,
-            ContentType = file.ContentType
+            InputStream = content,
+            ContentType = contentType
         };
 
         await _s3Client.PutObjectAsync(request);

@@ -25,6 +25,9 @@ public class Agent
     public string? Bio { get; set; }
     public List<string> Specialties { get; set; } = new();
 
-    public List<Property> Properties { get; set; } = new();
+    // No Properties navigation here on purpose: the real "how many properties has this agent
+    // listed" answer comes from Listing.OwnerId == UserId (see AgentsController.CountListingsAsync)
+    // — Property is legacy/unused, and an Agent-side nav to it previously let PropertiesCount
+    // silently compute against always-empty data instead.
     public List<AgentReview> Reviews { get; set; } = new();
 }

@@ -60,7 +60,7 @@ public class RealEstateDbContext : DbContext
             entity.HasIndex(p => new { p.Latitude, p.Longitude });
 
             entity.HasOne(p => p.Agent)
-                  .WithMany(a => a.Properties)
+                  .WithMany()
                   .HasForeignKey(p => p.AgentId)
                   .OnDelete(DeleteBehavior.Restrict);
 

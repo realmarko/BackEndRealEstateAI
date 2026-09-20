@@ -37,6 +37,7 @@ builder.Services.Configure<S3Options>(builder.Configuration.GetSection("AWS:S3")
 builder.Services.AddDefaultAWSOptions(builder.Configuration.GetAWSOptions());
 builder.Services.AddAWSService<IAmazonS3>();
 builder.Services.AddScoped<IS3UploadService, S3UploadService>();
+builder.Services.AddScoped<IImageProcessingService, ImageProcessingService>();
 builder.Services.AddScoped<IPhotoUploadService, PhotoUploadService>();
 
 // ---- Email (SMTP) ----

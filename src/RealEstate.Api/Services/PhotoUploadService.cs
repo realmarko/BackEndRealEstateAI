@@ -9,11 +9,13 @@ public class PhotoUploadService : IPhotoUploadService
     private const long MaxPhotoBytes = 5 * 1024 * 1024;
 
     private readonly IS3UploadService _s3Service;
+    private readonly IImageProcessingService _imageProcessingService;
     private readonly ILogger<PhotoUploadService> _logger;
 
-    public PhotoUploadService(IS3UploadService s3Service, ILogger<PhotoUploadService> logger)
+    public PhotoUploadService(IS3UploadService s3Service, IImageProcessingService imageProcessingService, ILogger<PhotoUploadService> logger)
     {
         _s3Service = s3Service;
+        _imageProcessingService = imageProcessingService;
         _logger = logger;
     }
 
@@ -38,8 +40,22 @@ public class PhotoUploadService : IPhotoUploadService
         {
             foreach (var photo in photos)
             {
-                uploadedUrls.Add(await _s3Service.UploadFileAsync(photo, keyPrefix));
+                // Resize + recompress before it ever reaches S3 — see ImageProcessingService.
+                // A phone photo can be several MB at 4000x3000px; nobody views it larger than a
+                // listing gallery image, and every visitor re-downloads whatever gets stored here.
+                var processed = await _imageProcessingService.ProcessAsync(photo);
+                using (processed.Content)
+                {
+                    uploadedUrls.Add(await _s3Service.UploadFileAsync(
+                        processed.Content, processed.ContentType, processed.FileExtension, keyPrefix));
+                }
             }
+        }
+        catch (ImageProcessingException ex)
+        {
+            _logger.LogError(ex, "Failed to process photo for prefix {KeyPrefix}", keyPrefix);
+            await RollbackUploadsAsync(uploadedUrls);
+            return new PhotoUploadResult { ErrorKind = PhotoUploadErrorKind.InvalidType };
         }
         catch (Exception ex)
         {

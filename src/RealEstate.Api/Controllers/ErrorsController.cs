@@ -75,10 +75,12 @@ public class ErrorsController : ControllerBase
         return NoContent();
     }
 
-    // GET /api/errors?resolved=false&section=/api/listings&page=1&pageSize=20
+    // GET /api/errors?resolved=false&section=/api/listings&page=1&pageSize=10 — rows are grouped
+    // by (Source, Severity, Section, Message) so the same exception firing repeatedly shows up
+    // once with a Count, not as a wall of identical cards; see ErrorLogGroupDto.
     [HttpGet]
     [Authorize(Roles = "Admin")]
-    public async Task<ActionResult<PagedResult<ErrorLogDto>>> List(
+    public async Task<ActionResult<PagedResult<ErrorLogGroupDto>>> List(
         [FromQuery] bool? resolved,
         [FromQuery] ErrorSource? source,
         [FromQuery] string? section,
@@ -90,36 +92,73 @@ public class ErrorsController : ControllerBase
         if (source.HasValue) query = query.Where(e => e.Source == source.Value);
         if (!string.IsNullOrWhiteSpace(section)) query = query.Where(e => EF.Functions.ILike(e.Section, $"%{section}%"));
 
-        var totalCount = await query.CountAsync();
+        // Count of distinct signatures only — deliberately not counted from `grouped` below,
+        // which also computes the four sample subqueries per group; those are wasted work for a
+        // path that only needs how many groups exist, not their content.
+        var totalCount = await query
+            .GroupBy(e => new { e.Source, e.Severity, e.Section, e.Message })
+            .CountAsync();
+
+        var grouped = query
+            .GroupBy(e => new { e.Source, e.Severity, e.Section, e.Message })
+            .Select(g => new
+            {
+                g.Key.Source,
+                g.Key.Severity,
+                g.Key.Section,
+                g.Key.Message,
+                Count = g.Count(),
+                UnresolvedCount = g.Count(e => !e.Resolved),
+                FirstOccurredAt = g.Min(e => e.OccurredAt),
+                LastOccurredAt = g.Max(e => e.OccurredAt),
+                // Only true once every occurrence sharing this signature is resolved — under the
+                // resolved=true/false filters every row in a group already agrees (the filter
+                // itself guarantees it); this only does real work under the "all" filter, where a
+                // signature that recurred after being resolved should still read as unresolved.
+                Resolved = !g.Any(e => !e.Resolved),
+                // The single most recent occurrence in the group — its id is reused for the
+                // existing GetById/{id} stack-trace lookup (so expanding a group needs no new
+                // endpoint), and its user/trace fields stand in for the group in the summary row.
+                // Four separate correlated subqueries rather than one returning an anonymous
+                // object: EF Core/Npgsql can translate "ORDER BY ... LIMIT 1" per scalar column
+                // this way, but couldn't translate a single subquery projecting multiple columns
+                // at once here (threw "could not be translated" at request time — caught by
+                // actually calling this endpoint, not just by it compiling). Each subquery also
+                // breaks ties on Id — OccurredAt alone can tie within the same clock tick during
+                // a burst of identical errors, and an untied order isn't guaranteed to resolve
+                // all four subqueries to the same physical row.
+                SampleId = g.OrderByDescending(e => e.OccurredAt).ThenByDescending(e => e.Id).Select(e => e.Id).First(),
+                SampleHasStackTrace = g.OrderByDescending(e => e.OccurredAt).ThenByDescending(e => e.Id).Select(e => e.StackTrace != null).First(),
+                SampleUserEmail = g.OrderByDescending(e => e.OccurredAt).ThenByDescending(e => e.Id).Select(e => e.UserEmail).First(),
+                SampleUserAgent = g.OrderByDescending(e => e.OccurredAt).ThenByDescending(e => e.Id).Select(e => e.UserAgent).First()
+            });
+
         var safePage = Math.Max(page, 1);
         var safePageSize = Math.Clamp(pageSize, 1, 100);
 
-        // StackTrace deliberately excluded here — up to 4000 chars each (see ErrorLogService),
-        // and the admin UI only ever shows it for the one row a viewer expands, via the dedicated
-        // GetById below. Pulling it for every row on every page load/filter/paginate would be
-        // mostly-wasted DB and network I/O for text almost never read.
-        var items = await query
-            .OrderByDescending(e => e.OccurredAt)
+        var items = await grouped
+            .OrderByDescending(g => g.LastOccurredAt)
             .Skip((safePage - 1) * safePageSize)
             .Take(safePageSize)
-            .Select(e => new ErrorLogDto
+            .Select(g => new ErrorLogGroupDto
             {
-                Id = e.Id,
-                OccurredAt = e.OccurredAt,
-                Source = e.Source.ToString(),
-                Severity = e.Severity.ToString(),
-                Section = e.Section,
-                Message = e.Message,
-                HasStackTrace = e.StackTrace != null,
-                UserId = e.UserId,
-                UserEmail = e.UserEmail,
-                UserAgent = e.UserAgent,
-                Resolved = e.Resolved,
-                ResolvedAt = e.ResolvedAt
+                Source = g.Source.ToString(),
+                Severity = g.Severity.ToString(),
+                Section = g.Section,
+                Message = g.Message,
+                Count = g.Count,
+                UnresolvedCount = g.UnresolvedCount,
+                FirstOccurredAt = g.FirstOccurredAt,
+                LastOccurredAt = g.LastOccurredAt,
+                SampleId = g.SampleId,
+                HasStackTrace = g.SampleHasStackTrace,
+                SampleUserEmail = g.SampleUserEmail,
+                SampleUserAgent = g.SampleUserAgent,
+                Resolved = g.Resolved
             })
             .ToListAsync();
 
-        return Ok(new PagedResult<ErrorLogDto> { Items = items, Page = safePage, PageSize = safePageSize, TotalCount = totalCount });
+        return Ok(new PagedResult<ErrorLogGroupDto> { Items = items, Page = safePage, PageSize = safePageSize, TotalCount = totalCount });
     }
 
     // GET /api/errors/{id} — full detail including StackTrace, fetched only when the admin
@@ -146,6 +185,34 @@ public class ErrorsController : ControllerBase
         entry.ResolvedAt = DateTime.UtcNow;
         entry.ResolvedByUserId = User.GetUserId();
         await _db.SaveChangesAsync();
+
+        return NoContent();
+    }
+
+    // PATCH /api/errors/resolve-group — resolves every currently-unresolved occurrence sharing
+    // a signature at once, so clicking "Resolve" on a grouped row (Count = 40) doesn't leave 39
+    // identical rows still sitting in the unresolved list.
+    [HttpPatch("resolve-group")]
+    [Authorize(Roles = "Admin")]
+    public async Task<IActionResult> ResolveGroup(ResolveGroupDto dto)
+    {
+        if (!Enum.TryParse<ErrorSource>(dto.Source, out var source) || !Enum.TryParse<ErrorSeverity>(dto.Severity, out var severity))
+            return BadRequest(new { message = "Invalid source or severity." });
+
+        var userId = User.GetUserId();
+        var now = DateTime.UtcNow;
+
+        // No NotFound-on-zero-updated: 0 rows can mean "already resolved" just as easily as
+        // "never existed" (a second click, a second admin tab, or this same signature resolving
+        // via the "all" filter's own rollup) — resolving an already-resolved group is a no-op,
+        // not a failure, and treating it as one surfaced a false error toast for a request that
+        // actually left the group in the exact state the admin wanted.
+        await _db.ErrorLogs
+            .Where(e => e.Source == source && e.Severity == severity && e.Section == dto.Section && e.Message == dto.Message && !e.Resolved)
+            .ExecuteUpdateAsync(setters => setters
+                .SetProperty(e => e.Resolved, true)
+                .SetProperty(e => e.ResolvedAt, now)
+                .SetProperty(e => e.ResolvedByUserId, userId));
 
         return NoContent();
     }

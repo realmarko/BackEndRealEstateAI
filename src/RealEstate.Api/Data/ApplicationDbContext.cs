@@ -109,6 +109,14 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, IdentityR
             // account is later deleted, rather than being cascade-deleted or blocking the delete.
             entity.HasIndex(e => e.OccurredAt);
             entity.HasIndex(e => e.Resolved);
+            // Backs ErrorsController's grouping GROUP BY, its four per-group "latest occurrence"
+            // subqueries, and ResolveGroup's bulk WHERE — all filtered on this signature. Message
+            // is deliberately left out of the index itself (Postgres's B-tree row-size limit is
+            // ~2.7KB, and Message can run up to 2000 chars/~8KB worst case per ErrorsController's
+            // own MaxMessageLength) — Source/Severity/Section already narrows to a small handful
+            // of rows in practice, and Postgres filters the rest by Message with a plain scan over
+            // that narrowed set instead of needing it in the index too.
+            entity.HasIndex(e => new { e.Source, e.Severity, e.Section });
         });
     }
 }

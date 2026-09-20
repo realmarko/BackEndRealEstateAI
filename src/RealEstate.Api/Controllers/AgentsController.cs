@@ -67,29 +67,55 @@ public class AgentsController : ControllerBase
         var page = Math.Max(q.Page, 1);
         var pageSize = Math.Clamp(q.PageSize, 1, 100);
 
-        // Projects PropertiesCount directly (a SQL COUNT subquery) instead of Include()-ing
-        // every Property row just to read .Count in memory.
-        var items = await query
+        var pageItems = await query
             .OrderBy(a => a.Name)
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
-            .Select(a => new AgentDto
+            .Select(a => new
             {
-                Id = a.Id,
+                a.Id,
+                a.UserId,
                 IsOwnProfile = currentUserId != null && a.UserId == currentUserId,
-                Name = a.Name,
-                Email = a.Email,
-                Phone = a.Phone,
+                a.Name,
+                a.Email,
+                a.Phone,
                 Company = a.Brokerage != null ? a.Brokerage.Name : null,
-                IsIndependent = a.IsIndependent,
-                PhotoUrl = a.PhotoUrl,
-                Bio = a.Bio,
-                Specialties = a.Specialties,
-                PropertiesCount = a.Properties.Count,
-                AverageRating = a.Reviews.Any() ? a.Reviews.Average(r => (double)r.Rating) : null,
+                a.IsIndependent,
+                a.PhotoUrl,
+                a.Bio,
+                a.Specialties,
+                AverageRating = a.Reviews.Any() ? a.Reviews.Average(r => (double)r.Rating) : (double?)null,
                 ReviewsCount = a.Reviews.Count
             })
             .ToListAsync();
+
+        // Real property counts come from Listing (ApplicationDbContext), matched by
+        // Agent.UserId == Listing.OwnerId — Agent.Properties is the legacy, unused Property
+        // entity and is always empty. Counted in one grouped query across the page instead of
+        // per-agent, since Agent and Listing live in separate DbContexts (no SQL join possible).
+        var pageUserIds = pageItems.Where(a => a.UserId.HasValue).Select(a => a.UserId!.Value).ToList();
+        var listingCounts = await _listingsDb.Listings
+            .Where(l => pageUserIds.Contains(l.OwnerId) && l.Status != ListingStatus.Removed)
+            .GroupBy(l => l.OwnerId)
+            .Select(g => new { OwnerId = g.Key, Count = g.Count() })
+            .ToDictionaryAsync(g => g.OwnerId, g => g.Count);
+
+        var items = pageItems.Select(a => new AgentDto
+        {
+            Id = a.Id,
+            IsOwnProfile = a.IsOwnProfile,
+            Name = a.Name,
+            Email = a.Email,
+            Phone = a.Phone,
+            Company = a.Company,
+            IsIndependent = a.IsIndependent,
+            PhotoUrl = a.PhotoUrl,
+            Bio = a.Bio,
+            Specialties = a.Specialties,
+            PropertiesCount = a.UserId.HasValue && listingCounts.TryGetValue(a.UserId.Value, out var count) ? count : 0,
+            AverageRating = a.AverageRating,
+            ReviewsCount = a.ReviewsCount
+        }).ToList();
 
         return Ok(new PagedResult<AgentDto>
         {
@@ -106,26 +132,51 @@ public class AgentsController : ControllerBase
         var currentUserId = User.TryGetUserId();
         var agent = await _db.Agents
             .Where(a => a.Id == id)
-            .Select(a => new AgentDto
+            .Select(a => new
             {
-                Id = a.Id,
+                a.Id,
+                a.UserId,
                 IsOwnProfile = currentUserId != null && a.UserId == currentUserId,
-                Name = a.Name,
-                Email = a.Email,
-                Phone = a.Phone,
+                a.Name,
+                a.Email,
+                a.Phone,
                 Company = a.Brokerage != null ? a.Brokerage.Name : null,
-                IsIndependent = a.IsIndependent,
-                PhotoUrl = a.PhotoUrl,
-                Bio = a.Bio,
-                Specialties = a.Specialties,
-                PropertiesCount = a.Properties.Count,
-                AverageRating = a.Reviews.Any() ? a.Reviews.Average(r => (double)r.Rating) : null,
+                a.IsIndependent,
+                a.PhotoUrl,
+                a.Bio,
+                a.Specialties,
+                AverageRating = a.Reviews.Any() ? a.Reviews.Average(r => (double)r.Rating) : (double?)null,
                 ReviewsCount = a.Reviews.Count
             })
             .FirstOrDefaultAsync();
 
-        return agent is null ? NotFound() : Ok(agent);
+        if (agent is null) return NotFound();
+
+        return Ok(new AgentDto
+        {
+            Id = agent.Id,
+            IsOwnProfile = agent.IsOwnProfile,
+            Name = agent.Name,
+            Email = agent.Email,
+            Phone = agent.Phone,
+            Company = agent.Company,
+            IsIndependent = agent.IsIndependent,
+            PhotoUrl = agent.PhotoUrl,
+            Bio = agent.Bio,
+            Specialties = agent.Specialties,
+            PropertiesCount = await CountListingsAsync(agent.UserId),
+            AverageRating = agent.AverageRating,
+            ReviewsCount = agent.ReviewsCount
+        });
     }
+
+    // Real property counts come from Listing (ApplicationDbContext), matched by
+    // Agent.UserId == Listing.OwnerId — Agent.Properties is the legacy, unused Property entity
+    // and is always empty, so counting from it always reported 0 regardless of real listings.
+    private async Task<int> CountListingsAsync(Guid? userId) =>
+        userId is null
+            ? 0
+            : await _listingsDb.Listings.CountAsync(l => l.OwnerId == userId && l.Status != ListingStatus.Removed);
 
     // GET /api/agents/5/listings — the agent's own listings (Listing.OwnerId == Agent.UserId),
     // shown on their public profile so a visitor can see the real properties, not just a count.
@@ -202,7 +253,7 @@ public class AgentsController : ControllerBase
             return Conflict(new { message = "An agent profile already exists for this account." });
         }
 
-        return CreatedAtAction(nameof(GetById), new { id = agent.Id }, ToDto(agent, isOwnProfile: true));
+        return CreatedAtAction(nameof(GetById), new { id = agent.Id }, await ToDtoAsync(agent, isOwnProfile: true));
     }
 
     // Returns the current user's own agent profile — lets the edit form load without knowing its id.
@@ -211,14 +262,13 @@ public class AgentsController : ControllerBase
     public async Task<ActionResult<AgentDto>> GetMine()
     {
         var userId = User.GetUserId();
-        // ToDto reads a.Reviews/a.Properties/a.Company (via a.Brokerage) in memory, so they
-        // must be eager-loaded here — unlike Search/GetById, which project straight to SQL.
+        // ToDtoAsync reads a.Reviews/a.Company (via a.Brokerage) in memory, so they must be
+        // eager-loaded here — unlike Search/GetById, which project straight to SQL.
         var agent = await _db.Agents
             .Include(a => a.Reviews)
-            .Include(a => a.Properties)
             .Include(a => a.Brokerage)
             .FirstOrDefaultAsync(a => a.UserId == userId);
-        return agent is null ? NotFound() : Ok(ToDto(agent, isOwnProfile: true));
+        return agent is null ? NotFound() : Ok(await ToDtoAsync(agent, isOwnProfile: true));
     }
 
     // Updates the current user's own agent profile. Never takes an id from the client — the row
@@ -228,14 +278,13 @@ public class AgentsController : ControllerBase
     public async Task<ActionResult<AgentDto>> UpdateMine([FromForm] CreateAgentDto dto)
     {
         var userId = User.GetUserId();
-        // Same reasoning as GetMine: ToDto's counts need Reviews/Properties eager-loaded, and
+        // Same reasoning as GetMine: ToDtoAsync's review count needs Reviews eager-loaded, and
         // Brokerage must be loaded too — assigning agent.Brokerage below only updates the FK
         // correctly if EF has a prior snapshot of that navigation to compare against; on a
         // not-yet-loaded reference navigation, EF's change tracker can't tell "changed to null"
         // from "was already null", and BrokerageId would silently keep its old database value.
         var agent = await _db.Agents
             .Include(a => a.Reviews)
-            .Include(a => a.Properties)
             .Include(a => a.Brokerage)
             .FirstOrDefaultAsync(a => a.UserId == userId);
         if (agent is null) return NotFound();
@@ -270,7 +319,7 @@ public class AgentsController : ControllerBase
 
         await _db.SaveChangesAsync();
 
-        return Ok(ToDto(agent, isOwnProfile: true));
+        return Ok(await ToDtoAsync(agent, isOwnProfile: true));
     }
 
     // Resolves an existing brokerage by name (case-insensitive, so "Century 21" and "century 21"
@@ -481,7 +530,7 @@ public class AgentsController : ControllerBase
             ? new List<string>()
             : raw.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList();
 
-    private static AgentDto ToDto(Agent a, bool isOwnProfile = false) => new()
+    private async Task<AgentDto> ToDtoAsync(Agent a, bool isOwnProfile = false) => new()
     {
         Id = a.Id,
         IsOwnProfile = isOwnProfile,
@@ -493,7 +542,7 @@ public class AgentsController : ControllerBase
         PhotoUrl = a.PhotoUrl,
         Bio = a.Bio,
         Specialties = a.Specialties,
-        PropertiesCount = a.Properties.Count,
+        PropertiesCount = await CountListingsAsync(a.UserId),
         AverageRating = a.Reviews.Count > 0 ? a.Reviews.Average(r => (double)r.Rating) : null,
         ReviewsCount = a.Reviews.Count
     };
