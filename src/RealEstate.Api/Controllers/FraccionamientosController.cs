@@ -192,7 +192,9 @@ public class FraccionamientosController : ControllerBase
                 State = f.State,
                 Stage = f.Stage,
                 MasterPlanImageUrl = f.MasterPlanImageUrl,
-                PublishedAt = f.PublishedAt
+                PublishedAt = f.PublishedAt,
+                Latitude = f.Latitude,
+                Longitude = f.Longitude
             })
             .ToListAsync();
 

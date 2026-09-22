@@ -151,6 +151,10 @@ public class FraccionamientoPublicListItemDto
     public string? Stage { get; set; }
     public string? MasterPlanImageUrl { get; set; }
     public DateTime? PublishedAt { get; set; }
+    // Included here (not just on the detail DTO) so the public map can plot every published
+    // development as a marker without an extra round-trip per pin.
+    public double Latitude { get; set; }
+    public double Longitude { get; set; }
 }
 
 public class FraccionamientoPublicDetailDto
