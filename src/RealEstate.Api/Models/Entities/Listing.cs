@@ -78,6 +78,11 @@ public class Listing
     // Valuation
     public decimal? CadastralValue { get; set; }             // valor catastral
 
+    // Set when this listing is a lot/house inside a published (or still-under-review)
+    // Fraccionamiento — see Fraccionamiento.cs for why units aren't a separate entity.
+    public Guid? FraccionamientoId { get; set; }
+    public Fraccionamiento? Fraccionamiento { get; set; }
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 

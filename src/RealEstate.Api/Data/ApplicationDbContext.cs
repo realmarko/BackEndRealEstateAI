@@ -17,6 +17,8 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, IdentityR
     public DbSet<SavedSearch> SavedSearches => Set<SavedSearch>();
     public DbSet<AgebPopulation> AgebPopulations => Set<AgebPopulation>();
     public DbSet<ErrorLog> ErrorLogs => Set<ErrorLog>();
+    public DbSet<Fraccionamiento> Fraccionamientos => Set<Fraccionamiento>();
+    public DbSet<FraccionamientoSource> FraccionamientoSources => Set<FraccionamientoSource>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -44,6 +46,14 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, IdentityR
                   .WithOne(h => h.Listing)
                   .HasForeignKey(h => h.ListingId)
                   .OnDelete(DeleteBehavior.Cascade);
+
+            // SetNull, not Cascade: deleting (or un-publishing away) a Fraccionamiento record must
+            // never take real, independently-owned listings down with it — the lot/house just
+            // stops being associated with a development.
+            entity.HasOne(l => l.Fraccionamiento)
+                  .WithMany(f => f.Listings)
+                  .HasForeignKey(l => l.FraccionamientoId)
+                  .OnDelete(DeleteBehavior.SetNull);
         });
 
         builder.Entity<ListingPriceHistory>(entity =>
@@ -117,6 +127,19 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, IdentityR
             // of rows in practice, and Postgres filters the rest by Message with a plain scan over
             // that narrowed set instead of needing it in the index too.
             entity.HasIndex(e => new { e.Source, e.Severity, e.Section });
+        });
+
+        builder.Entity<Fraccionamiento>(entity =>
+        {
+            // Backs both the admin queue's status filter and the ingestion endpoint's
+            // dedup lookup (status + a proximity search over lat/lng).
+            entity.HasIndex(f => f.Status);
+            entity.HasIndex(f => new { f.Latitude, f.Longitude });
+
+            entity.HasMany(f => f.Sources)
+                  .WithOne(s => s.Fraccionamiento)
+                  .HasForeignKey(s => s.FraccionamientoId)
+                  .OnDelete(DeleteBehavior.Cascade);
         });
     }
 }
