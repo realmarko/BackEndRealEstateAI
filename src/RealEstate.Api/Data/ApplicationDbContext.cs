@@ -16,6 +16,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, IdentityR
     public DbSet<ListingPriceHistory> ListingPriceHistories => Set<ListingPriceHistory>();
     public DbSet<SavedSearch> SavedSearches => Set<SavedSearch>();
     public DbSet<AgebPopulation> AgebPopulations => Set<AgebPopulation>();
+    public DbSet<MunicipalBoundary> MunicipalBoundaries => Set<MunicipalBoundary>();
     public DbSet<ErrorLog> ErrorLogs => Set<ErrorLog>();
     public DbSet<Fraccionamiento> Fraccionamientos => Set<Fraccionamiento>();
     public DbSet<FraccionamientoSource> FraccionamientoSources => Set<FraccionamientoSource>();
@@ -110,6 +111,15 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, IdentityR
             // GIST, not the default B-tree — required for PostGIS's ST_Contains to use an index
             // instead of scanning every AGEB polygon on every opportunity-analysis map click.
             entity.HasIndex(a => a.Boundary).HasMethod("GIST");
+        });
+
+        builder.Entity<MunicipalBoundary>(entity =>
+        {
+            entity.HasKey(m => m.Cvegeo);
+            entity.Property(m => m.Cvegeo).HasMaxLength(5);
+            entity.Property(m => m.Name).HasMaxLength(100);
+            entity.Property(m => m.StateName).HasMaxLength(100);
+            entity.HasIndex(m => m.Boundary).HasMethod("GIST");
         });
 
         builder.Entity<ErrorLog>(entity =>
