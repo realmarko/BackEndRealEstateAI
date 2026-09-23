@@ -16,10 +16,7 @@ public class Listing
     public decimal Price { get; set; }
     public string Currency { get; set; } = "MXN";
 
-    public string AddressLine { get; set; } = string.Empty;
-    public string City { get; set; } = string.Empty;
-    public string State { get; set; } = string.Empty;
-    public string ZipCode { get; set; } = string.Empty;
+    public ListingAddress? Address { get; set; }
 
     // Used for Google Maps pins
     public double Latitude { get; set; }

@@ -23,6 +23,7 @@ public class FavoritesController : ControllerBase
         var favorites = await _db.Favorites
             .Include(f => f.Listing).ThenInclude(l => l!.Images)
             .Include(f => f.Listing).ThenInclude(l => l!.Owner)
+            .Include(f => f.Listing).ThenInclude(l => l!.Address)
             .Where(f => f.UserId == userId)
             .OrderByDescending(f => f.CreatedAt)
             .ToListAsync();

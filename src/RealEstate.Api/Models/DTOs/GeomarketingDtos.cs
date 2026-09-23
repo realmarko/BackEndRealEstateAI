@@ -11,6 +11,13 @@ public class MunicipalityListItemDto
 {
     public string Cvegeo { get; set; } = string.Empty;
     public string Name { get; set; } = string.Empty;
+    public string StateName { get; set; } = string.Empty;
+}
+
+public class StateListItemDto
+{
+    public string Code { get; set; } = string.Empty;
+    public string Name { get; set; } = string.Empty;
 }
 
 public class MunicipalityBoundaryDto

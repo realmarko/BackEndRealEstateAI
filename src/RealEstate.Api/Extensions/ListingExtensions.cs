@@ -5,7 +5,7 @@ namespace RealEstate.Api.Extensions;
 
 public static class ListingExtensions
 {
-    /// <summary>Maps a Listing entity (with its Images and Owner loaded) to the API's
+    /// <summary>Maps a Listing entity (with its Images, Owner, and Address loaded) to the API's
     /// ListingDto shape. Shared by ListingsController and AgentsController so both return
     /// listings in exactly the same shape.</summary>
     public static ListingDto ToDto(this Listing l) => new()
@@ -18,10 +18,12 @@ public static class ListingExtensions
         Status = l.Status.ToString(),
         Price = l.Price,
         Currency = l.Currency,
-        AddressLine = l.AddressLine,
-        City = l.City,
-        State = l.State,
-        ZipCode = l.ZipCode,
+        Street = l.Address?.Street ?? string.Empty,
+        Colonia = l.Address?.Colonia ?? string.Empty,
+        City = l.Address?.City ?? string.Empty,
+        State = l.Address?.State ?? string.Empty,
+        ZipCode = l.Address?.ZipCode ?? string.Empty,
+        Country = l.Address?.Country ?? string.Empty,
         Latitude = l.Latitude,
         Longitude = l.Longitude,
         Bedrooms = l.Bedrooms,

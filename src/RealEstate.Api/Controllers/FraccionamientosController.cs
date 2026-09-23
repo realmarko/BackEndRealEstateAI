@@ -214,6 +214,7 @@ public class FraccionamientosController : ControllerBase
         var listings = await _db.Listings.AsNoTracking()
             .Include(l => l.Images)
             .Include(l => l.Owner)
+            .Include(l => l.Address)
             .Where(l => l.FraccionamientoId == id && l.Status != ListingStatus.Removed)
             .OrderBy(l => l.Price)
             .ToListAsync();

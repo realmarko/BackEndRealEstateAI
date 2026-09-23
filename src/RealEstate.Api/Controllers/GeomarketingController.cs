@@ -142,7 +142,7 @@ public class GeomarketingController : ControllerBase
             var municipalities = await _db.MunicipalBoundaries
                 .AsNoTracking()
                 .OrderBy(m => m.Name)
-                .Select(m => new MunicipalityListItemDto { Cvegeo = m.Cvegeo, Name = m.Name })
+                .Select(m => new MunicipalityListItemDto { Cvegeo = m.Cvegeo, Name = m.Name, StateName = m.StateName })
                 .ToListAsync(cancellationToken);
 
             return Ok(municipalities);
@@ -151,6 +151,31 @@ public class GeomarketingController : ControllerBase
         {
             _logger.LogError(ex, "Failed to list municipalities");
             return StatusCode(StatusCodes.Status500InternalServerError, new { message = "Could not load municipalities right now." });
+        }
+    }
+
+    // GET /api/geomarketing/states — all 32 Mexican states, for the listing form's State field.
+    // Static reference data (seeded once, see the AddMexicanStates migration), unlike
+    // MunicipalBoundaries which only has real municipio/city data imported for Puebla so far —
+    // this lets the form offer every state even where there's no city catalog behind it yet.
+    [HttpGet("states")]
+    [EnableRateLimiting("population-density")]
+    public async Task<ActionResult<List<StateListItemDto>>> ListStates(CancellationToken cancellationToken)
+    {
+        try
+        {
+            var states = await _db.MexicanStates
+                .AsNoTracking()
+                .OrderBy(s => s.Name)
+                .Select(s => new StateListItemDto { Code = s.Code, Name = s.Name })
+                .ToListAsync(cancellationToken);
+
+            return Ok(states);
+        }
+        catch (Exception ex) when (ex is NpgsqlException or InvalidOperationException)
+        {
+            _logger.LogError(ex, "Failed to list states");
+            return StatusCode(StatusCodes.Status500InternalServerError, new { message = "Could not load states right now." });
         }
     }
 

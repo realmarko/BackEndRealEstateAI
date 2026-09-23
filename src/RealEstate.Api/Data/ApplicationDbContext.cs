@@ -10,6 +10,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, IdentityR
     public ApplicationDbContext(DbContextOptions<ApplicationDbContext> options) : base(options) { }
 
     public DbSet<Listing> Listings => Set<Listing>();
+    public DbSet<ListingAddress> ListingAddresses => Set<ListingAddress>();
     public DbSet<ListingImage> ListingImages => Set<ListingImage>();
     public DbSet<Favorite> Favorites => Set<Favorite>();
     public DbSet<Inquiry> Inquiries => Set<Inquiry>();
@@ -17,6 +18,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, IdentityR
     public DbSet<SavedSearch> SavedSearches => Set<SavedSearch>();
     public DbSet<AgebPopulation> AgebPopulations => Set<AgebPopulation>();
     public DbSet<MunicipalBoundary> MunicipalBoundaries => Set<MunicipalBoundary>();
+    public DbSet<MexicanState> MexicanStates => Set<MexicanState>();
     public DbSet<ErrorLog> ErrorLogs => Set<ErrorLog>();
     public DbSet<Fraccionamiento> Fraccionamientos => Set<Fraccionamiento>();
     public DbSet<FraccionamientoSource> FraccionamientoSources => Set<FraccionamientoSource>();
@@ -30,12 +32,17 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, IdentityR
             entity.Property(l => l.Price).HasColumnType("numeric(14,2)");
             entity.Property(l => l.Currency).HasMaxLength(3).IsRequired().HasDefaultValue("MXN");
             entity.Property(l => l.Bathrooms).HasColumnType("numeric(4,1)");
-            entity.HasIndex(l => l.City);
             entity.HasIndex(l => new { l.Latitude, l.Longitude });
 
             entity.HasOne(l => l.Owner)
                   .WithMany(u => u.Listings)
                   .HasForeignKey(l => l.OwnerId)
+                  .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(l => l.Address)
+                  .WithOne(a => a.Listing)
+                  .HasForeignKey<ListingAddress>(a => a.ListingId)
+                  .IsRequired()
                   .OnDelete(DeleteBehavior.Cascade);
 
             entity.HasMany(l => l.Images)
@@ -55,6 +62,18 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, IdentityR
                   .WithMany(f => f.Listings)
                   .HasForeignKey(l => l.FraccionamientoId)
                   .OnDelete(DeleteBehavior.SetNull);
+        });
+
+        builder.Entity<ListingAddress>(entity =>
+        {
+            entity.HasKey(a => a.ListingId);
+            entity.Property(a => a.Street).HasMaxLength(300).IsRequired();
+            entity.Property(a => a.Colonia).HasMaxLength(150).IsRequired();
+            entity.Property(a => a.City).HasMaxLength(100).IsRequired();
+            entity.Property(a => a.State).HasMaxLength(100).IsRequired();
+            entity.Property(a => a.ZipCode).HasMaxLength(20).IsRequired();
+            entity.Property(a => a.Country).HasMaxLength(100).IsRequired();
+            entity.HasIndex(a => a.City);
         });
 
         builder.Entity<ListingPriceHistory>(entity =>
@@ -120,6 +139,13 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, IdentityR
             entity.Property(m => m.Name).HasMaxLength(100);
             entity.Property(m => m.StateName).HasMaxLength(100);
             entity.HasIndex(m => m.Boundary).HasMethod("GIST");
+        });
+
+        builder.Entity<MexicanState>(entity =>
+        {
+            entity.HasKey(s => s.Code);
+            entity.Property(s => s.Code).HasMaxLength(2);
+            entity.Property(s => s.Name).HasMaxLength(100);
         });
 
         builder.Entity<ErrorLog>(entity =>

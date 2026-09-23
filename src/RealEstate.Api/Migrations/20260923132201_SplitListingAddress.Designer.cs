@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using NetTopologySuite.Geometries;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
@@ -12,9 +13,11 @@ using RealEstate.Api.Data;
 namespace RealEstate.Api.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260923132201_SplitListingAddress")]
+    partial class SplitListingAddress
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -980,25 +983,6 @@ namespace RealEstate.Api.Migrations
                         .HasDatabaseName("ix_listing_price_histories_listing_id_recorded_at");
 
                     b.ToTable("listing_price_histories", (string)null);
-                });
-
-            modelBuilder.Entity("RealEstate.Api.Models.Entities.MexicanState", b =>
-                {
-                    b.Property<string>("Code")
-                        .HasMaxLength(2)
-                        .HasColumnType("character varying(2)")
-                        .HasColumnName("code");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)")
-                        .HasColumnName("name");
-
-                    b.HasKey("Code")
-                        .HasName("pk_mexican_states");
-
-                    b.ToTable("mexican_states", (string)null);
                 });
 
             modelBuilder.Entity("RealEstate.Api.Models.Entities.MunicipalBoundary", b =>
