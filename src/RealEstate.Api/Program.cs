@@ -132,6 +132,18 @@ builder.Services.AddRateLimiter(options =>
             Window = TimeSpan.FromMinutes(1),
             QueueLimit = 0
         }));
+    // Per-IP: forgot-password sends a real email per request and deliberately always returns
+    // success (so it can't be used to enumerate which emails are registered) — a global window
+    // would let one bad actor exhaust everyone else's reset attempts, and per-IP is the only way
+    // left to bound the resulting email volume/cost.
+    options.AddPolicy("forgot-password", httpContext => RateLimitPartition.GetFixedWindowLimiter(
+        partitionKey: httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+        factory: _ => new FixedWindowRateLimiterOptions
+        {
+            PermitLimit = 3,
+            Window = TimeSpan.FromMinutes(15),
+            QueueLimit = 0
+        }));
     // Per-IP, not AddFixedWindowLimiter's single shared window: the map fires this on every
     // click with no debounce, so a global limit would let one visitor clicking around exhaust
     // the whole site's budget and silently 429 every other concurrent visitor's requests too.
