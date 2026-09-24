@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using NetTopologySuite.Geometries;
 using RealEstate.Api.Data;
+using RealEstate.Api.Extensions;
 using RealEstate.Api.Models.DTOs;
 
 namespace RealEstate.Api.Services;
@@ -16,8 +17,6 @@ public interface IPopulationDensityService
 
 public class PopulationDensityService : IPopulationDensityService
 {
-    private static readonly GeometryFactory GeometryFactory = new(new PrecisionModel(), 4326);
-
     private readonly ApplicationDbContext _db;
 
     public PopulationDensityService(ApplicationDbContext db)
@@ -29,7 +28,7 @@ public class PopulationDensityService : IPopulationDensityService
     {
         // NetTopologySuite Point takes (x, y) i.e. (longitude, latitude) — swapping these would
         // silently look up the wrong hemisphere's worth of AGEBs for most of Mexico.
-        var point = GeometryFactory.CreatePoint(new Coordinate(lng, lat));
+        var point = GeoFactory.Instance.CreatePoint(new Coordinate(lng, lat));
 
         var ageb = await _db.AgebPopulations
             .AsNoTracking()

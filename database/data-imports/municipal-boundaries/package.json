@@ -1,0 +1,12 @@
+{
+  "name": "municipal-boundaries-import",
+  "private": true,
+  "description": "One-off shapefile-to-SQL conversion for the municipal_boundaries import — see README.md.",
+  "scripts": {
+    "convert": "node convert.js"
+  },
+  "dependencies": {
+    "proj4": "^2.22.0",
+    "shapefile": "^0.6.6"
+  }
+}

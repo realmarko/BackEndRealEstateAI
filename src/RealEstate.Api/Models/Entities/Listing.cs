@@ -16,10 +16,7 @@ public class Listing
     public decimal Price { get; set; }
     public string Currency { get; set; } = "MXN";
 
-    public string AddressLine { get; set; } = string.Empty;
-    public string City { get; set; } = string.Empty;
-    public string State { get; set; } = string.Empty;
-    public string ZipCode { get; set; } = string.Empty;
+    public ListingAddress? Address { get; set; }
 
     // Used for Google Maps pins
     public double Latitude { get; set; }
@@ -77,6 +74,11 @@ public class Listing
 
     // Valuation
     public decimal? CadastralValue { get; set; }             // valor catastral
+
+    // Set when this listing is a lot/house inside a published (or still-under-review)
+    // Fraccionamiento — see Fraccionamiento.cs for why units aren't a separate entity.
+    public Guid? FraccionamientoId { get; set; }
+    public Fraccionamiento? Fraccionamiento { get; set; }
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;

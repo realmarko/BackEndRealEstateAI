@@ -58,6 +58,10 @@ builder.Services.AddScoped<IPopulationDensityService, PopulationDensityService>(
 // ---- Error logging (in-app admin view, alongside Sentry above) ----
 builder.Services.AddScoped<IErrorLogService, ErrorLogService>();
 
+// ---- Fraccionamientos detection (n8n pushes candidates in; admins review them) ----
+builder.Services.Configure<FraccionamientoOptions>(builder.Configuration.GetSection("Fraccionamientos"));
+builder.Services.AddScoped<IFraccionamientoIngestionService, FraccionamientoIngestionService>();
+
 // ---- Database (PostgreSQL) ----
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
 // The NTS plugin must be registered on the NpgsqlDataSource itself — passing UseNetTopologySuite

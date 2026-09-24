@@ -10,13 +10,18 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, IdentityR
     public ApplicationDbContext(DbContextOptions<ApplicationDbContext> options) : base(options) { }
 
     public DbSet<Listing> Listings => Set<Listing>();
+    public DbSet<ListingAddress> ListingAddresses => Set<ListingAddress>();
     public DbSet<ListingImage> ListingImages => Set<ListingImage>();
     public DbSet<Favorite> Favorites => Set<Favorite>();
     public DbSet<Inquiry> Inquiries => Set<Inquiry>();
     public DbSet<ListingPriceHistory> ListingPriceHistories => Set<ListingPriceHistory>();
     public DbSet<SavedSearch> SavedSearches => Set<SavedSearch>();
     public DbSet<AgebPopulation> AgebPopulations => Set<AgebPopulation>();
+    public DbSet<MunicipalBoundary> MunicipalBoundaries => Set<MunicipalBoundary>();
+    public DbSet<MexicanState> MexicanStates => Set<MexicanState>();
     public DbSet<ErrorLog> ErrorLogs => Set<ErrorLog>();
+    public DbSet<Fraccionamiento> Fraccionamientos => Set<Fraccionamiento>();
+    public DbSet<FraccionamientoSource> FraccionamientoSources => Set<FraccionamientoSource>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -27,12 +32,17 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, IdentityR
             entity.Property(l => l.Price).HasColumnType("numeric(14,2)");
             entity.Property(l => l.Currency).HasMaxLength(3).IsRequired().HasDefaultValue("MXN");
             entity.Property(l => l.Bathrooms).HasColumnType("numeric(4,1)");
-            entity.HasIndex(l => l.City);
             entity.HasIndex(l => new { l.Latitude, l.Longitude });
 
             entity.HasOne(l => l.Owner)
                   .WithMany(u => u.Listings)
                   .HasForeignKey(l => l.OwnerId)
+                  .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(l => l.Address)
+                  .WithOne(a => a.Listing)
+                  .HasForeignKey<ListingAddress>(a => a.ListingId)
+                  .IsRequired()
                   .OnDelete(DeleteBehavior.Cascade);
 
             entity.HasMany(l => l.Images)
@@ -44,6 +54,26 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, IdentityR
                   .WithOne(h => h.Listing)
                   .HasForeignKey(h => h.ListingId)
                   .OnDelete(DeleteBehavior.Cascade);
+
+            // SetNull, not Cascade: deleting (or un-publishing away) a Fraccionamiento record must
+            // never take real, independently-owned listings down with it — the lot/house just
+            // stops being associated with a development.
+            entity.HasOne(l => l.Fraccionamiento)
+                  .WithMany(f => f.Listings)
+                  .HasForeignKey(l => l.FraccionamientoId)
+                  .OnDelete(DeleteBehavior.SetNull);
+        });
+
+        builder.Entity<ListingAddress>(entity =>
+        {
+            entity.HasKey(a => a.ListingId);
+            entity.Property(a => a.Street).HasMaxLength(300).IsRequired();
+            entity.Property(a => a.Colonia).HasMaxLength(150).IsRequired();
+            entity.Property(a => a.City).HasMaxLength(100).IsRequired();
+            entity.Property(a => a.State).HasMaxLength(100).IsRequired();
+            entity.Property(a => a.ZipCode).HasMaxLength(20).IsRequired();
+            entity.Property(a => a.Country).HasMaxLength(100).IsRequired();
+            entity.HasIndex(a => a.City);
         });
 
         builder.Entity<ListingPriceHistory>(entity =>
@@ -102,6 +132,22 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, IdentityR
             entity.HasIndex(a => a.Boundary).HasMethod("GIST");
         });
 
+        builder.Entity<MunicipalBoundary>(entity =>
+        {
+            entity.HasKey(m => m.Cvegeo);
+            entity.Property(m => m.Cvegeo).HasMaxLength(5);
+            entity.Property(m => m.Name).HasMaxLength(100);
+            entity.Property(m => m.StateName).HasMaxLength(100);
+            entity.HasIndex(m => m.Boundary).HasMethod("GIST");
+        });
+
+        builder.Entity<MexicanState>(entity =>
+        {
+            entity.HasKey(s => s.Code);
+            entity.Property(s => s.Code).HasMaxLength(2);
+            entity.Property(s => s.Name).HasMaxLength(100);
+        });
+
         builder.Entity<ErrorLog>(entity =>
         {
             // No FK to ApplicationUser on purpose: an error log is an audit trail, not a live
@@ -117,6 +163,19 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, IdentityR
             // of rows in practice, and Postgres filters the rest by Message with a plain scan over
             // that narrowed set instead of needing it in the index too.
             entity.HasIndex(e => new { e.Source, e.Severity, e.Section });
+        });
+
+        builder.Entity<Fraccionamiento>(entity =>
+        {
+            // Backs both the admin queue's status filter and the ingestion endpoint's
+            // dedup lookup (status + a proximity search over lat/lng).
+            entity.HasIndex(f => f.Status);
+            entity.HasIndex(f => new { f.Latitude, f.Longitude });
+
+            entity.HasMany(f => f.Sources)
+                  .WithOne(s => s.Fraccionamiento)
+                  .HasForeignKey(s => s.FraccionamientoId)
+                  .OnDelete(DeleteBehavior.Cascade);
         });
     }
 }

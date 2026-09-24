@@ -189,6 +189,7 @@ public class AgentsController : ControllerBase
         var listings = await _listingsDb.Listings
             .Include(l => l.Images)
             .Include(l => l.Owner)
+            .Include(l => l.Address)
             .Where(l => l.OwnerId == userId && l.Status != ListingStatus.Removed)
             .OrderByDescending(l => l.CreatedAt)
             .ToListAsync();

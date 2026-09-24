@@ -38,7 +38,7 @@ public class InquiriesController : ControllerBase
     [HttpPost]
     public async Task<IActionResult> Create(InquiryCreateDto dto)
     {
-        var listing = await _db.Listings.FirstOrDefaultAsync(l => l.Id == dto.ListingId);
+        var listing = await _db.Listings.Include(l => l.Address).FirstOrDefaultAsync(l => l.Id == dto.ListingId);
         if (listing is null) return NotFound(new { message = "Listing not found" });
 
         _db.Inquiries.Add(new Inquiry
@@ -78,12 +78,16 @@ public class InquiriesController : ControllerBase
             var subject = $"Ficha técnica: {listing.Title}";
             var body =
                 $"Gracias por tu interés en esta propiedad:\n\n" +
-                $"{listing.Title}\n{listing.AddressLine}, {listing.City}\n{listing.Currency} {listing.Price}\n\n" +
+                $"{listing.Title}\n{listing.Address!.ToEmailLine()}\n{listing.Currency} {listing.Price}\n\n" +
                 $"Consulta la ficha técnica completa (fotos, características y más) aquí:\n{listingUrl}\n\n" +
                 "Un agente se pondrá en contacto contigo pronto.";
             await _emailService.SendAsync(toEmail, toName, subject, body);
         }
-        catch (Exception ex) when (ex is SmtpException or FormatException or ArgumentException or InvalidOperationException)
+        // NullReferenceException included alongside the SMTP/formatting failures this filter was
+        // written for: the inquiry above this call already saved successfully, so a null
+        // listing.Address (which should never happen, but this is a best-effort notification,
+        // not the inquiry itself) must not turn into a 500 for a request that already succeeded.
+        catch (Exception ex) when (ex is SmtpException or FormatException or ArgumentException or InvalidOperationException or NullReferenceException)
         {
             _logger.LogError(ex, "Failed to send fact-sheet email to {Email} for listing {ListingId}", toEmail, listing.Id);
         }

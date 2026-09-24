@@ -12,15 +12,20 @@ public class ListingCreateDto
     public PropertyType PropertyType { get; set; }
     public decimal Price { get; set; }
     [MaxLength(3)] public string Currency { get; set; } = "MXN";
-    [MaxLength(300)] public string AddressLine { get; set; } = string.Empty;
+    [MaxLength(300)] public string Street { get; set; } = string.Empty;
+
+    // Nullable, like ZipCode below: [FromForm] binding's implicit-required check for
+    // non-nullable reference types rejects an empty string, not just a missing key — and every
+    // listing that existed before this field split genuinely has no colonia (it didn't exist as
+    // a concept yet), so the frontend form leaves it optional and sends "" for those.
+    [MaxLength(150)] public string? Colonia { get; set; }
     [MaxLength(100)] public string City { get; set; } = string.Empty;
     [MaxLength(100)] public string State { get; set; } = string.Empty;
 
-    // Nullable, unlike the other address fields: not yet collected from the form, so it's
-    // always sent as an empty string. [FromForm] binding treats an empty string as "no value
-    // supplied", which trips the implicit-required check ASP.NET Core adds for non-nullable
-    // reference types — making this nullable avoids that false validation failure.
+    // Nullable for the same reason as Colonia above — not every listing has a known zip code,
+    // and the frontend form leaves this optional too.
     [MaxLength(20)] public string? ZipCode { get; set; }
+    [MaxLength(100)] public string Country { get; set; } = "México";
     public double Latitude { get; set; }
     public double Longitude { get; set; }
     public int Bedrooms { get; set; }
@@ -87,10 +92,12 @@ public class ListingDto
     public string Status { get; set; } = string.Empty;
     public decimal Price { get; set; }
     public string Currency { get; set; } = "MXN";
-    public string AddressLine { get; set; } = string.Empty;
+    public string Street { get; set; } = string.Empty;
+    public string Colonia { get; set; } = string.Empty;
     public string City { get; set; } = string.Empty;
     public string State { get; set; } = string.Empty;
     public string ZipCode { get; set; } = string.Empty;
+    public string Country { get; set; } = string.Empty;
     public double Latitude { get; set; }
     public double Longitude { get; set; }
     public int Bedrooms { get; set; }

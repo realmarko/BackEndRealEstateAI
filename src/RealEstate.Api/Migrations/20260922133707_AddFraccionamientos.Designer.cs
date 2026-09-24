@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using NetTopologySuite.Geometries;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
@@ -12,9 +13,11 @@ using RealEstate.Api.Data;
 namespace RealEstate.Api.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260922133707_AddFraccionamientos")]
+    partial class AddFraccionamientos
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -647,6 +650,11 @@ namespace RealEstate.Api.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
+                    b.Property<string>("AddressLine")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("address_line");
+
                     b.Property<int>("AreaSqFt")
                         .HasColumnType("integer")
                         .HasColumnName("area_sq_ft");
@@ -662,6 +670,11 @@ namespace RealEstate.Api.Migrations
                     b.Property<decimal?>("CadastralValue")
                         .HasColumnType("numeric")
                         .HasColumnName("cadastral_value");
+
+                    b.Property<string>("City")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("city");
 
                     b.Property<decimal?>("CosCoefficient")
                         .HasColumnType("numeric")
@@ -816,6 +829,11 @@ namespace RealEstate.Api.Migrations
                         .HasColumnType("integer")
                         .HasColumnName("property_type");
 
+                    b.Property<string>("State")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("state");
+
                     b.Property<int>("Status")
                         .HasColumnType("integer")
                         .HasColumnName("status");
@@ -845,8 +863,16 @@ namespace RealEstate.Api.Migrations
                         .HasColumnType("integer")
                         .HasColumnName("year_built");
 
+                    b.Property<string>("ZipCode")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("zip_code");
+
                     b.HasKey("Id")
                         .HasName("pk_listings");
+
+                    b.HasIndex("City")
+                        .HasDatabaseName("ix_listings_city");
 
                     b.HasIndex("FraccionamientoId")
                         .HasDatabaseName("ix_listings_fraccionamiento_id");
@@ -858,57 +884,6 @@ namespace RealEstate.Api.Migrations
                         .HasDatabaseName("ix_listings_latitude_longitude");
 
                     b.ToTable("listings", (string)null);
-                });
-
-            modelBuilder.Entity("RealEstate.Api.Models.Entities.ListingAddress", b =>
-                {
-                    b.Property<Guid>("ListingId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("listing_id");
-
-                    b.Property<string>("City")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)")
-                        .HasColumnName("city");
-
-                    b.Property<string>("Colonia")
-                        .IsRequired()
-                        .HasMaxLength(150)
-                        .HasColumnType("character varying(150)")
-                        .HasColumnName("colonia");
-
-                    b.Property<string>("Country")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)")
-                        .HasColumnName("country");
-
-                    b.Property<string>("State")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)")
-                        .HasColumnName("state");
-
-                    b.Property<string>("Street")
-                        .IsRequired()
-                        .HasMaxLength(300)
-                        .HasColumnType("character varying(300)")
-                        .HasColumnName("street");
-
-                    b.Property<string>("ZipCode")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
-                        .HasColumnName("zip_code");
-
-                    b.HasKey("ListingId")
-                        .HasName("pk_listing_addresses");
-
-                    b.HasIndex("City")
-                        .HasDatabaseName("ix_listing_addresses_city");
-
-                    b.ToTable("listing_addresses", (string)null);
                 });
 
             modelBuilder.Entity("RealEstate.Api.Models.Entities.ListingImage", b =>
@@ -980,60 +955,6 @@ namespace RealEstate.Api.Migrations
                         .HasDatabaseName("ix_listing_price_histories_listing_id_recorded_at");
 
                     b.ToTable("listing_price_histories", (string)null);
-                });
-
-            modelBuilder.Entity("RealEstate.Api.Models.Entities.MexicanState", b =>
-                {
-                    b.Property<string>("Code")
-                        .HasMaxLength(2)
-                        .HasColumnType("character varying(2)")
-                        .HasColumnName("code");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)")
-                        .HasColumnName("name");
-
-                    b.HasKey("Code")
-                        .HasName("pk_mexican_states");
-
-                    b.ToTable("mexican_states", (string)null);
-                });
-
-            modelBuilder.Entity("RealEstate.Api.Models.Entities.MunicipalBoundary", b =>
-                {
-                    b.Property<string>("Cvegeo")
-                        .HasMaxLength(5)
-                        .HasColumnType("character varying(5)")
-                        .HasColumnName("cvegeo");
-
-                    b.Property<Geometry>("Boundary")
-                        .IsRequired()
-                        .HasColumnType("geometry")
-                        .HasColumnName("boundary");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)")
-                        .HasColumnName("name");
-
-                    b.Property<string>("StateName")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)")
-                        .HasColumnName("state_name");
-
-                    b.HasKey("Cvegeo")
-                        .HasName("pk_municipal_boundaries");
-
-                    b.HasIndex("Boundary")
-                        .HasDatabaseName("ix_municipal_boundaries_boundary");
-
-                    NpgsqlIndexBuilderExtensions.HasMethod(b.HasIndex("Boundary"), "GIST");
-
-                    b.ToTable("municipal_boundaries", (string)null);
                 });
 
             modelBuilder.Entity("RealEstate.Api.Models.Entities.SavedSearch", b =>
@@ -1223,18 +1144,6 @@ namespace RealEstate.Api.Migrations
                     b.Navigation("Owner");
                 });
 
-            modelBuilder.Entity("RealEstate.Api.Models.Entities.ListingAddress", b =>
-                {
-                    b.HasOne("RealEstate.Api.Models.Entities.Listing", "Listing")
-                        .WithOne("Address")
-                        .HasForeignKey("RealEstate.Api.Models.Entities.ListingAddress", "ListingId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired()
-                        .HasConstraintName("fk_listing_addresses_listings_listing_id");
-
-                    b.Navigation("Listing");
-                });
-
             modelBuilder.Entity("RealEstate.Api.Models.Entities.ListingImage", b =>
                 {
                     b.HasOne("RealEstate.Api.Models.Entities.Listing", "Listing")
@@ -1289,8 +1198,6 @@ namespace RealEstate.Api.Migrations
 
             modelBuilder.Entity("RealEstate.Api.Models.Entities.Listing", b =>
                 {
-                    b.Navigation("Address");
-
                     b.Navigation("Favorites");
 
                     b.Navigation("Images");

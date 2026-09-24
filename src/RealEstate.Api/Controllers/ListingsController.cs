@@ -45,11 +45,12 @@ public class ListingsController : ControllerBase
         var query = _db.Listings
             .Include(l => l.Images)
             .Include(l => l.Owner)
+            .Include(l => l.Address)
             .Where(l => l.Status != ListingStatus.Removed)
             .AsQueryable();
 
         if (!string.IsNullOrWhiteSpace(q.City))
-            query = query.Where(l => l.City.ToLower() == q.City!.ToLower());
+            query = query.Where(l => l.Address!.City.ToLower() == q.City!.ToLower());
         if (q.ListingType.HasValue)
             query = query.Where(l => l.ListingType == q.ListingType);
         if (q.PropertyType.HasValue)
@@ -134,6 +135,7 @@ public class ListingsController : ControllerBase
         var listing = await _db.Listings
             .Include(l => l.Images)
             .Include(l => l.Owner)
+            .Include(l => l.Address)
             .FirstOrDefaultAsync(l => l.Id == id);
 
         return listing is null ? NotFound() : Ok(listing.ToDto());
@@ -167,17 +169,18 @@ public class ListingsController : ControllerBase
     [HttpGet("{id:guid}/similar")]
     public async Task<ActionResult<List<ListingDto>>> GetSimilar(Guid id)
     {
-        var listing = await _db.Listings.FindAsync(id);
+        var listing = await _db.Listings.Include(l => l.Address).FirstOrDefaultAsync(l => l.Id == id);
         if (listing is null) return NotFound();
 
         var similar = await _db.Listings
             .Include(l => l.Images)
             .Include(l => l.Owner)
+            .Include(l => l.Address)
             .Where(l => l.Id != id
                 && l.Status == ListingStatus.Active
                 && l.ListingType == listing.ListingType
                 && l.PropertyType == listing.PropertyType
-                && l.City.ToLower() == listing.City.ToLower())
+                && l.Address!.City.ToLower() == listing.Address!.City.ToLower())
             .OrderBy(l => Math.Abs(l.Price - listing.Price))
             .Take(4)
             .Select(l => l.ToDto())
@@ -195,6 +198,7 @@ public class ListingsController : ControllerBase
         var listings = await _db.Listings
             .Include(l => l.Images)
             .Include(l => l.Owner)
+            .Include(l => l.Address)
             .Where(l => l.OwnerId == userId)
             .OrderByDescending(l => l.CreatedAt)
             .ToListAsync();
@@ -223,10 +227,15 @@ public class ListingsController : ControllerBase
             PropertyType = dto.PropertyType,
             Price = dto.Price,
             Currency = dto.Currency,
-            AddressLine = dto.AddressLine,
-            City = dto.City,
-            State = dto.State,
-            ZipCode = dto.ZipCode ?? string.Empty,
+            Address = new ListingAddress
+            {
+                Street = dto.Street,
+                Colonia = dto.Colonia ?? string.Empty,
+                City = dto.City,
+                State = dto.State,
+                ZipCode = dto.ZipCode ?? string.Empty,
+                Country = dto.Country
+            },
             Latitude = dto.Latitude,
             Longitude = dto.Longitude,
             Bedrooms = dto.Bedrooms,
@@ -284,7 +293,7 @@ public class ListingsController : ControllerBase
         await _db.SaveChangesAsync();
 
         var created = await _db.Listings
-            .Include(l => l.Images).Include(l => l.Owner)
+            .Include(l => l.Images).Include(l => l.Owner).Include(l => l.Address)
             .FirstAsync(l => l.Id == listing.Id);
 
         var createdDto = created.ToDto();
@@ -321,7 +330,7 @@ public class ListingsController : ControllerBase
                 (s.MaxPrice == null || listing.Price <= s.MaxPrice) &&
                 (s.MinBedrooms == null || listing.Bedrooms >= s.MinBedrooms) &&
                 (s.MinBathrooms == null || listing.Bathrooms >= s.MinBathrooms) &&
-                (s.City == null || s.City.ToLower() == listing.City.ToLower()))
+                (s.City == null || s.City.ToLower() == listing.Address!.City.ToLower()))
             // Caps the worst case for the synchronous per-request email loop below — without
             // this, a widely-matched search criteria (e.g. no filters at all) could block the
             // response for as long as it takes to attempt hundreds of SMTP sends one at a time.
@@ -337,11 +346,15 @@ public class ListingsController : ControllerBase
                 var subject = $"New listing matches your saved search \"{match.Name}\" on RealEstateApp";
                 var body =
                     $"A new listing matches your saved search \"{match.Name}\":\n\n" +
-                    $"{listing.Title}\n{listing.AddressLine}, {listing.City}\n{listing.Currency} {listing.Price}\n\n" +
+                    $"{listing.Title}\n{listing.Address!.ToEmailLine()}\n{listing.Currency} {listing.Price}\n\n" +
                     "Log in to RealEstateApp to see it.";
                 await _emailService.SendAsync(match.User.Email, match.User.FirstName, subject, body);
             }
-            catch (Exception ex) when (ex is SmtpException or FormatException or ArgumentException or InvalidOperationException)
+            // NullReferenceException included alongside the SMTP/formatting failures this filter
+            // was written for — same reasoning as InquiriesController.SendFactSheetLinkAsync:
+            // this runs before Create()'s response is returned, so any exception here would
+            // otherwise turn an already-saved listing into a failed request.
+            catch (Exception ex) when (ex is SmtpException or FormatException or ArgumentException or InvalidOperationException or NullReferenceException)
             {
                 _logger.LogError(ex, "Failed to send saved-search alert email to user {UserId} for saved search {SavedSearchId}", match.UserId, match.Id);
             }
@@ -352,7 +365,7 @@ public class ListingsController : ControllerBase
     [HttpPut("{id:guid}")]
     public async Task<ActionResult<ListingDto>> Update(Guid id, [FromForm] ListingUpdateDto dto)
     {
-        var listing = await _db.Listings.Include(l => l.Images).FirstOrDefaultAsync(l => l.Id == id);
+        var listing = await _db.Listings.Include(l => l.Images).Include(l => l.Address).FirstOrDefaultAsync(l => l.Id == id);
         if (listing is null) return NotFound();
         if (listing.OwnerId != User.GetUserId()) return Forbid();
 
@@ -374,10 +387,17 @@ public class ListingsController : ControllerBase
         listing.Status = dto.Status;
         listing.Price = dto.Price;
         listing.Currency = dto.Currency;
-        listing.AddressLine = dto.AddressLine;
-        listing.City = dto.City;
-        listing.State = dto.State;
-        listing.ZipCode = dto.ZipCode ?? string.Empty;
+        // Every listing gets an Address at creation and the FK is required — same trust level
+        // as every other Address access in this controller (no ??= fallback: constructing a
+        // fresh ListingAddress here if one were somehow missing would collide with the existing
+        // row's PK on save, turning a clear NullReferenceException into a confusing
+        // DbUpdateException instead of actually fixing anything).
+        listing.Address!.Street = dto.Street;
+        listing.Address.Colonia = dto.Colonia ?? string.Empty;
+        listing.Address.City = dto.City;
+        listing.Address.State = dto.State;
+        listing.Address.ZipCode = dto.ZipCode ?? string.Empty;
+        listing.Address.Country = dto.Country;
         listing.Latitude = dto.Latitude;
         listing.Longitude = dto.Longitude;
         listing.Bedrooms = dto.Bedrooms;
