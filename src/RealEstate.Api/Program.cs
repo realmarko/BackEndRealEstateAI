@@ -197,6 +197,16 @@ if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
     app.UseSwaggerUI();
+
+    // Dev databases drift from the model whenever a migration lands and nobody remembers to run
+    // `dotnet ef database update` — that mismatch surfaces as a confusing 500 ("column ... does
+    // not exist") on whatever endpoint happens to touch the changed table next, not as a clear
+    // migration error. Applying pending migrations here keeps a dev DB always caught up with the
+    // code it's running. Never done outside Development — a real deployment should apply
+    // migrations as an explicit, reviewed release step, not implicitly on every process start.
+    using var scope = app.Services.CreateScope();
+    await scope.ServiceProvider.GetRequiredService<ApplicationDbContext>().Database.MigrateAsync();
+    await scope.ServiceProvider.GetRequiredService<RealEstateDbContext>().Database.MigrateAsync();
 }
 
 app.UseMiddleware<GlobalExceptionMiddleware>();
