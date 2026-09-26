@@ -4,6 +4,8 @@ VisualStudioVersion = 17.0.31903.59
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RealEstate.Api", "src\RealEstate.Api\RealEstate.Api.csproj", "{984EC4F8-2BC0-4FC2-B03B-59CC9CD29439}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RealEstate.Api.Tests", "tests\RealEstate.Api.Tests\RealEstate.Api.Tests.csproj", "{DA73D19B-1E89-42DE-AA10-2AE55F53624A}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -14,6 +16,10 @@ Global
 		{984EC4F8-2BC0-4FC2-B03B-59CC9CD29439}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{984EC4F8-2BC0-4FC2-B03B-59CC9CD29439}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{984EC4F8-2BC0-4FC2-B03B-59CC9CD29439}.Release|Any CPU.Build.0 = Release|Any CPU
+		{DA73D19B-1E89-42DE-AA10-2AE55F53624A}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{DA73D19B-1E89-42DE-AA10-2AE55F53624A}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{DA73D19B-1E89-42DE-AA10-2AE55F53624A}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{DA73D19B-1E89-42DE-AA10-2AE55F53624A}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
