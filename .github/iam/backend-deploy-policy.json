@@ -8,6 +8,12 @@
       "Resource": "arn:aws:s3:::elasticbeanstalk-us-east-1-212901747626/RealEstateApp/*"
     },
     {
+      "Sid": "EBBucketExistenceCheck",
+      "Effect": "Allow",
+      "Action": ["s3:CreateBucket"],
+      "Resource": "arn:aws:s3:::elasticbeanstalk-us-east-1-212901747626"
+    },
+    {
       "Sid": "ElasticBeanstalkDeploy",
       "Effect": "Allow",
       "Action": [
