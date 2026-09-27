@@ -206,10 +206,48 @@ public class ListingsController : ControllerBase
         return Ok(listings.Select(l => l.ToDto()));
     }
 
+    // Owners (including Agents, who are also Owners) may publish at most this many listings
+    // per calendar month.
+    private const int MaxListingsPerMonth = 15;
+
+    // Shared by MyQuota() and Create() so the two never drift apart on how "this month" or
+    // "used" is defined. Removed (soft-deleted) listings don't count — an owner who deletes a
+    // mistake should get that slot back the same month, not have it stuck against them until
+    // the month rolls over.
+    private async Task<(int Used, DateTime StartOfMonth)> GetListingsUsedThisMonthAsync(Guid userId)
+    {
+        var startOfMonth = new DateTime(DateTime.UtcNow.Year, DateTime.UtcNow.Month, 1, 0, 0, 0, DateTimeKind.Utc);
+        var used = await _db.Listings.CountAsync(l =>
+            l.OwnerId == userId && l.CreatedAt >= startOfMonth && l.Status != ListingStatus.Removed);
+        return (used, startOfMonth);
+    }
+
+    [Authorize(Roles = "Owner")]
+    [HttpGet("mine/quota")]
+    public async Task<ActionResult<ListingQuotaDto>> MyQuota()
+    {
+        var (used, startOfMonth) = await GetListingsUsedThisMonthAsync(User.GetUserId());
+
+        return Ok(new ListingQuotaDto
+        {
+            Limit = MaxListingsPerMonth,
+            Used = used,
+            Remaining = Math.Max(0, MaxListingsPerMonth - used),
+            ResetsAt = startOfMonth.AddMonths(1)
+        });
+    }
+
     [Authorize(Roles = "Owner")]
     [HttpPost]
     public async Task<ActionResult<ListingDto>> Create([FromForm] ListingCreateDto dto)
     {
+        var userId = User.GetUserId();
+        var (listingsThisMonth, _) = await GetListingsUsedThisMonthAsync(userId);
+        if (listingsThisMonth >= MaxListingsPerMonth)
+        {
+            return BadRequest(new { message = $"You've reached the limit of {MaxListingsPerMonth} listings per month. Try again next month." });
+        }
+
         // Generated up front so newly uploaded photos can be namespaced under this listing's
         // own id in S3 from the very first upload, rather than a temp/owner-scoped prefix.
         var listingId = Guid.NewGuid();
@@ -220,7 +258,7 @@ public class ListingsController : ControllerBase
         var listing = new Listing
         {
             Id = listingId,
-            OwnerId = User.GetUserId(),
+            OwnerId = userId,
             Title = dto.Title,
             Description = dto.Description,
             ListingType = dto.ListingType,
@@ -497,10 +535,18 @@ public class ListingsController : ControllerBase
     // with newly uploaded files, uploading the latter to S3 and returning one ordered list —
     // existing photos first, then new ones in selection order. The first URL is the primary
     // photo. Returns an error result as-is if any file fails validation or the S3 upload fails.
+    private const int MaxPhotosPerListing = 20;
+
     private async Task<(List<string> Urls, ActionResult? Error)> BuildImageUrlsAsync(
         List<string>? existingImageUrls, List<IFormFile>? photos, string keyPrefix)
     {
         var urls = new List<string>(existingImageUrls ?? new List<string>());
+        var totalCount = urls.Count + (photos?.Count ?? 0);
+        if (totalCount > MaxPhotosPerListing)
+        {
+            return (urls, BadRequest(new { message = $"A listing can have at most {MaxPhotosPerListing} photos." }));
+        }
+
         if (photos is null || photos.Count == 0) return (urls, null);
 
         var result = await _photoUploadService.UploadManyAsync(photos, keyPrefix);

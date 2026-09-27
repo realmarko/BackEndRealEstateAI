@@ -181,3 +181,11 @@ public class PagedResult<T>
     public int PageSize { get; set; }
     public int TotalCount { get; set; }
 }
+
+public class ListingQuotaDto
+{
+    public int Limit { get; set; }
+    public int Used { get; set; }
+    public int Remaining { get; set; }
+    public DateTime ResetsAt { get; set; }
+}
