@@ -1,12 +1,12 @@
 name: Deploy backend to dev
 
-# Gated on CI (build+test on ci.yml) passing on develop, not on the push itself — a push that
-# breaks the build/tests must never reach dev. Checks out workflow_run's head_sha rather than
-# develop's current tip, so a second push landing while this runs can't deploy untested code.
+# Deliberately not workflow_run against ci.yml: GitHub only ever triggers workflow_run for a
+# workflow file that also exists on the repo's default branch (main here), and this file only
+# lives on develop — that combination silently never fires (confirmed: the run never appeared).
+# Running test as its own job with `deploy: needs: test` gets the same "don't deploy broken code"
+# guarantee from a single push-triggered workflow, with no cross-workflow/default-branch pitfall.
 on:
-  workflow_run:
-    workflows: ["CI"]
-    types: [completed]
+  push:
     branches: [develop]
 
 env:
@@ -16,13 +16,29 @@ env:
   EB_BUCKET: elasticbeanstalk-us-east-1-212901747626
 
 jobs:
-  deploy:
-    if: github.event.workflow_run.conclusion == 'success'
+  test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
         with:
-          ref: ${{ github.event.workflow_run.head_sha }}
+          dotnet-version: '10.0.x'
+
+      - name: Restore
+        run: dotnet restore RealEstate.sln
+
+      - name: Build
+        run: dotnet build RealEstate.sln --no-restore --configuration Release
+
+      - name: Test
+        run: dotnet test RealEstate.sln --no-build --configuration Release
+
+  deploy:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
 
       - uses: actions/setup-dotnet@v4
         with:
