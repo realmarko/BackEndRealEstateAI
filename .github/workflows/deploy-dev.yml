@@ -69,7 +69,9 @@ jobs:
       - name: Upload bundle to S3
         id: upload
         run: |
-          VERSION_LABEL="dev-${{ github.run_number }}-${GITHUB_SHA::7}"
+          # run_id + run_attempt (not run_number + sha) so a manual re-run of a failed job never
+          # collides with an application version this same commit already created in EB.
+          VERSION_LABEL="dev-${{ github.run_id }}-${{ github.run_attempt }}"
           echo "version_label=$VERSION_LABEL" >> "$GITHUB_OUTPUT"
           aws s3 cp app.zip "s3://${EB_BUCKET}/${EB_APP_NAME}/${VERSION_LABEL}.zip"
 
