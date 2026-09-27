@@ -209,6 +209,17 @@ builder.Services.AddSwaggerGen(c =>
 
 var app = builder.Build();
 
+// ---- Auto-migrate on startup (CI/CD deploys) ----
+// Off by default (local dev keeps using `dotnet ef database update` by hand). EB sets
+// RunMigrationsOnStartup=true so a deploy pipeline never needs direct network access to RDS —
+// the instance already has it via its own security group, so the app migrates itself on boot.
+if (builder.Configuration.GetValue<bool>("RunMigrationsOnStartup"))
+{
+    using var migrationScope = app.Services.CreateScope();
+    migrationScope.ServiceProvider.GetRequiredService<ApplicationDbContext>().Database.Migrate();
+    migrationScope.ServiceProvider.GetRequiredService<RealEstateDbContext>().Database.Migrate();
+}
+
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();

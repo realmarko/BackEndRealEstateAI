@@ -1,0 +1,90 @@
+name: Deploy backend to dev
+
+# Gated on CI (build+test on ci.yml) passing on develop, not on the push itself — a push that
+# breaks the build/tests must never reach dev. Checks out workflow_run's head_sha rather than
+# develop's current tip, so a second push landing while this runs can't deploy untested code.
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: [develop]
+
+env:
+  AWS_REGION: us-east-1
+  EB_APP_NAME: RealEstateApp
+  EB_ENV_NAME: realestateapp-dev
+  EB_BUCKET: elasticbeanstalk-us-east-1-212901747626
+
+jobs:
+  deploy:
+    if: github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Publish
+        run: dotnet publish src/RealEstate.Api/RealEstate.Api.csproj -c Release -o publish
+
+      # dotnet publish does not copy a project's .platform/ folder into its output — the predeploy
+      # hook that installs fontconfig (SkiaSharp's native dependency, missing from the EB AMI)
+      # lives there and must be copied in manually or photo uploads silently break on deploy.
+      - name: Copy .platform hooks into publish output
+        run: |
+          cp -r src/RealEstate.Api/.platform publish/.platform
+          chmod +x publish/.platform/hooks/predeploy/*.sh
+
+      - name: Zip application bundle
+        # A plain `zip` on the ubuntu-latest runner already writes forward-slash paths, so this
+        # doesn't need the hand-rolled Node.js ZIP writer that Windows/PowerShell needed locally.
+        run: cd publish && zip -r ../app.zip . -x '*.pdb'
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Upload bundle to S3
+        id: upload
+        run: |
+          VERSION_LABEL="dev-${{ github.run_number }}-${GITHUB_SHA::7}"
+          echo "version_label=$VERSION_LABEL" >> "$GITHUB_OUTPUT"
+          aws s3 cp app.zip "s3://${EB_BUCKET}/${EB_APP_NAME}/${VERSION_LABEL}.zip"
+
+      - name: Create EB application version
+        run: |
+          aws elasticbeanstalk create-application-version \
+            --application-name "$EB_APP_NAME" \
+            --version-label "${{ steps.upload.outputs.version_label }}" \
+            --source-bundle S3Bucket="$EB_BUCKET",S3Key="${EB_APP_NAME}/${{ steps.upload.outputs.version_label }}.zip"
+
+      - name: Deploy to environment
+        run: |
+          aws elasticbeanstalk update-environment \
+            --environment-name "$EB_ENV_NAME" \
+            --version-label "${{ steps.upload.outputs.version_label }}"
+
+      - name: Wait for environment to stabilize
+        run: |
+          aws elasticbeanstalk wait environment-updated --environment-names "$EB_ENV_NAME"
+
+      - name: Verify health
+        # `wait environment-updated` only waits for Status=Ready — it returns success even if the
+        # new version deployed but crashed (Health=Red/Yellow), so that alone can't be trusted to
+        # fail the job on a bad deploy.
+        run: |
+          HEALTH=$(aws elasticbeanstalk describe-environments \
+            --environment-names "$EB_ENV_NAME" \
+            --query 'Environments[0].Health' \
+            --output text)
+          echo "Environment health: $HEALTH"
+          if [ "$HEALTH" != "Green" ]; then
+            echo "::error::realestateapp-dev health is $HEALTH after deploy, not Green"
+            exit 1
+          fi

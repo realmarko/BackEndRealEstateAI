@@ -1,0 +1,23 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "UploadAppBundle",
+      "Effect": "Allow",
+      "Action": ["s3:PutObject"],
+      "Resource": "arn:aws:s3:::elasticbeanstalk-us-east-1-212901747626/RealEstateApp/*"
+    },
+    {
+      "Sid": "ElasticBeanstalkDeploy",
+      "Effect": "Allow",
+      "Action": [
+        "elasticbeanstalk:CreateApplicationVersion",
+        "elasticbeanstalk:DescribeApplicationVersions",
+        "elasticbeanstalk:UpdateEnvironment",
+        "elasticbeanstalk:DescribeEnvironments",
+        "elasticbeanstalk:DescribeEvents"
+      ],
+      "Resource": "*"
+    }
+  ]
+}
