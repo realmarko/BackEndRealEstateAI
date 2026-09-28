@@ -38,6 +38,7 @@ public static class ListingExtensions
         HoaFee = l.HoaFee,
         VideoTourUrl = l.VideoTourUrl,
         LandUseZoning = l.LandUseZoning,
+        LandUseCategoryId = l.LandUseCategoryId,
         LandTenure = l.LandTenure?.ToString(),
         CosCoefficient = l.CosCoefficient,
         CusCoefficient = l.CusCoefficient,

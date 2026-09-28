@@ -22,6 +22,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, IdentityR
     public DbSet<ErrorLog> ErrorLogs => Set<ErrorLog>();
     public DbSet<Fraccionamiento> Fraccionamientos => Set<Fraccionamiento>();
     public DbSet<FraccionamientoSource> FraccionamientoSources => Set<FraccionamientoSource>();
+    public DbSet<LandUseCategory> LandUseCategories => Set<LandUseCategory>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -62,6 +63,31 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, IdentityR
                   .WithMany(f => f.Listings)
                   .HasForeignKey(l => l.FraccionamientoId)
                   .OnDelete(DeleteBehavior.SetNull);
+
+            // SetNull, not Cascade/Restrict: the catalog is a fixed, admin-only lookup list, not
+            // something a listing should be able to block from ever changing.
+            entity.HasOne(l => l.LandUseCategory)
+                  .WithMany()
+                  .HasForeignKey(l => l.LandUseCategoryId)
+                  .OnDelete(DeleteBehavior.SetNull);
+        });
+
+        builder.Entity<LandUseCategory>(entity =>
+        {
+            entity.Property(c => c.Name).HasMaxLength(50).IsRequired();
+
+            // Seeded once, in order, so the migration's inserted Ids are stable and match the
+            // fixed set of options the "Uso de suelo" dropdown offers (see
+            // AddLandUseCategoryCatalog migration) — never user-editable at runtime.
+            entity.HasData(
+                new LandUseCategory { Id = 1, Name = "Urbano" },
+                new LandUseCategory { Id = 2, Name = "Urbanizable" },
+                new LandUseCategory { Id = 3, Name = "No urbanizable" },
+                new LandUseCategory { Id = 4, Name = "Industrial" },
+                new LandUseCategory { Id = 5, Name = "Residencial" },
+                new LandUseCategory { Id = 6, Name = "Comercial" },
+                new LandUseCategory { Id = 7, Name = "Agrícola" }
+            );
         });
 
         builder.Entity<ListingAddress>(entity =>

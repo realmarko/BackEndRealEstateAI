@@ -288,6 +288,7 @@ public class ListingsController : ControllerBase
             HoaFee = dto.HoaFee,
             VideoTourUrl = dto.VideoTourUrl,
             LandUseZoning = dto.LandUseZoning,
+            LandUseCategoryId = dto.LandUseCategoryId,
             LandTenure = dto.LandTenure,
             CosCoefficient = dto.CosCoefficient,
             CusCoefficient = dto.CusCoefficient,
@@ -450,6 +451,7 @@ public class ListingsController : ControllerBase
         listing.HoaFee = dto.HoaFee;
         listing.VideoTourUrl = dto.VideoTourUrl;
         listing.LandUseZoning = dto.LandUseZoning;
+        listing.LandUseCategoryId = dto.LandUseCategoryId;
         listing.LandTenure = dto.LandTenure;
         listing.CosCoefficient = dto.CosCoefficient;
         listing.CusCoefficient = dto.CusCoefficient;

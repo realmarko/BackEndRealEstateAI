@@ -40,7 +40,12 @@ public class Listing
     // types, same treatment as LotSizeSqm/GardenSizeSqm above.
 
     // Zoning / tenure / buildability
-    public string? LandUseZoning { get; set; }              // "uso de suelo" — free text, jurisdiction-specific code (e.g. "H30-A"), not an enum
+    public string? LandUseZoning { get; set; }              // free-text, jurisdiction-specific zoning code (e.g. "H30-A"), not an enum
+    // General land-use classification (Urbano, Urbanizable, No urbanizable, Industrial,
+    // Residencial, Comercial, Agrícola) — a fixed catalog (LandUseCategory), distinct from the
+    // free-text zoning code above. Only meaningful/settable when PropertyType is Land.
+    public int? LandUseCategoryId { get; set; }
+    public LandUseCategory? LandUseCategory { get; set; }
     public LandTenureType? LandTenure { get; set; }
     public decimal? CosCoefficient { get; set; }             // Coeficiente de Ocupacion del Suelo
     public decimal? CusCoefficient { get; set; }             // Coeficiente de Utilizacion del Suelo

@@ -41,6 +41,7 @@ public class ListingCreateDto
     [MaxLength(2048)] public string? VideoTourUrl { get; set; }
 
     [MaxLength(50)] public string? LandUseZoning { get; set; }
+    public int? LandUseCategoryId { get; set; }
     public LandTenureType? LandTenure { get; set; }
     // Generous, sanity-check bounds (not precise Mexican zoning limits, which vary by
     // municipality) — just enough to reject obvious data-entry errors like a misplaced decimal
@@ -112,6 +113,7 @@ public class ListingDto
     public decimal? HoaFee { get; set; }
     public string? VideoTourUrl { get; set; }
     public string? LandUseZoning { get; set; }
+    public int? LandUseCategoryId { get; set; }
     public string? LandTenure { get; set; }
     public decimal? CosCoefficient { get; set; }
     public decimal? CusCoefficient { get; set; }
@@ -180,6 +182,12 @@ public class PagedResult<T>
     public int Page { get; set; }
     public int PageSize { get; set; }
     public int TotalCount { get; set; }
+}
+
+public class LandUseCategoryDto
+{
+    public int Id { get; set; }
+    public string Name { get; set; } = string.Empty;
 }
 
 public class ListingQuotaDto
