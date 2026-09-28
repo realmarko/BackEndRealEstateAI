@@ -1,0 +1,105 @@
+name: Deploy backend to prod
+
+# Same reasoning as deploy-dev.yml: push-triggered, single workflow with test as a dependency of
+# deploy, not a separate workflow_run (which silently never fires for a workflow file that only
+# lives on a non-default branch — not the concern here since this lives on main, but kept
+# consistent with deploy-dev.yml's structure).
+on:
+  push:
+    branches: [main]
+
+env:
+  AWS_REGION: us-east-1
+  EB_APP_NAME: RealEstateApp
+  EB_ENV_NAME: realestateapp-prod
+  EB_BUCKET: elasticbeanstalk-us-east-1-212901747626
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Restore
+        run: dotnet restore RealEstate.sln
+
+      - name: Build
+        run: dotnet build RealEstate.sln --no-restore --configuration Release
+
+      - name: Test
+        run: dotnet test RealEstate.sln --no-build --configuration Release
+
+  deploy:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Publish
+        run: dotnet publish src/RealEstate.Api/RealEstate.Api.csproj -c Release -o publish
+
+      # dotnet publish does not copy a project's .platform/ folder into its output — the predeploy
+      # hook that installs fontconfig (SkiaSharp's native dependency, missing from the EB AMI)
+      # lives there and must be copied in manually or photo uploads silently break on deploy.
+      - name: Copy .platform hooks into publish output
+        run: |
+          cp -r src/RealEstate.Api/.platform publish/.platform
+          chmod +x publish/.platform/hooks/predeploy/*.sh
+
+      - name: Zip application bundle
+        run: cd publish && zip -r ../app.zip . -x '*.pdb'
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Upload bundle to S3
+        id: upload
+        run: |
+          # run_id + run_attempt (not run_number + sha) so a manual re-run of a failed job never
+          # collides with an application version this same commit already created in EB.
+          VERSION_LABEL="prod-${{ github.run_id }}-${{ github.run_attempt }}"
+          echo "version_label=$VERSION_LABEL" >> "$GITHUB_OUTPUT"
+          aws s3 cp app.zip "s3://${EB_BUCKET}/${EB_APP_NAME}/${VERSION_LABEL}.zip"
+
+      - name: Create EB application version
+        run: |
+          aws elasticbeanstalk create-application-version \
+            --application-name "$EB_APP_NAME" \
+            --version-label "${{ steps.upload.outputs.version_label }}" \
+            --source-bundle S3Bucket="$EB_BUCKET",S3Key="${EB_APP_NAME}/${{ steps.upload.outputs.version_label }}.zip"
+
+      - name: Deploy to environment
+        run: |
+          aws elasticbeanstalk update-environment \
+            --environment-name "$EB_ENV_NAME" \
+            --version-label "${{ steps.upload.outputs.version_label }}"
+
+      - name: Wait for environment to stabilize
+        run: |
+          aws elasticbeanstalk wait environment-updated --environment-names "$EB_ENV_NAME"
+
+      - name: Verify health
+        # `wait environment-updated` only waits for Status=Ready — it returns success even if the
+        # new version deployed but crashed (Health=Red/Yellow), so that alone can't be trusted to
+        # fail the job on a bad deploy.
+        run: |
+          HEALTH=$(aws elasticbeanstalk describe-environments \
+            --environment-names "$EB_ENV_NAME" \
+            --query 'Environments[0].Health' \
+            --output text)
+          echo "Environment health: $HEALTH"
+          if [ "$HEALTH" != "Green" ]; then
+            echo "::error::realestateapp-prod health is $HEALTH after deploy, not Green"
+            exit 1
+          fi
