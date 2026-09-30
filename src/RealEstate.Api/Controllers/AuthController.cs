@@ -37,8 +37,12 @@ public class AuthController : ControllerBase
         _frontendBaseUrl = frontendOptions.Value.BaseUrl;
     }
 
+    // Registration length allowed for a code entry field (6 digits).
+    private const int VerificationCodeLength = 6;
+    private static readonly TimeSpan VerificationCodeLifetime = TimeSpan.FromMinutes(15);
+
     [HttpPost("register")]
-    public async Task<ActionResult<AuthResponseDto>> Register(RegisterDto dto)
+    public async Task<ActionResult<RegisterResponseDto>> Register(RegisterDto dto)
     {
         // Agents can also publish listings, so they get both roles. This bundles the grant at
         // registration time instead of having [Authorize] accept either role — simpler while
@@ -57,12 +61,17 @@ public class AuthController : ControllerBase
                 await _roleManager.CreateAsync(new IdentityRole<Guid>(role));
         }
 
+        var code = GenerateVerificationCode();
         var user = new ApplicationUser
         {
             UserName = dto.Email,
             Email = dto.Email,
             FirstName = dto.FirstName,
             LastName = dto.LastName,
+            // EmailConfirmed stays at Identity's own default (false) until VerifyEmail succeeds —
+            // Login rejects any account that hasn't gotten there yet.
+            EmailVerificationCode = code,
+            EmailVerificationCodeExpiresAt = DateTime.UtcNow.Add(VerificationCodeLifetime)
         };
 
         var result = await _userManager.CreateAsync(user, dto.Password);
@@ -70,8 +79,9 @@ public class AuthController : ControllerBase
             return BadRequest(result.Errors.Select(e => e.Description));
 
         await _userManager.AddToRolesAsync(user, roles);
+        await SendVerificationCodeEmailAsync(user, code);
 
-        return await BuildAuthResponse(user);
+        return Ok(new RegisterResponseDto { Email = dto.Email });
     }
 
     [HttpPost("login")]
@@ -81,7 +91,95 @@ public class AuthController : ControllerBase
         if (user is null || !await _userManager.CheckPasswordAsync(user, dto.Password))
             return Unauthorized(new { message = "Invalid email or password" });
 
+        // A correct password for an unverified account still isn't enough to log in — matches
+        // Register's whole point: an account isn't usable until its owner proves they control the
+        // inbox. requiresVerification lets the frontend route straight to the verify-email screen
+        // instead of just showing a dead-end "invalid credentials" message.
+        if (!user.EmailConfirmed)
+        {
+            return StatusCode(StatusCodes.Status403Forbidden, new
+            {
+                message = "Please verify your email before logging in.",
+                requiresVerification = true,
+                email = user.Email
+            });
+        }
+
         return await BuildAuthResponse(user);
+    }
+
+    // Rate-limited like forgot-password: a per-IP budget bounds both the email volume this can
+    // generate and how many codes a guesser can force a single account through.
+    [EnableRateLimiting("email-verification")]
+    [HttpPost("verify-email")]
+    public async Task<ActionResult<AuthResponseDto>> VerifyEmail(VerifyEmailDto dto)
+    {
+        var user = await _userManager.FindByEmailAsync(dto.Email);
+        var invalid = BadRequest(new { message = "Invalid or expired code." });
+        if (user is null) return invalid;
+
+        // Deliberately NOT a "treat as success" shortcut: minting a token here without checking
+        // the code would mean anyone who knows an already-verified user's email — no password, no
+        // valid code needed — could call this endpoint and get a working session for that account.
+        if (user.EmailConfirmed)
+            return BadRequest(new { message = "This account is already verified. Please log in." });
+
+        if (user.EmailVerificationCode is null || user.EmailVerificationCodeExpiresAt is null)
+            return invalid;
+        if (user.EmailVerificationCodeExpiresAt < DateTime.UtcNow) return invalid;
+        // Fixed-time-ish comparison isn't critical here (rate limiting already bounds brute force
+        // to a handful of attempts per 15 minutes), so a plain string compare is fine.
+        if (user.EmailVerificationCode != dto.Code) return invalid;
+
+        user.EmailConfirmed = true;
+        user.EmailVerificationCode = null;
+        user.EmailVerificationCodeExpiresAt = null;
+        await _userManager.UpdateAsync(user);
+
+        return await BuildAuthResponse(user);
+    }
+
+    // Always returns 204 whether or not the email is registered or already verified — same
+    // enumeration-safety reasoning as ForgotPassword.
+    [EnableRateLimiting("email-verification")]
+    [HttpPost("resend-verification-code")]
+    public async Task<IActionResult> ResendVerificationCode(ResendVerificationCodeDto dto)
+    {
+        var user = await _userManager.FindByEmailAsync(dto.Email);
+        if (user is not null && !user.EmailConfirmed)
+        {
+            var code = GenerateVerificationCode();
+            user.EmailVerificationCode = code;
+            user.EmailVerificationCodeExpiresAt = DateTime.UtcNow.Add(VerificationCodeLifetime);
+            await _userManager.UpdateAsync(user);
+            await SendVerificationCodeEmailAsync(user, code);
+        }
+
+        return NoContent();
+    }
+
+    private static string GenerateVerificationCode() =>
+        Random.Shared.Next(0, 1_000_000).ToString($"D{VerificationCodeLength}");
+
+    private async Task SendVerificationCodeEmailAsync(ApplicationUser user, string code)
+    {
+        var subject = "Confirm your Espacial.com.mx account";
+        var body =
+            $"Your verification code is: {code}\n\n" +
+            $"Enter it on Espacial.com.mx to finish creating your account. This code expires in " +
+            $"{VerificationCodeLifetime.TotalMinutes:0} minutes.\n\n" +
+            "If you didn't request this, you can safely ignore this email.";
+
+        try
+        {
+            await _emailService.SendAsync(user.Email!, $"{user.FirstName} {user.LastName}", subject, body);
+        }
+        // Same broad catch as ForgotPassword: a transient SMTP failure here must not turn into an
+        // unhandled 500 on an already-created account — the resend endpoint is the recovery path.
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to send verification code email to user {UserId}", user.Id);
+        }
     }
 
     // Always returns 204 whether or not the email is registered — the response can't be used to

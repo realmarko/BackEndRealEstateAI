@@ -25,6 +25,22 @@ public class LoginDto
     [Required] public string Password { get; set; } = string.Empty;
 }
 
+public class VerifyEmailDto
+{
+    [Required, EmailAddress, MaxLength(320)] public string Email { get; set; } = string.Empty;
+    [Required, MaxLength(6)] public string Code { get; set; } = string.Empty;
+}
+
+public class ResendVerificationCodeDto
+{
+    [Required, EmailAddress, MaxLength(320)] public string Email { get; set; } = string.Empty;
+}
+
+public class RegisterResponseDto
+{
+    public string Email { get; set; } = string.Empty;
+}
+
 public class ForgotPasswordDto
 {
     [Required, EmailAddress, MaxLength(320)] public string Email { get; set; } = string.Empty;

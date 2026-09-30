@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -39,13 +40,17 @@ public class AuthControllerTests
             Options.Create(new FrontendOptions { BaseUrl = frontendBaseUrl }));
     }
 
+    // EmailConfirmed defaults true here: every existing test predates the email-verification
+    // feature and is exercising already-verified-account behavior, not the new gate itself (see
+    // Login_UnverifiedEmail_ReturnsForbidden for that).
     private static ApplicationUser MakeUser(string email = "user@example.com") => new()
     {
         Id = Guid.NewGuid(),
         Email = email,
         UserName = email,
         FirstName = "Marco",
-        LastName = "Martinez"
+        LastName = "Martinez",
+        EmailConfirmed = true
     };
 
     // --- ForgotPassword: must never reveal whether the email is registered ---
@@ -251,5 +256,21 @@ public class AuthControllerTests
         var ok = Assert.IsType<AuthResponseDto>(result.Value);
         Assert.Equal("jwt-token", ok.Token);
         Assert.Equal(user.Email, ok.User.Email);
+    }
+
+    [Fact]
+    public async Task Login_UnverifiedEmail_ReturnsForbidden()
+    {
+        var user = MakeUser();
+        user.EmailConfirmed = false;
+        var userManager = MockUserManager();
+        userManager.Setup(m => m.FindByEmailAsync(user.Email!)).ReturnsAsync(user);
+        userManager.Setup(m => m.CheckPasswordAsync(user, "correct")).ReturnsAsync(true);
+        var controller = MakeController(userManager);
+
+        var result = await controller.Login(new LoginDto { Email = user.Email!, Password = "correct" });
+
+        var forbidden = Assert.IsType<ObjectResult>(result.Result);
+        Assert.Equal(StatusCodes.Status403Forbidden, forbidden.StatusCode);
     }
 }

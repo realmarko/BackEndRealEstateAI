@@ -148,6 +148,18 @@ builder.Services.AddRateLimiter(options =>
             Window = TimeSpan.FromMinutes(15),
             QueueLimit = 0
         }));
+    // Covers both verify-email (bounds code-guessing against one account) and
+    // resend-verification-code (bounds email volume) — same per-IP shape as forgot-password, just
+    // a slightly higher budget since a visitor legitimately mistyping a 6-digit code a couple of
+    // times is normal, not abuse.
+    options.AddPolicy("email-verification", httpContext => RateLimitPartition.GetFixedWindowLimiter(
+        partitionKey: httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+        factory: _ => new FixedWindowRateLimiterOptions
+        {
+            PermitLimit = 10,
+            Window = TimeSpan.FromMinutes(15),
+            QueueLimit = 0
+        }));
     // Per-IP, not AddFixedWindowLimiter's single shared window: the map fires this on every
     // click with no debounce, so a global limit would let one visitor clicking around exhaust
     // the whole site's budget and silently 429 every other concurrent visitor's requests too.
