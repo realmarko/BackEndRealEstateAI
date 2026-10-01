@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text.Json;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Options;
 
 namespace RealEstate.Api.Services;
@@ -16,16 +17,39 @@ public class DenueService : IDenueService
     // The Buscar (search) method — see DenueOptions for where the free token comes from.
     private const string BaseUrl = "https://www.inegi.org.mx/app/api/denue/v1/consulta/Buscar";
 
+    // Business registrations don't open/close minute-to-minute, and two map clicks "near" the
+    // same spot are a common pattern (zooming in, re-clicking a popular area) — caching avoids
+    // burning this app's own rate-limited INEGI token on a lookup another visitor already paid for.
+    private static readonly TimeSpan CacheDuration = TimeSpan.FromHours(24);
+    // Rounds the point to ~111m precision (3 decimal degrees) so nearby clicks for the same
+    // search share a cache entry instead of each needing an exact coordinate match — coarse
+    // enough to get real hit-rate, fine enough that it doesn't meaningfully change which
+    // businesses fall within a multi-hundred-meter radiusMeters search.
+    private const int CoordinatePrecision = 3;
+
     private readonly HttpClient _http;
     private readonly DenueOptions _options;
+    private readonly IMemoryCache _cache;
 
-    public DenueService(HttpClient http, IOptions<DenueOptions> options)
+    public DenueService(HttpClient http, IOptions<DenueOptions> options, IMemoryCache cache)
     {
         _http = http;
         _options = options.Value;
+        _cache = cache;
     }
 
     public async Task<int> CountNearbyAsync(string searchTerm, double lat, double lng, int radiusMeters, CancellationToken cancellationToken = default)
+    {
+        var cacheKey = $"denue:{searchTerm.ToLowerInvariant()}:{Math.Round(lat, CoordinatePrecision)}:{Math.Round(lng, CoordinatePrecision)}:{radiusMeters}";
+
+        return await _cache.GetOrCreateAsync(cacheKey, async entry =>
+        {
+            entry.AbsoluteExpirationRelativeToNow = CacheDuration;
+            return await FetchCountAsync(searchTerm, lat, lng, radiusMeters, cancellationToken);
+        });
+    }
+
+    private async Task<int> FetchCountAsync(string searchTerm, double lat, double lng, int radiusMeters, CancellationToken cancellationToken)
     {
         // Invariant culture: a comma-as-decimal-separator culture would silently turn
         // "19.04" into "19,04", corrupting the lat,lng path segment DENUE expects.
@@ -55,7 +79,9 @@ public class DenueService : IDenueService
         // (see above) or a JSON error object. Treating it as a thrown failure — not a silent 0 —
         // matters because the caller labels a successful call "Source: INEGI DENUE (official
         // registry)": reporting "0 competitors, officially" for what was actually a failed lookup
-        // would be confidently wrong.
+        // would be confidently wrong. It also must not be cached — GetOrCreateAsync only caches
+        // a factory that completes normally, so a thrown exception here correctly leaves no entry
+        // behind for the next caller to retry cleanly.
         if (document.RootElement.ValueKind != JsonValueKind.Array)
             throw new InvalidOperationException("DENUE returned an unexpected response shape.");
 
