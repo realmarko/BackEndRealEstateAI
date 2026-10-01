@@ -2,6 +2,7 @@ using System.Text.Json;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
 using NetTopologySuite.Geometries;
 using NetTopologySuite.IO;
 using Npgsql;
@@ -28,20 +29,30 @@ public class GeomarketingController : ControllerBase
 
     private static readonly GeoJsonWriter GeoJsonWriter = new();
 
+    // Static reference data (states never change at all; the municipality catalog only grows
+    // via an admin import, not live traffic) — long TTL just bounds a cold-start/stale-data
+    // worst case, same reasoning as LandUseCategoriesController's cache.
+    private const string StatesCacheKey = "geomarketing:states";
+    private const string MunicipalitiesCacheKey = "geomarketing:municipalities";
+    private static readonly TimeSpan ReferenceDataCacheDuration = TimeSpan.FromHours(24);
+
     private readonly IDenueService _denueService;
     private readonly IPopulationDensityService _populationDensityService;
     private readonly ApplicationDbContext _db;
+    private readonly IMemoryCache _cache;
     private readonly ILogger<GeomarketingController> _logger;
 
     public GeomarketingController(
         IDenueService denueService,
         IPopulationDensityService populationDensityService,
         ApplicationDbContext db,
+        IMemoryCache cache,
         ILogger<GeomarketingController> logger)
     {
         _denueService = denueService;
         _populationDensityService = populationDensityService;
         _db = db;
+        _cache = cache;
         _logger = logger;
     }
 
@@ -139,11 +150,15 @@ public class GeomarketingController : ControllerBase
     {
         try
         {
-            var municipalities = await _db.MunicipalBoundaries
-                .AsNoTracking()
-                .OrderBy(m => m.Name)
-                .Select(m => new MunicipalityListItemDto { Cvegeo = m.Cvegeo, Name = m.Name, StateName = m.StateName })
-                .ToListAsync(cancellationToken);
+            var municipalities = await _cache.GetOrCreateAsync(MunicipalitiesCacheKey, async entry =>
+            {
+                entry.AbsoluteExpirationRelativeToNow = ReferenceDataCacheDuration;
+                return await _db.MunicipalBoundaries
+                    .AsNoTracking()
+                    .OrderBy(m => m.Name)
+                    .Select(m => new MunicipalityListItemDto { Cvegeo = m.Cvegeo, Name = m.Name, StateName = m.StateName })
+                    .ToListAsync(cancellationToken);
+            });
 
             return Ok(municipalities);
         }
@@ -164,11 +179,15 @@ public class GeomarketingController : ControllerBase
     {
         try
         {
-            var states = await _db.MexicanStates
-                .AsNoTracking()
-                .OrderBy(s => s.Name)
-                .Select(s => new StateListItemDto { Code = s.Code, Name = s.Name })
-                .ToListAsync(cancellationToken);
+            var states = await _cache.GetOrCreateAsync(StatesCacheKey, async entry =>
+            {
+                entry.AbsoluteExpirationRelativeToNow = ReferenceDataCacheDuration;
+                return await _db.MexicanStates
+                    .AsNoTracking()
+                    .OrderBy(s => s.Name)
+                    .Select(s => new StateListItemDto { Code = s.Code, Name = s.Name })
+                    .ToListAsync(cancellationToken);
+            });
 
             return Ok(states);
         }

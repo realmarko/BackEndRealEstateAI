@@ -55,6 +55,11 @@ builder.Services.Configure<DenueOptions>(builder.Configuration.GetSection("Inegi
 builder.Services.AddHttpClient<IDenueService, DenueService>(client => client.Timeout = TimeSpan.FromSeconds(5));
 builder.Services.AddScoped<IPopulationDensityService, PopulationDensityService>();
 
+// ---- In-process cache (single EB instance, no shared/distributed cache needed) — for static
+// reference data that's expensive to refetch on every request but changes rarely, if ever:
+// land-use categories, states, municipalities (see those controllers for cache keys/TTLs).
+builder.Services.AddMemoryCache();
+
 // ---- Error logging (in-app admin view, alongside Sentry above) ----
 builder.Services.AddScoped<IErrorLogService, ErrorLogService>();
 

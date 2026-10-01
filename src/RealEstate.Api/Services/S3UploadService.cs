@@ -37,6 +37,10 @@ public class S3UploadService : IS3UploadService
             InputStream = content,
             ContentType = contentType
         };
+        // Every key is a brand-new GUID (never reused, never overwritten — see the delete+reupload
+        // pattern callers use for "replacing" a photo), so the object itself is truly immutable:
+        // safe for the browser/CDN to cache forever instead of re-downloading it on every view.
+        request.Headers.CacheControl = "public, max-age=31536000, immutable";
 
         await _s3Client.PutObjectAsync(request);
 
