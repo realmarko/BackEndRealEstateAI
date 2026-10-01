@@ -17,10 +17,6 @@ namespace RealEstate.Api.Controllers;
 [Route("api/agents")]
 public class AgentsController : ControllerBase
 {
-    // Every new agent starts with this seeded 5-star review so their profile isn't blank —
-    // not a real customer, always attributed as "Agente Real Estate".
-    private const string SystemReviewerName = "Agente Real Estate";
-
     // Short TTLs (not the 24h used for truly static reference data elsewhere) — ratings, reviews
     // counts and profile edits are real, if infrequent, changes that should show up reasonably
     // soon. UpdateMine/AddReview/DeleteReview explicitly evict ProfileCacheKey(id) on every
@@ -275,13 +271,9 @@ public class AgentsController : ControllerBase
             Specialties = ParseSpecialties(dto.Specialties)
         };
 
-        agent.Reviews.Add(new AgentReview
-        {
-            ReviewerUserId = Guid.Empty,
-            ReviewerName = SystemReviewerName,
-            Rating = 5
-        });
-
+        // No seeded review here on purpose — a fabricated 5-star "Agente Real Estate" review
+        // used to be added automatically for every new agent. Real ratings only, even if that
+        // means a brand-new profile starts with zero reviews instead of looking pre-validated.
         _db.Agents.Add(agent);
 
         try
