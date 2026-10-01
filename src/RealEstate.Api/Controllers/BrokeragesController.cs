@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
 using RealEstate.Api.Data;
 using RealEstate.Api.Extensions;
 using RealEstate.Api.Models.DTOs;
@@ -13,18 +14,27 @@ namespace RealEstate.Api.Controllers;
 [Route("api/brokerages")]
 public class BrokeragesController : ControllerBase
 {
+    // Short TTLs (not the 24h used for truly static reference data elsewhere) — agent/listing
+    // counts and profile edits are real, if infrequent, changes that should show up reasonably
+    // soon. Update() explicitly evicts ProfileCacheKey(id) on every edit, so an agent always sees
+    // their own change immediately regardless of this TTL; everyone else's view catches up within it.
+    private static readonly TimeSpan ProfileCacheDuration = TimeSpan.FromMinutes(5);
+    private static readonly TimeSpan DirectoryCacheDuration = TimeSpan.FromMinutes(2);
+
     private readonly RealEstateDbContext _db;
     // Agent/Brokerage live in RealEstateDbContext; Listing lives in ApplicationDbContext — same
     // cross-context split as AgentsController/ListingsController, so a brokerage's listings
     // count takes two round trips (agent UserIds, then a listings count by those ids).
     private readonly ApplicationDbContext _listingsDb;
     private readonly IPhotoUploadService _photoUploadService;
+    private readonly IMemoryCache _cache;
 
-    public BrokeragesController(RealEstateDbContext db, ApplicationDbContext listingsDb, IPhotoUploadService photoUploadService)
+    public BrokeragesController(RealEstateDbContext db, ApplicationDbContext listingsDb, IPhotoUploadService photoUploadService, IMemoryCache cache)
     {
         _db = db;
         _listingsDb = listingsDb;
         _photoUploadService = photoUploadService;
+        _cache = cache;
     }
 
     // GET /api/brokerages?search=comey — powers the agent signup autocomplete. Deliberately
@@ -48,57 +58,83 @@ public class BrokeragesController : ControllerBase
 
     // GET /api/brokerages/directory?name=&state=&city=&page=&pageSize= — the public
     // /inmobiliarias listing page: full profiles + agent/listing counts, paginated.
+    //
+    // The expensive part (querying+counting a page of brokerages) is cached as-is — it has no
+    // per-caller data in it. CanEdit is computed fresh on every request, after the cache lookup,
+    // and never written back into the cached objects (see ToPublicDto) — a cached page is shared
+    // across every visitor regardless of who's logged in, so nothing caller-specific may leak
+    // into it.
     [HttpGet("directory")]
     public async Task<ActionResult<PagedResult<BrokerageDto>>> Directory([FromQuery] BrokerageDirectoryQuery q)
     {
         var callerBrokerageId = await GetCallerBrokerageIdAsync();
 
-        var query = _db.Brokerages.AsQueryable();
-        if (!string.IsNullOrWhiteSpace(q.Name))
-            query = query.Where(b => b.Name.ToLower().Contains(q.Name!.ToLower()));
-        if (!string.IsNullOrWhiteSpace(q.State))
-            query = query.Where(b => b.State != null && b.State.ToLower() == q.State!.ToLower());
-        if (!string.IsNullOrWhiteSpace(q.City))
-            query = query.Where(b => b.City != null && b.City.ToLower() == q.City!.ToLower());
+        var cacheKey = DirectoryCacheKey(q);
+        var cachedPage = await _cache.GetOrCreateAsync(cacheKey, async entry =>
+        {
+            entry.AbsoluteExpirationRelativeToNow = DirectoryCacheDuration;
 
-        var totalCount = await query.CountAsync();
+            var query = _db.Brokerages.AsQueryable();
+            if (!string.IsNullOrWhiteSpace(q.Name))
+                query = query.Where(b => b.Name.ToLower().Contains(q.Name!.ToLower()));
+            if (!string.IsNullOrWhiteSpace(q.State))
+                query = query.Where(b => b.State != null && b.State.ToLower() == q.State!.ToLower());
+            if (!string.IsNullOrWhiteSpace(q.City))
+                query = query.Where(b => b.City != null && b.City.ToLower() == q.City!.ToLower());
 
-        var page = Math.Max(q.Page, 1);
-        var pageSize = Math.Clamp(q.PageSize, 1, 100);
+            var totalCount = await query.CountAsync();
+            var page = Math.Max(q.Page, 1);
+            var pageSize = Math.Clamp(q.PageSize, 1, 100);
 
-        var pageItems = await query
-            .OrderBy(b => b.Name)
-            .Skip((page - 1) * pageSize)
-            .Take(pageSize)
-            .Select(ProjectionSelector)
-            .ToListAsync();
+            var pageItems = await query
+                .OrderBy(b => b.Name)
+                .Skip((page - 1) * pageSize)
+                .Take(pageSize)
+                .Select(ProjectionSelector)
+                .ToListAsync();
 
-        var items = await AttachListingCountsAsync(pageItems, callerBrokerageId);
+            var profiles = await BuildProfilesAsync(pageItems);
+
+            return new CachedDirectoryPage { Profiles = profiles, Page = page, PageSize = pageSize, TotalCount = totalCount };
+        });
+
+        var items = cachedPage!.Profiles
+            .Select(p => ToPublicDto(p, callerBrokerageId.HasValue && callerBrokerageId.Value == p.Id))
+            .ToList();
 
         return Ok(new PagedResult<BrokerageDto>
         {
             Items = items,
-            Page = page,
-            PageSize = pageSize,
-            TotalCount = totalCount
+            Page = cachedPage.Page,
+            PageSize = cachedPage.PageSize,
+            TotalCount = cachedPage.TotalCount
         });
     }
 
-    // GET /api/brokerages/5
+    // GET /api/brokerages/5 — same cache-then-overlay-CanEdit shape as Directory above.
     [HttpGet("{id:int}")]
     public async Task<ActionResult<BrokerageDto>> GetById(int id)
     {
         var callerBrokerageId = await GetCallerBrokerageIdAsync();
 
-        var item = await _db.Brokerages
-            .Where(b => b.Id == id)
-            .Select(ProjectionSelector)
-            .FirstOrDefaultAsync();
+        var cachedProfile = await _cache.GetOrCreateAsync(ProfileCacheKey(id), async entry =>
+        {
+            entry.AbsoluteExpirationRelativeToNow = ProfileCacheDuration;
 
-        if (item is null) return NotFound();
+            var item = await _db.Brokerages
+                .Where(b => b.Id == id)
+                .Select(ProjectionSelector)
+                .FirstOrDefaultAsync();
 
-        var dtos = await AttachListingCountsAsync(new List<BrokerageProjection> { item }, callerBrokerageId);
-        return Ok(dtos[0]);
+            if (item is null) return null;
+
+            var profiles = await BuildProfilesAsync(new List<BrokerageProjection> { item });
+            return profiles[0];
+        });
+
+        if (cachedProfile is null) return NotFound();
+
+        return Ok(ToPublicDto(cachedProfile, callerBrokerageId.HasValue && callerBrokerageId.Value == cachedProfile.Id));
     }
 
     // GET /api/brokerages/mine — the caller's own agency, so the "edit my agency" entry point
@@ -143,6 +179,12 @@ public class BrokeragesController : ControllerBase
 
         await _db.SaveChangesAsync();
 
+        // Without this, the agent who just edited their own profile would keep seeing the old
+        // cached version for up to ProfileCacheDuration — worse than no cache at all. Directory
+        // pages aren't individually evicted (there's no cheap way to know which cached pages
+        // might include this brokerage) and simply catch up within DirectoryCacheDuration.
+        _cache.Remove(ProfileCacheKey(id));
+
         return await GetById(id);
     }
 
@@ -152,6 +194,11 @@ public class BrokeragesController : ControllerBase
         if (currentUserId is null) return null;
         return await _db.Agents.Where(a => a.UserId == currentUserId).Select(a => a.BrokerageId).FirstOrDefaultAsync();
     }
+
+    private static string ProfileCacheKey(int id) => $"brokerage-profile:{id}";
+
+    private static string DirectoryCacheKey(BrokerageDirectoryQuery q) =>
+        $"brokerage-directory:{q.Name?.Trim().ToLowerInvariant()}:{q.State?.Trim().ToLowerInvariant()}:{q.City?.Trim().ToLowerInvariant()}:{q.Page}:{q.PageSize}";
 
     private static readonly System.Linq.Expressions.Expression<Func<Brokerage, BrokerageProjection>> ProjectionSelector = b => new BrokerageProjection
     {
@@ -183,10 +230,35 @@ public class BrokeragesController : ControllerBase
         public List<Guid> AgentUserIds { get; set; } = new();
     }
 
-    // Real listing counts come from Listing (ApplicationDbContext), matched by each brokerage's
-    // agents' UserIds — summed in one grouped query across the whole page instead of per-brokerage,
-    // since Brokerage and Listing live in separate DbContexts (no SQL join possible).
-    private async Task<List<BrokerageDto>> AttachListingCountsAsync(List<BrokerageProjection> pageItems, int? callerBrokerageId)
+    // Cacheable shape: every brokerage profile field that's the same for every viewer. Deliberately
+    // has no CanEdit (or anything else caller-specific) — there is no field here to accidentally
+    // leak between callers, by construction, not just by convention.
+    private sealed class CachedBrokerageProfile
+    {
+        public int Id { get; set; }
+        public string Name { get; set; } = string.Empty;
+        public string? LogoUrl { get; set; }
+        public string? State { get; set; }
+        public string? City { get; set; }
+        public string? Website { get; set; }
+        public string? Description { get; set; }
+        public string? FacebookUrl { get; set; }
+        public string? InstagramUrl { get; set; }
+        public int AgentsCount { get; set; }
+        public int ListingsCount { get; set; }
+    }
+
+    private sealed class CachedDirectoryPage
+    {
+        public List<CachedBrokerageProfile> Profiles { get; set; } = new();
+        public int Page { get; set; }
+        public int PageSize { get; set; }
+        public int TotalCount { get; set; }
+    }
+
+    // Builds the cacheable (caller-independent) profile shape, including the cross-context
+    // listings-count join — this is the expensive part Directory/GetById cache the result of.
+    private async Task<List<CachedBrokerageProfile>> BuildProfilesAsync(List<BrokerageProjection> pageItems)
     {
         var allUserIds = pageItems.SelectMany(b => b.AgentUserIds).Distinct().ToList();
         var listingCounts = allUserIds.Count == 0
@@ -197,7 +269,7 @@ public class BrokeragesController : ControllerBase
                 .Select(g => new { OwnerId = g.Key, Count = g.Count() })
                 .ToDictionaryAsync(g => g.OwnerId, g => g.Count);
 
-        return pageItems.Select(b => new BrokerageDto
+        return pageItems.Select(b => new CachedBrokerageProfile
         {
             Id = b.Id,
             Name = b.Name,
@@ -209,8 +281,27 @@ public class BrokeragesController : ControllerBase
             FacebookUrl = b.FacebookUrl,
             InstagramUrl = b.InstagramUrl,
             AgentsCount = b.AgentsCount,
-            ListingsCount = b.AgentUserIds.Sum(uid => listingCounts.GetValueOrDefault(uid, 0)),
-            CanEdit = callerBrokerageId.HasValue && callerBrokerageId.Value == b.Id
+            ListingsCount = b.AgentUserIds.Sum(uid => listingCounts.GetValueOrDefault(uid, 0))
         }).ToList();
     }
+
+    // Always builds a brand-new BrokerageDto rather than mutating the cached CachedBrokerageProfile
+    // in place — IMemoryCache hands back the same shared instance to every caller, so writing
+    // CanEdit onto it directly would leak one caller's edit permission into every other caller's
+    // response until the cache entry expired.
+    private static BrokerageDto ToPublicDto(CachedBrokerageProfile cached, bool canEdit) => new()
+    {
+        Id = cached.Id,
+        Name = cached.Name,
+        LogoUrl = cached.LogoUrl,
+        State = cached.State,
+        City = cached.City,
+        Website = cached.Website,
+        Description = cached.Description,
+        FacebookUrl = cached.FacebookUrl,
+        InstagramUrl = cached.InstagramUrl,
+        AgentsCount = cached.AgentsCount,
+        ListingsCount = cached.ListingsCount,
+        CanEdit = canEdit
+    };
 }

@@ -2,6 +2,7 @@ using System.Net.Mail;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
 using RealEstate.Api.Data;
 using RealEstate.Api.Extensions;
 using RealEstate.Api.Models.DTOs;
@@ -22,6 +23,7 @@ public class ListingsController : ControllerBase
     private readonly RealEstateDbContext _agentsDb;
     private readonly IPhotoUploadService _photoUploadService;
     private readonly IEmailService _emailService;
+    private readonly IMemoryCache _cache;
     private readonly ILogger<ListingsController> _logger;
 
     public ListingsController(
@@ -29,14 +31,22 @@ public class ListingsController : ControllerBase
         RealEstateDbContext agentsDb,
         IPhotoUploadService photoUploadService,
         IEmailService emailService,
+        IMemoryCache cache,
         ILogger<ListingsController> logger)
     {
         _db = db;
         _agentsDb = agentsDb;
         _photoUploadService = photoUploadService;
         _emailService = emailService;
+        _cache = cache;
         _logger = logger;
     }
+
+    // Public so AgentsController can evict a specific owner's entry after UpdateMine changes
+    // their Company/PhotoUrl — those are exactly the two fields this cache holds.
+    public static string OwnerAgentCacheKey(Guid ownerId) => $"owner-agent-info:{ownerId}";
+
+    private readonly record struct OwnerAgentInfo(string? Company, string? PhotoUrl);
 
     // GET /api/listings?city=Austin&listingType=Sale&minPrice=100000&...
     [HttpGet]
@@ -118,25 +128,54 @@ public class ListingsController : ControllerBase
 
     // Brokerage/company and the agent's own profile photo aren't Listing fields, so the "show
     // properties by brokerage" filter and the listing-detail contact card need them attached
-    // here — one dictionary lookup instead of a per-listing round trip.
+    // here. Cached per owner (not per Listing, not per page/query) with a short TTL — neither
+    // field is caller-specific, so unlike BrokeragesController/AgentsController there's no
+    // per-user data to strip out here; every owner's entry is simply shared by everyone.
+    private static readonly TimeSpan OwnerAgentDetailsCacheDuration = TimeSpan.FromMinutes(5);
+
     private async Task AttachOwnerAgentDetailsAsync(List<ListingDto> items)
     {
         if (items.Count == 0) return;
 
         var ownerIds = items.Select(i => i.OwnerId).Distinct().ToList();
-        // ToDictionaryAsync's key/value selectors run against already-materialized Agent
-        // entities, not translated to SQL, so a.Company (sourced from a.Brokerage.Name) needs
-        // the navigation eager-loaded here or it would read back null for every agent.
-        var agents = await _agentsDb.Agents
-            .Include(a => a.Brokerage)
-            .Where(a => a.UserId != null && ownerIds.Contains(a.UserId.Value))
-            .ToDictionaryAsync(a => a.UserId!.Value, a => new { a.Company, a.PhotoUrl });
+
+        var resolved = new Dictionary<Guid, OwnerAgentInfo>();
+        var missingIds = new List<Guid>();
+        foreach (var ownerId in ownerIds)
+        {
+            if (_cache.TryGetValue(OwnerAgentCacheKey(ownerId), out OwnerAgentInfo cached))
+                resolved[ownerId] = cached;
+            else
+                missingIds.Add(ownerId);
+        }
+
+        if (missingIds.Count > 0)
+        {
+            // ToDictionaryAsync's key/value selectors run against already-materialized Agent
+            // entities, not translated to SQL, so a.Company (sourced from a.Brokerage.Name) needs
+            // the navigation eager-loaded here or it would read back null for every agent.
+            var agents = await _agentsDb.Agents
+                .Include(a => a.Brokerage)
+                .Where(a => a.UserId != null && missingIds.Contains(a.UserId.Value))
+                .ToDictionaryAsync(a => a.UserId!.Value, a => new OwnerAgentInfo(a.Company, a.PhotoUrl));
+
+            foreach (var ownerId in missingIds)
+            {
+                // An owner with no matching Agent (a plain Owner-role user, not also an Agent)
+                // caches as the same default (null, null) as an agent with no company/photo set —
+                // identical either way to a caller, and caching it too avoids re-querying for the
+                // same non-agent owner on every subsequent listings page.
+                var info = agents.GetValueOrDefault(ownerId);
+                resolved[ownerId] = info;
+                _cache.Set(OwnerAgentCacheKey(ownerId), info, OwnerAgentDetailsCacheDuration);
+            }
+        }
 
         foreach (var item in items)
         {
-            var agent = agents.GetValueOrDefault(item.OwnerId);
-            item.OwnerCompany = agent?.Company;
-            item.OwnerPhotoUrl = agent?.PhotoUrl;
+            var info = resolved.GetValueOrDefault(item.OwnerId);
+            item.OwnerCompany = info.Company;
+            item.OwnerPhotoUrl = info.PhotoUrl;
         }
     }
 

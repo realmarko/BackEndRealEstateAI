@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
 using RealEstate.Api.Data;
 using RealEstate.Api.Extensions;
 using RealEstate.Api.Models.DTOs;
@@ -20,6 +21,14 @@ public class AgentsController : ControllerBase
     // not a real customer, always attributed as "Agente Real Estate".
     private const string SystemReviewerName = "Agente Real Estate";
 
+    // Short TTLs (not the 24h used for truly static reference data elsewhere) — ratings, reviews
+    // counts and profile edits are real, if infrequent, changes that should show up reasonably
+    // soon. UpdateMine/AddReview/DeleteReview explicitly evict ProfileCacheKey(id) on every
+    // change, so the affected agent's own profile is always fresh regardless of this TTL;
+    // everyone else's view (and Search results) catch up within it.
+    private static readonly TimeSpan ProfileCacheDuration = TimeSpan.FromMinutes(5);
+    private static readonly TimeSpan SearchCacheDuration = TimeSpan.FromMinutes(2);
+
     private readonly RealEstateDbContext _db;
     // Agent lives in RealEstateDbContext; Listing lives in ApplicationDbContext (it's really
     // just the Identity DbContext, reused for listings) — there's no EF-enforced FK between
@@ -27,6 +36,7 @@ public class AgentsController : ControllerBase
     private readonly ApplicationDbContext _listingsDb;
     private readonly IPhotoUploadService _photoUploadService;
     private readonly IEmailService _emailService;
+    private readonly IMemoryCache _cache;
     private readonly ILogger<AgentsController> _logger;
 
     public AgentsController(
@@ -34,140 +44,169 @@ public class AgentsController : ControllerBase
         ApplicationDbContext listingsDb,
         IPhotoUploadService photoUploadService,
         IEmailService emailService,
+        IMemoryCache cache,
         ILogger<AgentsController> logger)
     {
         _db = db;
         _listingsDb = listingsDb;
         _photoUploadService = photoUploadService;
         _emailService = emailService;
+        _cache = cache;
         _logger = logger;
     }
 
     // GET /api/agents?name=smith
+    //
+    // The expensive part (querying+counting a page of agents) is cached as-is — it has no
+    // per-caller data in it. IsOwnProfile is computed fresh on every request, after the cache
+    // lookup, and never written back into the cached objects (see ToPublicDto) — a cached page
+    // is shared across every visitor regardless of who's logged in, so nothing caller-specific
+    // may leak into it.
     [HttpGet]
     public async Task<ActionResult<PagedResult<AgentDto>>> Search([FromQuery] AgentSearchQuery q)
     {
         var currentUserId = User.TryGetUserId();
-        var query = _db.Agents.AsQueryable();
 
-        if (!string.IsNullOrWhiteSpace(q.Name))
-            query = query.Where(a => a.Name.ToLower().Contains(q.Name!.ToLower()));
-
-        if (!string.IsNullOrWhiteSpace(q.Specialty))
-            query = query.Where(a => a.Specialties.Any(s => s.ToLower().Contains(q.Specialty!.ToLower())));
-
-        if (!string.IsNullOrWhiteSpace(q.Company))
-            query = query.Where(a => a.Brokerage != null && a.Brokerage.Name.ToLower().Contains(q.Company!.ToLower()));
-
-        if (q.MinRating.HasValue)
-            query = query.Where(a => a.Reviews.Any() && a.Reviews.Average(r => (double)r.Rating) >= q.MinRating.Value);
-
-        var totalCount = await query.CountAsync();
-
-        var page = Math.Max(q.Page, 1);
-        var pageSize = Math.Clamp(q.PageSize, 1, 100);
-
-        var pageItems = await query
-            .OrderBy(a => a.Name)
-            .Skip((page - 1) * pageSize)
-            .Take(pageSize)
-            .Select(a => new
-            {
-                a.Id,
-                a.UserId,
-                IsOwnProfile = currentUserId != null && a.UserId == currentUserId,
-                a.Name,
-                a.Email,
-                a.Phone,
-                Company = a.Brokerage != null ? a.Brokerage.Name : null,
-                a.IsIndependent,
-                a.PhotoUrl,
-                a.Bio,
-                a.Specialties,
-                AverageRating = a.Reviews.Any() ? a.Reviews.Average(r => (double)r.Rating) : (double?)null,
-                ReviewsCount = a.Reviews.Count
-            })
-            .ToListAsync();
-
-        // Real property counts come from Listing (ApplicationDbContext), matched by
-        // Agent.UserId == Listing.OwnerId — Agent.Properties is the legacy, unused Property
-        // entity and is always empty. Counted in one grouped query across the page instead of
-        // per-agent, since Agent and Listing live in separate DbContexts (no SQL join possible).
-        var pageUserIds = pageItems.Where(a => a.UserId.HasValue).Select(a => a.UserId!.Value).ToList();
-        var listingCounts = await _listingsDb.Listings
-            .Where(l => pageUserIds.Contains(l.OwnerId) && l.Status != ListingStatus.Removed)
-            .GroupBy(l => l.OwnerId)
-            .Select(g => new { OwnerId = g.Key, Count = g.Count() })
-            .ToDictionaryAsync(g => g.OwnerId, g => g.Count);
-
-        var items = pageItems.Select(a => new AgentDto
+        var cachedPage = await _cache.GetOrCreateAsync(SearchCacheKey(q), async entry =>
         {
-            Id = a.Id,
-            IsOwnProfile = a.IsOwnProfile,
-            Name = a.Name,
-            Email = a.Email,
-            Phone = a.Phone,
-            Company = a.Company,
-            IsIndependent = a.IsIndependent,
-            PhotoUrl = a.PhotoUrl,
-            Bio = a.Bio,
-            Specialties = a.Specialties,
-            PropertiesCount = a.UserId.HasValue && listingCounts.TryGetValue(a.UserId.Value, out var count) ? count : 0,
-            AverageRating = a.AverageRating,
-            ReviewsCount = a.ReviewsCount
-        }).ToList();
+            entry.AbsoluteExpirationRelativeToNow = SearchCacheDuration;
+
+            var query = _db.Agents.AsQueryable();
+
+            if (!string.IsNullOrWhiteSpace(q.Name))
+                query = query.Where(a => a.Name.ToLower().Contains(q.Name!.ToLower()));
+
+            if (!string.IsNullOrWhiteSpace(q.Specialty))
+                query = query.Where(a => a.Specialties.Any(s => s.ToLower().Contains(q.Specialty!.ToLower())));
+
+            if (!string.IsNullOrWhiteSpace(q.Company))
+                query = query.Where(a => a.Brokerage != null && a.Brokerage.Name.ToLower().Contains(q.Company!.ToLower()));
+
+            if (q.MinRating.HasValue)
+                query = query.Where(a => a.Reviews.Any() && a.Reviews.Average(r => (double)r.Rating) >= q.MinRating.Value);
+
+            var totalCount = await query.CountAsync();
+
+            var page = Math.Max(q.Page, 1);
+            var pageSize = Math.Clamp(q.PageSize, 1, 100);
+
+            var pageItems = await query
+                .OrderBy(a => a.Name)
+                .Skip((page - 1) * pageSize)
+                .Take(pageSize)
+                .Select(a => new
+                {
+                    a.Id,
+                    a.UserId,
+                    a.Name,
+                    a.Email,
+                    a.Phone,
+                    Company = a.Brokerage != null ? a.Brokerage.Name : null,
+                    a.IsIndependent,
+                    a.PhotoUrl,
+                    a.Bio,
+                    a.Specialties,
+                    AverageRating = a.Reviews.Any() ? a.Reviews.Average(r => (double)r.Rating) : (double?)null,
+                    ReviewsCount = a.Reviews.Count
+                })
+                .ToListAsync();
+
+            // Real property counts come from Listing (ApplicationDbContext), matched by
+            // Agent.UserId == Listing.OwnerId — Agent.Properties is the legacy, unused Property
+            // entity and is always empty. Counted in one grouped query across the page instead of
+            // per-agent, since Agent and Listing live in separate DbContexts (no SQL join possible).
+            var pageUserIds = pageItems.Where(a => a.UserId.HasValue).Select(a => a.UserId!.Value).ToList();
+            var listingCounts = await _listingsDb.Listings
+                .Where(l => pageUserIds.Contains(l.OwnerId) && l.Status != ListingStatus.Removed)
+                .GroupBy(l => l.OwnerId)
+                .Select(g => new { OwnerId = g.Key, Count = g.Count() })
+                .ToDictionaryAsync(g => g.OwnerId, g => g.Count);
+
+            var profiles = pageItems.Select(a => new CachedAgentProfile
+            {
+                Id = a.Id,
+                UserId = a.UserId,
+                Name = a.Name,
+                Email = a.Email,
+                Phone = a.Phone,
+                Company = a.Company,
+                IsIndependent = a.IsIndependent,
+                PhotoUrl = a.PhotoUrl,
+                Bio = a.Bio,
+                Specialties = a.Specialties,
+                PropertiesCount = a.UserId.HasValue && listingCounts.TryGetValue(a.UserId.Value, out var count) ? count : 0,
+                AverageRating = a.AverageRating,
+                ReviewsCount = a.ReviewsCount
+            }).ToList();
+
+            return new CachedAgentSearchPage { Profiles = profiles, Page = page, PageSize = pageSize, TotalCount = totalCount };
+        });
+
+        var items = cachedPage!.Profiles
+            .Select(p => ToPublicDto(p, currentUserId != null && p.UserId == currentUserId))
+            .ToList();
 
         return Ok(new PagedResult<AgentDto>
         {
             Items = items,
-            Page = page,
-            PageSize = pageSize,
-            TotalCount = totalCount
+            Page = cachedPage.Page,
+            PageSize = cachedPage.PageSize,
+            TotalCount = cachedPage.TotalCount
         });
     }
 
+    // GET /api/agents/5 — same cache-then-overlay-IsOwnProfile shape as Search above.
     [HttpGet("{id:int}")]
     public async Task<ActionResult<AgentDto>> GetById(int id)
     {
         var currentUserId = User.TryGetUserId();
-        var agent = await _db.Agents
-            .Where(a => a.Id == id)
-            .Select(a => new
-            {
-                a.Id,
-                a.UserId,
-                IsOwnProfile = currentUserId != null && a.UserId == currentUserId,
-                a.Name,
-                a.Email,
-                a.Phone,
-                Company = a.Brokerage != null ? a.Brokerage.Name : null,
-                a.IsIndependent,
-                a.PhotoUrl,
-                a.Bio,
-                a.Specialties,
-                AverageRating = a.Reviews.Any() ? a.Reviews.Average(r => (double)r.Rating) : (double?)null,
-                ReviewsCount = a.Reviews.Count
-            })
-            .FirstOrDefaultAsync();
 
-        if (agent is null) return NotFound();
-
-        return Ok(new AgentDto
+        var cachedProfile = await _cache.GetOrCreateAsync(ProfileCacheKey(id), async entry =>
         {
-            Id = agent.Id,
-            IsOwnProfile = agent.IsOwnProfile,
-            Name = agent.Name,
-            Email = agent.Email,
-            Phone = agent.Phone,
-            Company = agent.Company,
-            IsIndependent = agent.IsIndependent,
-            PhotoUrl = agent.PhotoUrl,
-            Bio = agent.Bio,
-            Specialties = agent.Specialties,
-            PropertiesCount = await CountListingsAsync(agent.UserId),
-            AverageRating = agent.AverageRating,
-            ReviewsCount = agent.ReviewsCount
+            entry.AbsoluteExpirationRelativeToNow = ProfileCacheDuration;
+
+            var agent = await _db.Agents
+                .Where(a => a.Id == id)
+                .Select(a => new
+                {
+                    a.Id,
+                    a.UserId,
+                    a.Name,
+                    a.Email,
+                    a.Phone,
+                    Company = a.Brokerage != null ? a.Brokerage.Name : null,
+                    a.IsIndependent,
+                    a.PhotoUrl,
+                    a.Bio,
+                    a.Specialties,
+                    AverageRating = a.Reviews.Any() ? a.Reviews.Average(r => (double)r.Rating) : (double?)null,
+                    ReviewsCount = a.Reviews.Count
+                })
+                .FirstOrDefaultAsync();
+
+            if (agent is null) return null;
+
+            return new CachedAgentProfile
+            {
+                Id = agent.Id,
+                UserId = agent.UserId,
+                Name = agent.Name,
+                Email = agent.Email,
+                Phone = agent.Phone,
+                Company = agent.Company,
+                IsIndependent = agent.IsIndependent,
+                PhotoUrl = agent.PhotoUrl,
+                Bio = agent.Bio,
+                Specialties = agent.Specialties,
+                PropertiesCount = await CountListingsAsync(agent.UserId),
+                AverageRating = agent.AverageRating,
+                ReviewsCount = agent.ReviewsCount
+            };
         });
+
+        if (cachedProfile is null) return NotFound();
+
+        return Ok(ToPublicDto(cachedProfile, currentUserId != null && cachedProfile.UserId == currentUserId));
     }
 
     // Real property counts come from Listing (ApplicationDbContext), matched by
@@ -180,6 +219,8 @@ public class AgentsController : ControllerBase
 
     // GET /api/agents/5/listings — the agent's own listings (Listing.OwnerId == Agent.UserId),
     // shown on their public profile so a visitor can see the real properties, not just a count.
+    // Not cached: Listing already has its own independent lifecycle/update paths, and this list
+    // (unlike a bare count) needs to stay exactly current for an agent who just added a listing.
     [HttpGet("{id:int}/listings")]
     public async Task<ActionResult<List<ListingDto>>> GetListings(int id)
     {
@@ -254,10 +295,14 @@ public class AgentsController : ControllerBase
             return Conflict(new { message = "An agent profile already exists for this account." });
         }
 
+        // No cache eviction needed here — agent.Id is brand new, so GetById(agent.Id) and any
+        // Search page that would include it are cache misses by construction, not stale hits.
         return CreatedAtAction(nameof(GetById), new { id = agent.Id }, await ToDtoAsync(agent, isOwnProfile: true));
     }
 
     // Returns the current user's own agent profile — lets the edit form load without knowing its id.
+    // Deliberately bypasses the cache (unlike GetById/Search): this is the source of truth an
+    // agent edits from, so it must never show a stale version of their own profile.
     [Authorize(Roles = "Agent")]
     [HttpGet("me")]
     public async Task<ActionResult<AgentDto>> GetMine()
@@ -319,6 +364,18 @@ public class AgentsController : ControllerBase
         }
 
         await _db.SaveChangesAsync();
+
+        // Without this, anyone viewing this agent's public profile (or a Search page including
+        // them) would keep seeing the pre-edit version for up to ProfileCacheDuration/
+        // SearchCacheDuration. GetMine (above) never goes through the cache, so the agent's own
+        // view is always fresh regardless; this just makes everyone else's catch up immediately
+        // too instead of waiting out the TTL.
+        _cache.Remove(ProfileCacheKey(agent.Id));
+        // Company/PhotoUrl just changed — also evict ListingsController's per-owner cache (same
+        // two fields, keyed by this agent's own UserId) so their listing cards update immediately
+        // too, not just their agent profile.
+        if (agent.UserId.HasValue)
+            _cache.Remove(ListingsController.OwnerAgentCacheKey(agent.UserId.Value));
 
         return Ok(await ToDtoAsync(agent, isOwnProfile: true));
     }
@@ -426,6 +483,10 @@ public class AgentsController : ControllerBase
             return Conflict(new { message = "You already reviewed this agent." });
         }
 
+        // A new review changes this agent's cached AverageRating/ReviewsCount — evict so the
+        // next view (by anyone) reflects it instead of waiting out ProfileCacheDuration.
+        _cache.Remove(ProfileCacheKey(id));
+
         // Best-effort notification — the review is already saved, so an email failure here must
         // never turn into an error response for a review that succeeded.
         if (!string.IsNullOrWhiteSpace(agent.Email))
@@ -481,6 +542,9 @@ public class AgentsController : ControllerBase
         _db.AgentReviews.Remove(review);
         await _db.SaveChangesAsync();
 
+        // Same reasoning as AddReview — a removed review changes the cached AverageRating/ReviewsCount.
+        _cache.Remove(ProfileCacheKey(id));
+
         return NoContent();
     }
 
@@ -530,6 +594,61 @@ public class AgentsController : ControllerBase
         string.IsNullOrWhiteSpace(raw)
             ? new List<string>()
             : raw.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList();
+
+    private static string ProfileCacheKey(int id) => $"agent-profile:{id}";
+
+    private static string SearchCacheKey(AgentSearchQuery q) =>
+        $"agent-search:{q.Name?.Trim().ToLowerInvariant()}:{q.Specialty?.Trim().ToLowerInvariant()}:{q.Company?.Trim().ToLowerInvariant()}:{q.MinRating}:{q.Page}:{q.PageSize}";
+
+    // Cacheable shape: every agent profile field that's the same for every viewer, plus UserId
+    // (needed to compute IsOwnProfile after a cache hit — never itself exposed on AgentDto).
+    // Deliberately has no IsOwnProfile — there is no field here to accidentally leak between
+    // callers, by construction, not just by convention.
+    private sealed class CachedAgentProfile
+    {
+        public int Id { get; set; }
+        public Guid? UserId { get; set; }
+        public string Name { get; set; } = string.Empty;
+        public string Email { get; set; } = string.Empty;
+        public string Phone { get; set; } = string.Empty;
+        public string? Company { get; set; }
+        public bool IsIndependent { get; set; }
+        public string? PhotoUrl { get; set; }
+        public string? Bio { get; set; }
+        public List<string> Specialties { get; set; } = new();
+        public int PropertiesCount { get; set; }
+        public double? AverageRating { get; set; }
+        public int ReviewsCount { get; set; }
+    }
+
+    private sealed class CachedAgentSearchPage
+    {
+        public List<CachedAgentProfile> Profiles { get; set; } = new();
+        public int Page { get; set; }
+        public int PageSize { get; set; }
+        public int TotalCount { get; set; }
+    }
+
+    // Always builds a brand-new AgentDto rather than mutating the cached CachedAgentProfile in
+    // place — IMemoryCache hands back the same shared instance to every caller, so writing
+    // IsOwnProfile onto it directly would leak one caller's identity into every other caller's
+    // response until the cache entry expired.
+    private static AgentDto ToPublicDto(CachedAgentProfile cached, bool isOwnProfile) => new()
+    {
+        Id = cached.Id,
+        IsOwnProfile = isOwnProfile,
+        Name = cached.Name,
+        Email = cached.Email,
+        Phone = cached.Phone,
+        Company = cached.Company,
+        IsIndependent = cached.IsIndependent,
+        PhotoUrl = cached.PhotoUrl,
+        Bio = cached.Bio,
+        Specialties = cached.Specialties,
+        PropertiesCount = cached.PropertiesCount,
+        AverageRating = cached.AverageRating,
+        ReviewsCount = cached.ReviewsCount
+    };
 
     private async Task<AgentDto> ToDtoAsync(Agent a, bool isOwnProfile = false) => new()
     {
