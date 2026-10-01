@@ -139,12 +139,14 @@ public class ListingDto
     public decimal? CadastralValue { get; set; }
     public Guid OwnerId { get; set; }
     public string OwnerName { get; set; } = string.Empty;
+    public string OwnerEmail { get; set; } = string.Empty;
 
-    // Not a Listing field — the owner isn't necessarily even an Agent (could be an Owner-role
-    // user). Populated after the fact by matching OwnerId to an Agent.UserId (see
-    // ListingsController.AttachOwnerCompaniesAsync); null when there's no matching agent, or
-    // the matching agent has no company set.
+    // Neither is a Listing field — the owner isn't necessarily even an Agent (could be an
+    // Owner-role user). Populated after the fact by matching OwnerId to an Agent.UserId (see
+    // ListingsController.AttachOwnerAgentDetailsAsync); null when there's no matching agent, or
+    // the matching agent has no company/photo set.
     public string? OwnerCompany { get; set; }
+    public string? OwnerPhotoUrl { get; set; }
     public DateTime CreatedAt { get; set; }
     public List<string> ImageUrls { get; set; } = new();
 }
@@ -165,6 +167,10 @@ public class ListingSearchQuery
     public decimal? MaxPrice { get; set; }
     public int? MinBedrooms { get; set; }
     public int? MinBathrooms { get; set; }
+
+    // Scopes results to listings owned by an agent who belongs to this brokerage (an
+    // "inmobiliaria" page) — see ListingsController.Search for the cross-context resolution.
+    public int? BrokerageId { get; set; }
 
     // Optional Google Maps viewport bounding box, used when the user pans/zooms the map
     public double? SwLat { get; set; }

@@ -64,6 +64,7 @@ public static class ListingExtensions
         CadastralValue = l.CadastralValue,
         OwnerId = l.OwnerId,
         OwnerName = l.Owner is null ? string.Empty : $"{l.Owner.FirstName} {l.Owner.LastName}",
+        OwnerEmail = l.Owner?.Email ?? string.Empty,
         CreatedAt = l.CreatedAt,
         ImageUrls = l.Images.OrderBy(i => i.SortOrder).Select(i => i.Url).ToList()
     };

@@ -18,7 +18,7 @@ public class ListingsController : ControllerBase
     // Agent lives in RealEstateDbContext; Listing lives in ApplicationDbContext (it's really
     // just the Identity DbContext, reused for listings) — same split as AgentsController.
     // There's no EF-enforced FK between a listing's owner and an agent, so OwnerCompany is
-    // attached after the fact by matching OwnerId to Agent.UserId (see AttachOwnerCompaniesAsync).
+    // attached after the fact by matching OwnerId to Agent.UserId (see AttachOwnerAgentDetailsAsync).
     private readonly RealEstateDbContext _agentsDb;
     private readonly IPhotoUploadService _photoUploadService;
     private readonly IEmailService _emailService;
@@ -64,6 +64,15 @@ public class ListingsController : ControllerBase
         if (q.MinBathrooms.HasValue)
             query = query.Where(l => l.Bathrooms >= q.MinBathrooms);
 
+        if (q.BrokerageId.HasValue)
+        {
+            var agencyUserIds = await _agentsDb.Agents
+                .Where(a => a.BrokerageId == q.BrokerageId && a.UserId != null)
+                .Select(a => a.UserId!.Value)
+                .ToListAsync();
+            query = query.Where(l => agencyUserIds.Contains(l.OwnerId));
+        }
+
         // Google Maps viewport bounding box filter (pan/zoom search)
         if (q.SwLat.HasValue && q.SwLng.HasValue && q.NeLat.HasValue && q.NeLng.HasValue)
         {
@@ -96,7 +105,7 @@ public class ListingsController : ControllerBase
             .Select(l => l.ToDto())
             .ToListAsync();
 
-        await AttachOwnerCompaniesAsync(items);
+        await AttachOwnerAgentDetailsAsync(items);
 
         return Ok(new PagedResult<ListingDto>
         {
@@ -107,10 +116,10 @@ public class ListingsController : ControllerBase
         });
     }
 
-    // Brokerage/company isn't a Listing field, so the "show properties by brokerage" filter
-    // (client-side, alongside the map/listings page's other filters) needs it attached here —
-    // one dictionary lookup instead of a per-listing round trip.
-    private async Task AttachOwnerCompaniesAsync(List<ListingDto> items)
+    // Brokerage/company and the agent's own profile photo aren't Listing fields, so the "show
+    // properties by brokerage" filter and the listing-detail contact card need them attached
+    // here — one dictionary lookup instead of a per-listing round trip.
+    private async Task AttachOwnerAgentDetailsAsync(List<ListingDto> items)
     {
         if (items.Count == 0) return;
 
@@ -118,14 +127,16 @@ public class ListingsController : ControllerBase
         // ToDictionaryAsync's key/value selectors run against already-materialized Agent
         // entities, not translated to SQL, so a.Company (sourced from a.Brokerage.Name) needs
         // the navigation eager-loaded here or it would read back null for every agent.
-        var companies = await _agentsDb.Agents
+        var agents = await _agentsDb.Agents
             .Include(a => a.Brokerage)
             .Where(a => a.UserId != null && ownerIds.Contains(a.UserId.Value))
-            .ToDictionaryAsync(a => a.UserId!.Value, a => a.Company);
+            .ToDictionaryAsync(a => a.UserId!.Value, a => new { a.Company, a.PhotoUrl });
 
         foreach (var item in items)
         {
-            item.OwnerCompany = companies.GetValueOrDefault(item.OwnerId);
+            var agent = agents.GetValueOrDefault(item.OwnerId);
+            item.OwnerCompany = agent?.Company;
+            item.OwnerPhotoUrl = agent?.PhotoUrl;
         }
     }
 
@@ -138,7 +149,11 @@ public class ListingsController : ControllerBase
             .Include(l => l.Address)
             .FirstOrDefaultAsync(l => l.Id == id);
 
-        return listing is null ? NotFound() : Ok(listing.ToDto());
+        if (listing is null) return NotFound();
+
+        var dto = listing.ToDto();
+        await AttachOwnerAgentDetailsAsync([dto]);
+        return Ok(dto);
     }
 
     // GET /api/listings/5/price-history — oldest first, so the frontend can render it as a
@@ -338,7 +353,7 @@ public class ListingsController : ControllerBase
         var createdDto = created.ToDto();
         // ListingService.create() splices this response straight into the same client-side
         // listings signal the company filter reads, so it needs OwnerCompany just like Search.
-        await AttachOwnerCompaniesAsync([createdDto]);
+        await AttachOwnerAgentDetailsAsync([createdDto]);
 
         // Best-effort, same as AgentsController's review-notification email: the listing is
         // already saved, so a failure here must never turn into an error response for it. Unlike
@@ -498,7 +513,7 @@ public class ListingsController : ControllerBase
         var updatedDto = listing.ToDto();
         // Same reason as Create: ListingService.update() splices this response into the
         // client-side listings signal, overwriting whatever OwnerCompany Search had attached.
-        await AttachOwnerCompaniesAsync([updatedDto]);
+        await AttachOwnerAgentDetailsAsync([updatedDto]);
         return Ok(updatedDto);
     }
 
