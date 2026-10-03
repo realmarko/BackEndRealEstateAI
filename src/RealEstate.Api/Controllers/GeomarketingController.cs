@@ -256,14 +256,7 @@ public class GeomarketingController : ControllerBase
         if (neLat - swLat > MaxAgebBoundsSpanDegrees || neLng - swLng > MaxAgebBoundsSpanDegrees)
             return BadRequest(new { message = $"Bounding box must not exceed {MaxAgebBoundsSpanDegrees} degrees in either dimension." });
 
-        var bbox = GeoFactory.Instance.CreatePolygon(new[]
-        {
-            new Coordinate(swLng, swLat),
-            new Coordinate(neLng, swLat),
-            new Coordinate(neLng, neLat),
-            new Coordinate(swLng, neLat),
-            new Coordinate(swLng, swLat)
-        });
+        var bbox = GeoFactory.CreateBoundingBox(swLat, swLng, neLat, neLng);
 
         try
         {

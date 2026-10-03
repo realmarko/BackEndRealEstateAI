@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using NetTopologySuite.Geometries;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
@@ -12,9 +13,11 @@ using RealEstate.Api.Data;
 namespace RealEstate.Api.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20261003051739_AddListingSearchPerformanceIndexes")]
+    partial class AddListingSearchPerformanceIndexes
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -940,6 +943,9 @@ namespace RealEstate.Api.Migrations
 
                     b.HasIndex("Price")
                         .HasDatabaseName("ix_listings_price");
+
+                    b.HasIndex("Latitude", "Longitude")
+                        .HasDatabaseName("ix_listings_latitude_longitude");
 
                     b.HasIndex("Status", "ListingType", "PropertyType", "CreatedAt")
                         .HasDatabaseName("ix_listings_status_listing_type_property_type_created_at")

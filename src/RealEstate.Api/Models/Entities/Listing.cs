@@ -1,3 +1,5 @@
+using NetTopologySuite.Geometries;
+
 namespace RealEstate.Api.Models.Entities;
 
 public class Listing
@@ -21,6 +23,14 @@ public class Listing
     // Used for Google Maps pins
     public double Latitude { get; set; }
     public double Longitude { get; set; }
+
+    // DB-computed (GENERATED ALWAYS AS ... STORED from Latitude/Longitude — see
+    // ApplicationDbContext.OnModelCreating) and GIST-indexed, matching AgebPopulation.Boundary /
+    // MunicipalBoundary.Boundary's convention. Never set from app code — Latitude/Longitude stay
+    // the source of truth; this exists only so the map's bounding-box search
+    // (ListingsController.Search) can use ST_Intersects with a real spatial index instead of a
+    // plain B-tree on (Latitude, Longitude), which can't efficiently satisfy a 2D range query.
+    public Point? Location { get; set; }
 
     public int Bedrooms { get; set; }
     public decimal Bathrooms { get; set; }

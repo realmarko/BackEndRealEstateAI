@@ -38,7 +38,23 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, IdentityR
             entity.Property(l => l.Price).HasColumnType("numeric(14,2)");
             entity.Property(l => l.Currency).HasMaxLength(3).IsRequired().HasDefaultValue("MXN");
             entity.Property(l => l.Bathrooms).HasColumnType("numeric(4,1)");
-            entity.HasIndex(l => new { l.Latitude, l.Longitude });
+
+            // Backs the public search/browse endpoint's actual filters (status, listing_type,
+            // property_type) plus its default sort (created_at) — before this, none of those had
+            // index support, so every search did a full table scan. Partial on status <> Removed
+            // (3) since the search endpoint always excludes removed listings; indexing those rows
+            // would only waste space. A plain (non-DESC) CreatedAt still backs ORDER BY ...
+            // DESC — B-tree indexes scan efficiently in either direction.
+            entity.HasIndex(l => new { l.Status, l.ListingType, l.PropertyType, l.CreatedAt })
+                  .HasFilter("status <> 3");
+            entity.HasIndex(l => l.Price);
+
+            // GENERATED ALWAYS ... STORED from Latitude/Longitude, kept in sync by Postgres
+            // itself — see Listing.Location's own comment for why this exists.
+            entity.Property(l => l.Location)
+                  .HasColumnType("geometry(Point,4326)")
+                  .HasComputedColumnSql("ST_SetSRID(ST_MakePoint(longitude, latitude), 4326)", stored: true);
+            entity.HasIndex(l => l.Location).HasMethod("GIST");
 
             entity.HasOne(l => l.Owner)
                   .WithMany(u => u.Listings)
@@ -104,7 +120,15 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, IdentityR
             entity.Property(a => a.State).HasMaxLength(100).IsRequired();
             entity.Property(a => a.ZipCode).HasMaxLength(20).IsRequired();
             entity.Property(a => a.Country).HasMaxLength(100).IsRequired();
-            entity.HasIndex(a => a.City);
+
+            // Replaces a plain index on City: every city filter in ListingsController compares
+            // case-insensitively, which a plain B-tree on City can't serve (Postgres can't match
+            // an index to a column wrapped in lower(...) at query time) — see ListingAddress.
+            // CityLower's own comment.
+            entity.Property(a => a.CityLower)
+                  .HasMaxLength(100)
+                  .HasComputedColumnSql("lower(city)", stored: true);
+            entity.HasIndex(a => a.CityLower);
         });
 
         builder.Entity<ListingPriceHistory>(entity =>

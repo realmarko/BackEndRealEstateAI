@@ -11,6 +11,15 @@ public class ListingAddress
     public string Street { get; set; } = string.Empty;
     public string Colonia { get; set; } = string.Empty;
     public string City { get; set; } = string.Empty;
+
+    // DB-computed (GENERATED ALWAYS AS lower(city) STORED — see
+    // ApplicationDbContext.OnModelCreating) and indexed. ListingsController's city filter and
+    // "similar listings" query compare against this instead of calling .ToLower() on City at
+    // query time — a case-insensitive match that way requires an index on lower(city) anyway, so
+    // this both avoids the runtime function call and gives the index something exact to match.
+    // Never set from app code.
+    public string CityLower { get; set; } = string.Empty;
+
     public string State { get; set; } = string.Empty;
     public string ZipCode { get; set; } = string.Empty;
     public string Country { get; set; } = "México";

@@ -60,7 +60,7 @@ public class ListingsController : ControllerBase
             .AsQueryable();
 
         if (!string.IsNullOrWhiteSpace(q.City))
-            query = query.Where(l => l.Address!.City.ToLower() == q.City!.ToLower());
+            query = query.Where(l => l.Address!.CityLower == q.City!.ToLower());
         if (q.ListingType.HasValue)
             query = query.Where(l => l.ListingType == q.ListingType);
         if (q.PropertyType.HasValue)
@@ -97,10 +97,16 @@ public class ListingsController : ControllerBase
                 return BadRequest(new { message = "swLng must be a finite number between -180 and 180." });
             if (!GeoValidation.IsValidLng(q.NeLng.Value))
                 return BadRequest(new { message = "neLng must be a finite number between -180 and 180." });
+            if (q.SwLat.Value >= q.NeLat.Value)
+                return BadRequest(new { message = "swLat must be less than neLat." });
+            if (q.SwLng.Value >= q.NeLng.Value)
+                return BadRequest(new { message = "swLng must be less than neLng." });
 
-            query = query.Where(l =>
-                l.Latitude >= q.SwLat && l.Latitude <= q.NeLat &&
-                l.Longitude >= q.SwLng && l.Longitude <= q.NeLng);
+            // Uses the GIST-indexed Location column (see Listing.cs), not a direct lat/lng range
+            // comparison — a plain B-tree on (Latitude, Longitude) can't efficiently satisfy a
+            // true 2D range query, same reasoning as GeomarketingController's AGEB bbox search.
+            var bbox = GeoFactory.CreateBoundingBox(q.SwLat.Value, q.SwLng.Value, q.NeLat.Value, q.NeLng.Value);
+            query = query.Where(l => l.Location!.Intersects(bbox));
         }
 
         var totalCount = await query.CountAsync();
@@ -234,7 +240,7 @@ public class ListingsController : ControllerBase
                 && l.Status == ListingStatus.Active
                 && l.ListingType == listing.ListingType
                 && l.PropertyType == listing.PropertyType
-                && l.Address!.City.ToLower() == listing.Address!.City.ToLower())
+                && l.Address!.CityLower == listing.Address!.CityLower)
             .OrderBy(l => Math.Abs(l.Price - listing.Price))
             .Take(4)
             .Select(l => l.ToDto())
