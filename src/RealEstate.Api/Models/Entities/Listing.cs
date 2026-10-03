@@ -20,6 +20,11 @@ public class Listing
 
     public ListingAddress? Address { get; set; }
 
+    // Incremented by POST /api/listings/{id}/view (ListingsController) — same convention as
+    // Agent.ViewCount: raw per-load counter, deduplicated client-side via localStorage rather
+    // than server-side.
+    public int ViewCount { get; set; }
+
     // Used for Google Maps pins
     public double Latitude { get; set; }
     public double Longitude { get; set; }

@@ -34,6 +34,7 @@ public class AgentDto
     public int PropertiesCount { get; set; }
     public double? AverageRating { get; set; }
     public int ReviewsCount { get; set; }
+    public int ViewCount { get; set; }
 }
 
 public class AgentSearchQuery

@@ -25,6 +25,12 @@ public class Agent
     public string? Bio { get; set; }
     public List<string> Specialties { get; set; } = new();
 
+    // Incremented by POST /api/agents/{id}/view (AgentsController) — every raw page load, not
+    // deduplicated server-side. The frontend debounces repeat calls from the same browser via
+    // localStorage (see agent-detail.component.ts), so this approximates distinct visits rather
+    // than literal request counts, without needing a full analytics/session table.
+    public int ViewCount { get; set; }
+
     // No Properties navigation here on purpose: the real "how many properties has this agent
     // listed" answer comes from Listing.OwnerId == UserId (see AgentsController.CountListingsAsync)
     // — Property is legacy/unused, and an Agent-side nav to it previously let PropertiesCount

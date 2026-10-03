@@ -66,6 +66,7 @@ public static class ListingExtensions
         OwnerName = l.Owner is null ? string.Empty : $"{l.Owner.FirstName} {l.Owner.LastName}",
         OwnerEmail = l.Owner?.Email ?? string.Empty,
         CreatedAt = l.CreatedAt,
-        ImageUrls = l.Images.OrderBy(i => i.SortOrder).Select(i => i.Url).ToList()
+        ImageUrls = l.Images.OrderBy(i => i.SortOrder).Select(i => i.Url).ToList(),
+        ViewCount = l.ViewCount
     };
 }

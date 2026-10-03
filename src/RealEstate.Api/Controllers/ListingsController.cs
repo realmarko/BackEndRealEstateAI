@@ -201,6 +201,20 @@ public class ListingsController : ControllerBase
         return Ok(dto);
     }
 
+    // Fire-and-forget from the detail page on load (see listing-detail.component.ts) — the
+    // frontend debounces repeat calls per browser via localStorage, so this isn't deduplicated
+    // again here. A no-op 404 for a since-deleted listing is fine; the caller doesn't act on the
+    // response either way.
+    [HttpPost("{id:guid}/view")]
+    public async Task<IActionResult> RecordView(Guid id)
+    {
+        var rows = await _db.Listings
+            .Where(l => l.Id == id)
+            .ExecuteUpdateAsync(s => s.SetProperty(l => l.ViewCount, l => l.ViewCount + 1));
+
+        return rows == 0 ? NotFound() : NoContent();
+    }
+
     // GET /api/listings/5/price-history — oldest first, so the frontend can render it as a
     // timeline (or compute deltas between consecutive entries) without re-sorting.
     [HttpGet("{id:guid}/price-history")]

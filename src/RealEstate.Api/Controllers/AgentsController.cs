@@ -102,6 +102,7 @@ public class AgentsController : ControllerBase
                     a.PhotoUrl,
                     a.Bio,
                     a.Specialties,
+                    a.ViewCount,
                     AverageRating = a.Reviews.Any() ? a.Reviews.Average(r => (double)r.Rating) : (double?)null,
                     ReviewsCount = a.Reviews.Count
                 })
@@ -132,12 +133,16 @@ public class AgentsController : ControllerBase
                 Specialties = a.Specialties,
                 PropertiesCount = a.UserId.HasValue && listingCounts.TryGetValue(a.UserId.Value, out var count) ? count : 0,
                 AverageRating = a.AverageRating,
-                ReviewsCount = a.ReviewsCount
+                ReviewsCount = a.ReviewsCount,
+                ViewCount = a.ViewCount
             }).ToList();
 
             return new CachedAgentSearchPage { Profiles = profiles, Page = page, PageSize = pageSize, TotalCount = totalCount };
         });
 
+        // ViewCount here comes from the cached profile (up to SearchCacheDuration stale), same
+        // as AverageRating/ReviewsCount — unlike GetById, which reads it live (see below). A
+        // list of agents doesn't need per-request-fresh counters the way a single profile does.
         var items = cachedPage!.Profiles
             .Select(p => ToPublicDto(p, currentUserId != null && p.UserId == currentUserId))
             .ToList();
@@ -175,6 +180,7 @@ public class AgentsController : ControllerBase
                     a.PhotoUrl,
                     a.Bio,
                     a.Specialties,
+                    a.ViewCount,
                     AverageRating = a.Reviews.Any() ? a.Reviews.Average(r => (double)r.Rating) : (double?)null,
                     ReviewsCount = a.Reviews.Count
                 })
@@ -196,13 +202,34 @@ public class AgentsController : ControllerBase
                 Specialties = agent.Specialties,
                 PropertiesCount = await CountListingsAsync(agent.UserId),
                 AverageRating = agent.AverageRating,
-                ReviewsCount = agent.ReviewsCount
+                ReviewsCount = agent.ReviewsCount,
+                ViewCount = agent.ViewCount
             };
         });
 
         if (cachedProfile is null) return NotFound();
 
-        return Ok(ToPublicDto(cachedProfile, currentUserId != null && cachedProfile.UserId == currentUserId));
+        var dto = ToPublicDto(cachedProfile, currentUserId != null && cachedProfile.UserId == currentUserId);
+        // Read live rather than trusting the (up to 5-minute-stale) cached value — a view
+        // counter that visibly lags behind "you just loaded this page" reads as broken in a way
+        // a slightly-stale bio/rating doesn't. Cheap: single indexed PK column lookup.
+        dto.ViewCount = await _db.Agents.Where(a => a.Id == id).Select(a => a.ViewCount).FirstOrDefaultAsync();
+
+        return Ok(dto);
+    }
+
+    // Fire-and-forget from the detail page on load (see agent-detail.component.ts) — the
+    // frontend debounces repeat calls per browser via localStorage. Deliberately not cached and
+    // doesn't evict ProfileCacheKey: GetById reads ViewCount live (above), so an increment here
+    // doesn't need to invalidate the rest of the cached profile.
+    [HttpPost("{id:int}/view")]
+    public async Task<IActionResult> RecordView(int id)
+    {
+        var rows = await _db.Agents
+            .Where(a => a.Id == id)
+            .ExecuteUpdateAsync(s => s.SetProperty(a => a.ViewCount, a => a.ViewCount + 1));
+
+        return rows == 0 ? NotFound() : NoContent();
     }
 
     // Real property counts come from Listing (ApplicationDbContext), matched by
@@ -611,6 +638,7 @@ public class AgentsController : ControllerBase
         public int PropertiesCount { get; set; }
         public double? AverageRating { get; set; }
         public int ReviewsCount { get; set; }
+        public int ViewCount { get; set; }
     }
 
     private sealed class CachedAgentSearchPage
@@ -639,7 +667,8 @@ public class AgentsController : ControllerBase
         Specialties = cached.Specialties,
         PropertiesCount = cached.PropertiesCount,
         AverageRating = cached.AverageRating,
-        ReviewsCount = cached.ReviewsCount
+        ReviewsCount = cached.ReviewsCount,
+        ViewCount = cached.ViewCount
     };
 
     private async Task<AgentDto> ToDtoAsync(Agent a, bool isOwnProfile = false) => new()
@@ -656,6 +685,7 @@ public class AgentsController : ControllerBase
         Specialties = a.Specialties,
         PropertiesCount = await CountListingsAsync(a.UserId),
         AverageRating = a.Reviews.Count > 0 ? a.Reviews.Average(r => (double)r.Rating) : null,
-        ReviewsCount = a.Reviews.Count
+        ReviewsCount = a.Reviews.Count,
+        ViewCount = a.ViewCount
     };
 }

@@ -149,6 +149,7 @@ public class ListingDto
     public string? OwnerPhotoUrl { get; set; }
     public DateTime CreatedAt { get; set; }
     public List<string> ImageUrls { get; set; } = new();
+    public int ViewCount { get; set; }
 }
 
 public class ListingPriceHistoryDto
