@@ -63,6 +63,9 @@ builder.Services.AddMemoryCache();
 // ---- Error logging (in-app admin view, alongside Sentry above) ----
 builder.Services.AddScoped<IErrorLogService, ErrorLogService>();
 
+// ---- Sale pipeline (agent's per-client sell-a-house workflow board) ----
+builder.Services.AddScoped<ISaleProcessService, SaleProcessService>();
+
 // ---- Fraccionamientos detection (n8n pushes candidates in; admins review them) ----
 builder.Services.Configure<FraccionamientoOptions>(builder.Configuration.GetSection("Fraccionamientos"));
 builder.Services.AddScoped<IFraccionamientoIngestionService, FraccionamientoIngestionService>();

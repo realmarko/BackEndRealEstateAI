@@ -23,6 +23,11 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, IdentityR
     public DbSet<Fraccionamiento> Fraccionamientos => Set<Fraccionamiento>();
     public DbSet<FraccionamientoSource> FraccionamientoSources => Set<FraccionamientoSource>();
     public DbSet<LandUseCategory> LandUseCategories => Set<LandUseCategory>();
+    public DbSet<PipelineStage> PipelineStages => Set<PipelineStage>();
+    public DbSet<PipelineStageDocumentTemplate> PipelineStageDocumentTemplates => Set<PipelineStageDocumentTemplate>();
+    public DbSet<SaleProcess> SaleProcesses => Set<SaleProcess>();
+    public DbSet<SaleProcessDocument> SaleProcessDocuments => Set<SaleProcessDocument>();
+    public DbSet<SaleProcessTask> SaleProcessTasks => Set<SaleProcessTask>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -201,6 +206,136 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, IdentityR
             entity.HasMany(f => f.Sources)
                   .WithOne(s => s.Fraccionamiento)
                   .HasForeignKey(s => s.FraccionamientoId)
+                  .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        builder.Entity<PipelineStage>(entity =>
+        {
+            entity.Property(s => s.Name).HasMaxLength(100).IsRequired();
+            entity.Property(s => s.Description).HasMaxLength(300).IsRequired();
+            entity.HasIndex(s => s.SortOrder).IsUnique();
+
+            entity.HasMany(s => s.DocumentTemplates)
+                  .WithOne(t => t.Stage)
+                  .HasForeignKey(t => t.StageId)
+                  .OnDelete(DeleteBehavior.Cascade);
+
+            // The sale pipeline's fixed set of steps, in order. Ids 4 and 7 are the two
+            // contract-review checkpoints (exclusivity contract, then compraventa/notaría) that
+            // the frontend flags for legal sign-off before the agent moves the deal onward.
+            entity.HasData(
+                new PipelineStage { Id = 1, Name = "Prospección", Description = "Captación del cliente", SortOrder = 1, RequiresLegalReview = false },
+                new PipelineStage { Id = 2, Name = "Revisión documental", Description = "Legal / propiedad", SortOrder = 2, RequiresLegalReview = false },
+                new PipelineStage { Id = 3, Name = "Contrato de exclusividad", Description = "Firma con el vendedor", SortOrder = 3, RequiresLegalReview = false },
+                new PipelineStage { Id = 4, Name = "Revisión de contrato (1)", Description = "Validación legal exclusividad", SortOrder = 4, RequiresLegalReview = true },
+                new PipelineStage { Id = 5, Name = "Promoción y visitas", Description = "Marketing activo", SortOrder = 5, RequiresLegalReview = false },
+                new PipelineStage { Id = 6, Name = "Negociación y oferta", Description = "Oferta del comprador", SortOrder = 6, RequiresLegalReview = false },
+                new PipelineStage { Id = 7, Name = "Revisión de contrato (2)", Description = "Compraventa / notaría", SortOrder = 7, RequiresLegalReview = true },
+                new PipelineStage { Id = 8, Name = "Cierre y escrituración", Description = "Firma final", SortOrder = 8, RequiresLegalReview = false },
+                new PipelineStage { Id = 9, Name = "Post-venta", Description = "Entrega y seguimiento", SortOrder = 9, RequiresLegalReview = false }
+            );
+        });
+
+        builder.Entity<PipelineStageDocumentTemplate>(entity =>
+        {
+            entity.Property(t => t.Name).HasMaxLength(200).IsRequired();
+            entity.HasIndex(t => new { t.StageId, t.Name }).IsUnique();
+
+            // Default checklist per stage — mirrors the pipeline prototype's STAGE_DOCS. Copied
+            // (unverified) into SaleProcessDocument by SaleProcessService the first time a
+            // SaleProcess reaches that stage.
+            entity.HasData(
+                new PipelineStageDocumentTemplate { Id = 1, StageId = 1, SortOrder = 1, Name = "Identificación oficial del propietario" },
+                new PipelineStageDocumentTemplate { Id = 2, StageId = 1, SortOrder = 2, Name = "Comprobante de domicilio" },
+                new PipelineStageDocumentTemplate { Id = 3, StageId = 1, SortOrder = 3, Name = "Ficha de datos del inmueble" },
+
+                new PipelineStageDocumentTemplate { Id = 4, StageId = 2, SortOrder = 1, Name = "Escritura pública inscrita" },
+                new PipelineStageDocumentTemplate { Id = 5, StageId = 2, SortOrder = 2, Name = "Boleta predial al corriente" },
+                new PipelineStageDocumentTemplate { Id = 6, StageId = 2, SortOrder = 3, Name = "Certificado de libertad de gravamen" },
+                new PipelineStageDocumentTemplate { Id = 7, StageId = 2, SortOrder = 4, Name = "Comprobante de servicios (agua/luz)" },
+
+                new PipelineStageDocumentTemplate { Id = 8, StageId = 3, SortOrder = 1, Name = "Contrato de exclusividad firmado" },
+                new PipelineStageDocumentTemplate { Id = 9, StageId = 3, SortOrder = 2, Name = "Identificación de quien firma" },
+                new PipelineStageDocumentTemplate { Id = 10, StageId = 3, SortOrder = 3, Name = "Formato KYC / prevención de lavado" },
+
+                new PipelineStageDocumentTemplate { Id = 11, StageId = 4, SortOrder = 1, Name = "Dictamen del abogado sobre el contrato de exclusividad" },
+                new PipelineStageDocumentTemplate { Id = 12, StageId = 4, SortOrder = 2, Name = "Acta de revisión de cláusulas" },
+
+                new PipelineStageDocumentTemplate { Id = 13, StageId = 5, SortOrder = 1, Name = "Ficha técnica comercial" },
+                new PipelineStageDocumentTemplate { Id = 14, StageId = 5, SortOrder = 2, Name = "Fotografías / video del inmueble" },
+                new PipelineStageDocumentTemplate { Id = 15, StageId = 5, SortOrder = 3, Name = "Autorización de publicación" },
+
+                new PipelineStageDocumentTemplate { Id = 16, StageId = 6, SortOrder = 1, Name = "Carta de oferta del comprador" },
+                new PipelineStageDocumentTemplate { Id = 17, StageId = 6, SortOrder = 2, Name = "Comprobante de solvencia / precalificación crédito" },
+
+                new PipelineStageDocumentTemplate { Id = 18, StageId = 7, SortOrder = 1, Name = "Minuta de compraventa revisada por notaría" },
+                new PipelineStageDocumentTemplate { Id = 19, StageId = 7, SortOrder = 2, Name = "Dictamen del abogado sobre el contrato de compraventa" },
+                new PipelineStageDocumentTemplate { Id = 20, StageId = 7, SortOrder = 3, Name = "Carta saldo / cancelación de hipoteca (si aplica)" },
+
+                new PipelineStageDocumentTemplate { Id = 21, StageId = 8, SortOrder = 1, Name = "Avalúo comercial oficial" },
+                new PipelineStageDocumentTemplate { Id = 22, StageId = 8, SortOrder = 2, Name = "Hoja de retención ISR" },
+                new PipelineStageDocumentTemplate { Id = 23, StageId = 8, SortOrder = 3, Name = "Escritura de compraventa firmada" },
+
+                new PipelineStageDocumentTemplate { Id = 24, StageId = 9, SortOrder = 1, Name = "Acta de entrega-recepción" },
+                new PipelineStageDocumentTemplate { Id = 25, StageId = 9, SortOrder = 2, Name = "Carta garantía / finiquito" },
+                new PipelineStageDocumentTemplate { Id = 26, StageId = 9, SortOrder = 3, Name = "Encuesta de satisfacción" }
+            );
+        });
+
+        builder.Entity<SaleProcess>(entity =>
+        {
+            entity.Property(s => s.ClientName).HasMaxLength(200).IsRequired();
+            entity.Property(s => s.ClientPhone).HasMaxLength(30).IsRequired();
+            entity.Property(s => s.PropertyAddress).HasMaxLength(300).IsRequired();
+            entity.Property(s => s.EstimatedPrice).HasColumnType("numeric(14,2)");
+            entity.HasIndex(s => s.AgentUserId);
+            entity.HasIndex(s => s.CurrentStageId);
+
+            entity.HasOne(s => s.AgentUser)
+                  .WithMany()
+                  .HasForeignKey(s => s.AgentUserId)
+                  .OnDelete(DeleteBehavior.Cascade);
+
+            // SetNull, not Cascade/Restrict: removing or un-publishing the Listing must never
+            // take the sale process (and its history/checklist/tasks) down with it.
+            entity.HasOne(s => s.Listing)
+                  .WithMany()
+                  .HasForeignKey(s => s.ListingId)
+                  .OnDelete(DeleteBehavior.SetNull);
+
+            // Restrict, not SetNull/Cascade: the stage catalog is fixed and never deleted, so
+            // this only guards against a future catalog edit accidentally removing a stage still
+            // referenced by live sale processes.
+            entity.HasOne(s => s.CurrentStage)
+                  .WithMany()
+                  .HasForeignKey(s => s.CurrentStageId)
+                  .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        builder.Entity<SaleProcessDocument>(entity =>
+        {
+            entity.Property(d => d.Name).HasMaxLength(200).IsRequired();
+            entity.HasIndex(d => d.SaleProcessId);
+
+            entity.HasOne(d => d.SaleProcess)
+                  .WithMany(s => s.Documents)
+                  .HasForeignKey(d => d.SaleProcessId)
+                  .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(d => d.Stage)
+                  .WithMany()
+                  .HasForeignKey(d => d.StageId)
+                  .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        builder.Entity<SaleProcessTask>(entity =>
+        {
+            entity.Property(t => t.Title).HasMaxLength(300).IsRequired();
+            entity.HasIndex(t => t.SaleProcessId);
+
+            entity.HasOne(t => t.SaleProcess)
+                  .WithMany(s => s.Tasks)
+                  .HasForeignKey(t => t.SaleProcessId)
                   .OnDelete(DeleteBehavior.Cascade);
         });
     }
