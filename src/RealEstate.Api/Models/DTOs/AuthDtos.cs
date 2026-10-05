@@ -36,6 +36,24 @@ public class ResendVerificationCodeDto
     [Required, EmailAddress, MaxLength(320)] public string Email { get; set; } = string.Empty;
 }
 
+public class GoogleAuthDto
+{
+    [Required] public string IdToken { get; set; } = string.Empty;
+
+    // Only used the first time this email signs in (a brand-new account) — same values/meaning
+    // as RegisterDto.Role. Ignored when the email already has an account; that account's
+    // existing roles are never changed by a Google sign-in.
+    public string? Role { get; set; }
+}
+
+public class AddRoleDto
+{
+    // "Owner" or "Agent" only — unlike RegisterDto.Role, there's no fallback-to-Buyer here:
+    // every signed-in account already has at least Buyer-level access, so "Buyer" isn't a
+    // meaningful thing to add and anything else is rejected outright.
+    [Required] public string Role { get; set; } = string.Empty;
+}
+
 public class RegisterResponseDto
 {
     public string Email { get; set; } = string.Empty;

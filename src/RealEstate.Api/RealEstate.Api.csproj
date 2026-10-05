@@ -11,6 +11,7 @@
     <PackageReference Include="AWSSDK.Extensions.NETCore.Setup" Version="4.0.100.9" />
     <PackageReference Include="AWSSDK.S3" Version="4.0.102.3" />
     <PackageReference Include="EFCore.NamingConventions" Version="10.0.1" />
+    <PackageReference Include="Google.Apis.Auth" Version="1.77.0" />
     <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.12" />
     <PackageReference Include="Microsoft.AspNetCore.Identity.EntityFrameworkCore" Version="10.0.12" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.12">

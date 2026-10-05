@@ -58,6 +58,10 @@ builder.Services.AddScoped<IEmailService, SmtpEmailService>();
 // ---- Frontend (for building links back into the app from server-sent emails) ----
 builder.Services.Configure<FrontendOptions>(builder.Configuration.GetSection("Frontend"));
 
+// ---- Google Sign-In (ID token audience check in AuthController.Google) ----
+builder.Services.Configure<GoogleOptions>(builder.Configuration.GetSection("Google"));
+builder.Services.AddScoped<IGoogleTokenValidator, GoogleTokenValidator>();
+
 // ---- INEGI DENUE (business-density lookups for the map's opportunity-analysis tools) ----
 builder.Services.Configure<DenueOptions>(builder.Configuration.GetSection("Inegi:Denue"));
 // 5s, not the default 100s or the 10s first tried: the map fires this on every click with no
@@ -90,11 +94,16 @@ var connectionString = builder.Configuration.GetConnectionString("DefaultConnect
 // dev both down together (shared RDS instance) despite nothing in our own deploy changing.
 // Forced here in code — not relying on "SSL Mode=Require" being present in whatever connection
 // string is configured in each environment's secrets/env vars — so this can never silently
-// regress again.
-var connectionStringBuilder = new NpgsqlConnectionStringBuilder(connectionString)
+// regress again. Skipped for a loopback host: local development's docker-compose Postgres has no
+// SSL configured at all, and Require would otherwise reject every local connection outright
+// (Npgsql's default SslMode, Prefer, already negotiates plaintext there just fine — it's remote
+// RDS specifically where Prefer silently fell back and caused the outage this guards against).
+var connectionStringBuilder = new NpgsqlConnectionStringBuilder(connectionString);
+var isLoopbackHost = connectionStringBuilder.Host is "localhost" or "127.0.0.1" or "::1";
+if (!isLoopbackHost)
 {
-    SslMode = SslMode.Require
-};
+    connectionStringBuilder.SslMode = SslMode.Require;
+}
 // The NTS plugin must be registered on the NpgsqlDataSource itself — passing UseNetTopologySuite
 // as a UseNpgsql(...) callback silently fails to wire it into Npgsql 8's type-info resolver
 // pipeline, so a NetTopologySuite.Geometries.Point parameter throws InvalidCastException instead

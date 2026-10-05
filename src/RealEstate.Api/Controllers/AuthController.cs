@@ -1,3 +1,4 @@
+using Google.Apis.Auth;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
@@ -19,7 +20,9 @@ public class AuthController : ControllerBase
     private readonly ITokenService _tokenService;
     private readonly IEmailService _emailService;
     private readonly ILogger<AuthController> _logger;
+    private readonly IGoogleTokenValidator _googleTokenValidator;
     private readonly string _frontendBaseUrl;
+    private readonly string _googleClientId;
 
     public AuthController(
         UserManager<ApplicationUser> userManager,
@@ -27,14 +30,18 @@ public class AuthController : ControllerBase
         ITokenService tokenService,
         IEmailService emailService,
         ILogger<AuthController> logger,
-        IOptions<FrontendOptions> frontendOptions)
+        IGoogleTokenValidator googleTokenValidator,
+        IOptions<FrontendOptions> frontendOptions,
+        IOptions<GoogleOptions> googleOptions)
     {
         _userManager = userManager;
         _roleManager = roleManager;
         _tokenService = tokenService;
         _emailService = emailService;
         _logger = logger;
+        _googleTokenValidator = googleTokenValidator;
         _frontendBaseUrl = frontendOptions.Value.BaseUrl;
+        _googleClientId = googleOptions.Value.ClientId;
     }
 
     // Registration length allowed for a code entry field (6 digits).
@@ -44,16 +51,7 @@ public class AuthController : ControllerBase
     [HttpPost("register")]
     public async Task<ActionResult<RegisterResponseDto>> Register(RegisterDto dto)
     {
-        // Agents can also publish listings, so they get both roles. This bundles the grant at
-        // registration time instead of having [Authorize] accept either role — simpler while
-        // Agent and Owner need identical permissions, but every Owner-only endpoint would need
-        // updating (currently: ListingsController and InquiriesController) if that ever changes.
-        var roles = dto.Role switch
-        {
-            "Owner" => new[] { "Owner" },
-            "Agent" => new[] { "Owner", "Agent" },
-            _ => new[] { "Buyer" }
-        };
+        var roles = RolesFor(dto.Role);
 
         foreach (var role in roles)
         {
@@ -107,6 +105,92 @@ public class AuthController : ControllerBase
 
         return await BuildAuthResponse(user);
     }
+
+    // Verifies the Google ID token server-side (never trusts a client-supplied email directly),
+    // then finds-or-creates the matching account purely by email — the same identity key every
+    // other sign-in path here already uses. An email that already has a password-based account
+    // just logs into that account (confirming it if it wasn't yet — Google has already proven
+    // the user controls the inbox); nothing about that account's existing roles changes. A
+    // brand-new email creates an account exactly like Register, except pre-confirmed (no code
+    // round-trip needed) and with a random, never-used password (Identity requires one on every
+    // user; this account is only ever meant to sign in via Google or a later "forgot password").
+    [HttpPost("google")]
+    public async Task<ActionResult<AuthResponseDto>> Google(GoogleAuthDto dto)
+    {
+        GoogleJsonWebSignature.Payload payload;
+        try
+        {
+            payload = await _googleTokenValidator.ValidateAsync(dto.IdToken, _googleClientId);
+        }
+        catch (InvalidJwtException ex)
+        {
+            // The client only ever sees the generic message below (no need to hand a visitor
+            // details about why their token was rejected), but without logging the real reason
+            // here, a genuine misconfiguration (wrong audience, expired token, clock skew) is
+            // completely invisible to whoever operates this environment.
+            _logger.LogWarning(ex, "Rejected a Google sign-in token");
+            return Unauthorized(new { message = "Invalid Google sign-in." });
+        }
+        catch (Exception ex)
+        {
+            // ValidateAsync fetches Google's signing certs over HTTP under the hood — a transient
+            // network blip there isn't the visitor's fault (not an actually-invalid token), so it
+            // gets a retryable error instead of surfacing as an unhandled 500 from here.
+            _logger.LogError(ex, "Failed to reach Google while validating a sign-in token");
+            return StatusCode(StatusCodes.Status502BadGateway,
+                new { message = "Couldn't verify your Google sign-in right now. Please try again." });
+        }
+
+        var user = await _userManager.FindByEmailAsync(payload.Email);
+        if (user is not null)
+        {
+            if (!user.EmailConfirmed)
+            {
+                user.EmailConfirmed = true;
+                await _userManager.UpdateAsync(user);
+            }
+
+            return await BuildAuthResponse(user);
+        }
+
+        var roles = RolesFor(dto.Role);
+        foreach (var role in roles)
+        {
+            if (!await _roleManager.RoleExistsAsync(role))
+                await _roleManager.CreateAsync(new IdentityRole<Guid>(role));
+        }
+
+        var newUser = new ApplicationUser
+        {
+            UserName = payload.Email,
+            Email = payload.Email,
+            FirstName = payload.GivenName ?? string.Empty,
+            LastName = payload.FamilyName ?? string.Empty,
+            EmailConfirmed = true
+        };
+
+        // A random password Identity requires but this account never needs — the user only ever
+        // signs in via Google (or sets a real one later through the normal forgot-password flow).
+        var result = await _userManager.CreateAsync(newUser, Guid.NewGuid().ToString("N") + "Aa1!");
+        if (!result.Succeeded)
+            return BadRequest(result.Errors.Select(e => e.Description));
+
+        await _userManager.AddToRolesAsync(newUser, roles);
+
+        return await BuildAuthResponse(newUser);
+    }
+
+    // Agents can also publish listings, so they get both roles. This bundles the grant at
+    // registration time instead of having [Authorize] accept either role — simpler while Agent
+    // and Owner need identical permissions, but every Owner-only endpoint would need updating
+    // (currently: ListingsController and InquiriesController) if that ever changes. Shared by
+    // Register and Google (a brand-new account from either path gets the same role rules).
+    private static string[] RolesFor(string? role) => role switch
+    {
+        "Owner" => new[] { "Owner" },
+        "Agent" => new[] { "Owner", "Agent" },
+        _ => new[] { "Buyer" }
+    };
 
     // Rate-limited like forgot-password: a per-IP budget bounds both the email volume this can
     // generate and how many codes a guesser can force a single account through.
@@ -261,6 +345,41 @@ public class AuthController : ControllerBase
 
         var roles = await _userManager.GetRolesAsync(user);
         return Ok(ToUserDto(user, roles));
+    }
+
+    // Self-service role upgrade (e.g. a Buyer deciding to list a property) — add-only, on
+    // purpose: there's no path here to remove a role, which would otherwise force a decision
+    // about what happens to an Agent's existing directory profile or an Owner's existing
+    // listings. Returns a fresh token (same shape as Login/Google) because the JWT a visitor is
+    // already holding has the OLD roles baked in — [Authorize(Roles=...)] checks and the
+    // frontend's roleGuard both read from that token/its cached user, not a live DB lookup, so
+    // without a new one here the new role would silently not take effect until the next login.
+    [Authorize]
+    [HttpPost("role")]
+    public async Task<ActionResult<AuthResponseDto>> AddRole(AddRoleDto dto)
+    {
+        if (dto.Role is not ("Owner" or "Agent"))
+            return BadRequest(new { message = "Role must be \"Owner\" or \"Agent\"." });
+
+        var email = User.TryGetEmail() ?? User.Identity?.Name;
+        var user = await _userManager.FindByEmailAsync(email!);
+        if (user is null) return Unauthorized();
+
+        var currentRoles = await _userManager.GetRolesAsync(user);
+        var rolesToAdd = RolesFor(dto.Role).Except(currentRoles).ToArray();
+
+        if (rolesToAdd.Length > 0)
+        {
+            foreach (var role in rolesToAdd)
+            {
+                if (!await _roleManager.RoleExistsAsync(role))
+                    await _roleManager.CreateAsync(new IdentityRole<Guid>(role));
+            }
+
+            await _userManager.AddToRolesAsync(user, rolesToAdd);
+        }
+
+        return await BuildAuthResponse(user);
     }
 
     private async Task<AuthResponseDto> BuildAuthResponse(ApplicationUser user)
