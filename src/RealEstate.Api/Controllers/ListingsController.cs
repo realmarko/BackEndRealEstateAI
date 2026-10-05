@@ -610,6 +610,43 @@ public class ListingsController : ControllerBase
         return NoContent();
     }
 
+    // Admin-only reassignment of a listing's ownership — e.g. correcting a listing entered
+    // under the wrong account, or handing off an agent's book when they leave. The listing's
+    // OwnerId must point at a real ApplicationUser (the same id every owner-only endpoint
+    // authenticates as), so only an Agent with a linked UserId can receive one — a
+    // directory-only Agent row (no account of its own) can't become a listing's owner.
+    [Authorize(Roles = "Admin")]
+    [HttpPatch("{id:guid}/transfer")]
+    public async Task<ActionResult<ListingDto>> Transfer(Guid id, ListingTransferDto dto)
+    {
+        var listing = await _db.Listings.FindAsync(id);
+        if (listing is null) return NotFound();
+
+        var agent = await _agentsDb.Agents.FirstOrDefaultAsync(a => a.Id == dto.AgentId && !a.IsDeleted);
+        if (agent is null) return NotFound(new { message = "Agent not found." });
+        if (agent.UserId is null) return BadRequest(new { message = "This agent isn't linked to a user account yet." });
+
+        var previousOwnerId = listing.OwnerId;
+        listing.OwnerId = agent.UserId.Value;
+        listing.UpdatedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
+
+        // Both the old and new owner's cached agent-card info (company/photo shown on this
+        // listing) are keyed by OwnerId — stale either one would show the wrong agent's details
+        // until the cache's own expiry.
+        _cache.Remove(OwnerAgentCacheKey(previousOwnerId));
+        _cache.Remove(OwnerAgentCacheKey(listing.OwnerId));
+
+        var updated = await _db.Listings
+            .Include(l => l.Images)
+            .Include(l => l.Owner)
+            .Include(l => l.Address)
+            .FirstAsync(l => l.Id == id);
+        var updatedDto = updated.ToDto();
+        await AttachOwnerAgentDetailsAsync([updatedDto]);
+        return Ok(updatedDto);
+    }
+
     // Combines already-hosted photo URLs (pasted links, or S3 URLs kept from a previous edit)
     // with newly uploaded files, uploading the latter to S3 and returning one ordered list —
     // existing photos first, then new ones in selection order. The first URL is the primary

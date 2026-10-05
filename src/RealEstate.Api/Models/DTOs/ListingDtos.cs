@@ -83,6 +83,11 @@ public class ListingUpdateDto : ListingCreateDto
     public ListingStatus Status { get; set; }
 }
 
+public class ListingTransferDto
+{
+    public int AgentId { get; set; }
+}
+
 public class ListingDto
 {
     public Guid Id { get; set; }
