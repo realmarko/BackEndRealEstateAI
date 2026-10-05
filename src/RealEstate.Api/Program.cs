@@ -28,6 +28,17 @@ builder.WebHost.UseSentry(options =>
     options.TracesSampleRate = 0.1;
 });
 
+// Kestrel's own default (~28.6 MB) sits below what listing/agent/brokerage photo uploads
+// promise (up to 20 photos x 5MB each, plus multipart overhead) — raised to match the nginx
+// reverse-proxy limit set in .platform/nginx/conf.d/client_max_body_size.conf, so a multi-photo
+// upload that now clears nginx doesn't just hit the same 413 one layer further in. Each photo's
+// actual 5MB cap is still enforced by PhotoUploadService; this only stops the transport layer
+// from rejecting the request before that check runs.
+builder.WebHost.ConfigureKestrel(options =>
+{
+    options.Limits.MaxRequestBodySize = 110 * 1024 * 1024;
+});
+
 // ---- Configuration ----
 builder.Services.Configure<JwtOptions>(builder.Configuration.GetSection("Jwt"));
 var jwt = builder.Configuration.GetSection("Jwt").Get<JwtOptions>() ?? new JwtOptions();
