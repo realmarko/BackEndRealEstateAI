@@ -83,6 +83,18 @@ builder.Services.AddScoped<IFraccionamientoIngestionService, FraccionamientoInge
 
 // ---- Database (PostgreSQL) ----
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
+// RDS rejects a plaintext connection outright once the instance enforces SSL (pg_hba.conf then
+// has no non-SSL entry at all — the server error is literally "no pg_hba.conf entry for host
+// ..., no encryption"), and Npgsql's own default SslMode (Prefer) can still end up negotiating
+// plaintext depending on the client/server TLS handshake, which is exactly what took prod and
+// dev both down together (shared RDS instance) despite nothing in our own deploy changing.
+// Forced here in code — not relying on "SSL Mode=Require" being present in whatever connection
+// string is configured in each environment's secrets/env vars — so this can never silently
+// regress again.
+var connectionStringBuilder = new NpgsqlConnectionStringBuilder(connectionString)
+{
+    SslMode = SslMode.Require
+};
 // The NTS plugin must be registered on the NpgsqlDataSource itself — passing UseNetTopologySuite
 // as a UseNpgsql(...) callback silently fails to wire it into Npgsql 8's type-info resolver
 // pipeline, so a NetTopologySuite.Geometries.Point parameter throws InvalidCastException instead
@@ -91,7 +103,7 @@ var connectionString = builder.Configuration.GetConnectionString("DefaultConnect
 // pool on shutdown, and shared by both contexts so the app opens one pool against Postgres
 // instead of two — RealEstateDbContext has no geometry columns, but NTS support is additive and
 // doesn't affect its plain entities.
-var npgsqlDataSourceBuilder = new NpgsqlDataSourceBuilder(connectionString);
+var npgsqlDataSourceBuilder = new NpgsqlDataSourceBuilder(connectionStringBuilder.ConnectionString);
 npgsqlDataSourceBuilder.UseNetTopologySuite();
 builder.Services.AddSingleton(npgsqlDataSourceBuilder.Build());
 builder.Services.AddDbContext<ApplicationDbContext>((sp, options) =>
