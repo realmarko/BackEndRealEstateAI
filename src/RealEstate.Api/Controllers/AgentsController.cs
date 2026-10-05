@@ -21,9 +21,19 @@ public class AgentsController : ControllerBase
     // counts and profile edits are real, if infrequent, changes that should show up reasonably
     // soon. UpdateMine/AddReview/DeleteReview explicitly evict ProfileCacheKey(id) on every
     // change, so the affected agent's own profile is always fresh regardless of this TTL;
-    // everyone else's view (and Search results) catch up within it.
+    // everyone else's view (and Search results) catch up within it — bounded by
+    // BumpSearchCacheVersion below, not just this TTL alone.
     private static readonly TimeSpan ProfileCacheDuration = TimeSpan.FromMinutes(5);
     private static readonly TimeSpan SearchCacheDuration = TimeSpan.FromMinutes(2);
+
+    // Folded into every SearchCacheKey so a single mutation (Delete, Create, UpdateMine,
+    // AddReview, DeleteReview) invalidates every outstanding cached Search page at once, via
+    // BumpSearchCacheVersion. Needed because the query-key space (name/specialty/company/
+    // rating/page/pageSize combinations) is unbounded — there's no way to enumerate and evict
+    // just the pages affected by one change, so instead every page becomes a cache miss the
+    // moment the version changes. Without this, Delete only evicted ProfileCacheKey(id), leaving
+    // a soft-deleted agent visibly listed on /agents for up to SearchCacheDuration.
+    private const string SearchCacheVersionKey = "agent-search-cache-version";
 
     private readonly RealEstateDbContext _db;
     // Agent lives in RealEstateDbContext; Listing lives in ApplicationDbContext (it's really
@@ -314,8 +324,10 @@ public class AgentsController : ControllerBase
             return Conflict(new { message = "An agent profile already exists for this account." });
         }
 
-        // No cache eviction needed here — agent.Id is brand new, so GetById(agent.Id) and any
-        // Search page that would include it are cache misses by construction, not stale hits.
+        // GetById(agent.Id) is a cache miss by construction (brand new id) — but an already-
+        // cached Search page from before this agent existed would otherwise keep excluding them
+        // until SearchCacheDuration elapsed, so Search still needs the version bump.
+        BumpSearchCacheVersion();
         return CreatedAtAction(nameof(GetById), new { id = agent.Id }, await ToDtoAsync(agent, isOwnProfile: true));
     }
 
@@ -390,6 +402,7 @@ public class AgentsController : ControllerBase
         // view is always fresh regardless; this just makes everyone else's catch up immediately
         // too instead of waiting out the TTL.
         _cache.Remove(ProfileCacheKey(agent.Id));
+        BumpSearchCacheVersion();
         // Company/PhotoUrl just changed — also evict ListingsController's per-owner cache (same
         // two fields, keyed by this agent's own UserId) so their listing cards update immediately
         // too, not just their agent profile.
@@ -503,8 +516,10 @@ public class AgentsController : ControllerBase
         }
 
         // A new review changes this agent's cached AverageRating/ReviewsCount — evict so the
-        // next view (by anyone) reflects it instead of waiting out ProfileCacheDuration.
+        // next view (by anyone) reflects it instead of waiting out ProfileCacheDuration. Search
+        // results can be filtered/sorted by rating too, so its cache needs the same treatment.
         _cache.Remove(ProfileCacheKey(id));
+        BumpSearchCacheVersion();
 
         // Best-effort notification — the review is already saved, so an email failure here must
         // never turn into an error response for a review that succeeded.
@@ -563,6 +578,7 @@ public class AgentsController : ControllerBase
 
         // Same reasoning as AddReview — a removed review changes the cached AverageRating/ReviewsCount.
         _cache.Remove(ProfileCacheKey(id));
+        BumpSearchCacheVersion();
 
         return NoContent();
     }
@@ -582,6 +598,9 @@ public class AgentsController : ControllerBase
         await _db.SaveChangesAsync();
 
         _cache.Remove(ProfileCacheKey(id));
+        // Without this, a deleted agent keeps showing up in any already-cached /agents Search
+        // page (keyed independently of ProfileCacheKey) for up to SearchCacheDuration.
+        BumpSearchCacheVersion();
 
         return NoContent();
     }
@@ -635,8 +654,19 @@ public class AgentsController : ControllerBase
 
     private static string ProfileCacheKey(int id) => $"agent-profile:{id}";
 
-    private static string SearchCacheKey(AgentSearchQuery q) =>
-        $"agent-search:{q.Name?.Trim().ToLowerInvariant()}:{q.Specialty?.Trim().ToLowerInvariant()}:{q.Company?.Trim().ToLowerInvariant()}:{q.MinRating}:{q.Page}:{q.PageSize}";
+    private string SearchCacheKey(AgentSearchQuery q) =>
+        $"agent-search:v{CurrentSearchCacheVersion()}:{q.Name?.Trim().ToLowerInvariant()}:{q.Specialty?.Trim().ToLowerInvariant()}:{q.Company?.Trim().ToLowerInvariant()}:{q.MinRating}:{q.Page}:{q.PageSize}";
+
+    private int CurrentSearchCacheVersion() =>
+        _cache.GetOrCreate(SearchCacheVersionKey, entry =>
+        {
+            entry.Priority = CacheItemPriority.NeverRemove;
+            return 0;
+        });
+
+    private void BumpSearchCacheVersion() =>
+        _cache.Set(SearchCacheVersionKey, CurrentSearchCacheVersion() + 1,
+            new MemoryCacheEntryOptions { Priority = CacheItemPriority.NeverRemove });
 
     // Cacheable shape: every agent profile field that's the same for every viewer, plus UserId
     // (needed to compute IsOwnProfile after a cache hit — never itself exposed on AgentDto).
