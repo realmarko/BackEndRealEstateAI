@@ -211,8 +211,8 @@ public class BrokeragesController : ControllerBase
         Description = b.Description,
         FacebookUrl = b.FacebookUrl,
         InstagramUrl = b.InstagramUrl,
-        AgentsCount = b.Agents.Count,
-        AgentUserIds = b.Agents.Where(a => a.UserId != null).Select(a => a.UserId!.Value).ToList()
+        AgentsCount = b.Agents.Count(a => !a.IsDeleted),
+        AgentUserIds = b.Agents.Where(a => !a.IsDeleted && a.UserId != null).Select(a => a.UserId!.Value).ToList()
     };
 
     private sealed class BrokerageProjection

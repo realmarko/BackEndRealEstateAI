@@ -31,6 +31,13 @@ public class Agent
     // than literal request counts, without needing a full analytics/session table.
     public int ViewCount { get; set; }
 
+    // Admin-only soft delete (see AgentsController.Delete) — kept instead of a hard delete so
+    // the profile's reviews/listings history and any inquiries that reference it survive. Every
+    // read path (Search, GetById, directory listings) filters this out; it never appears in
+    // public results once set.
+    public bool IsDeleted { get; set; }
+    public DateTime? DeletedAt { get; set; }
+
     // No Properties navigation here on purpose: the real "how many properties has this agent
     // listed" answer comes from Listing.OwnerId == UserId (see AgentsController.CountListingsAsync)
     // — Property is legacy/unused, and an Agent-side nav to it previously let PropertiesCount

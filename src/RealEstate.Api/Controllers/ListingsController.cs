@@ -592,13 +592,16 @@ public class ListingsController : ControllerBase
         });
     }
 
-    [Authorize(Roles = "Owner")]
+    // Admin added alongside the existing owner path, not in place of it: an admin moderating
+    // someone else's listing doesn't hold the Owner role, and Owner-role visitors must keep
+    // being able to delete their own listings exactly as before.
+    [Authorize(Roles = "Owner,Admin")]
     [HttpDelete("{id:guid}")]
     public async Task<IActionResult> Delete(Guid id)
     {
         var listing = await _db.Listings.FindAsync(id);
         if (listing is null) return NotFound();
-        if (listing.OwnerId != User.GetUserId()) return Forbid();
+        if (listing.OwnerId != User.GetUserId() && !User.IsInRole("Admin")) return Forbid();
 
         // Soft delete keeps the listing (and its inquiries/favorites) for history
         listing.Status = ListingStatus.Removed;

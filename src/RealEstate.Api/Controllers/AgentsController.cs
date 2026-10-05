@@ -67,7 +67,7 @@ public class AgentsController : ControllerBase
         {
             entry.AbsoluteExpirationRelativeToNow = SearchCacheDuration;
 
-            var query = _db.Agents.AsQueryable();
+            var query = _db.Agents.Where(a => !a.IsDeleted);
 
             if (!string.IsNullOrWhiteSpace(q.Name))
                 query = query.Where(a => a.Name.ToLower().Contains(q.Name!.ToLower()));
@@ -167,7 +167,7 @@ public class AgentsController : ControllerBase
             entry.AbsoluteExpirationRelativeToNow = ProfileCacheDuration;
 
             var agent = await _db.Agents
-                .Where(a => a.Id == id)
+                .Where(a => a.Id == id && !a.IsDeleted)
                 .Select(a => new
                 {
                     a.Id,
@@ -562,6 +562,25 @@ public class AgentsController : ControllerBase
         await _db.SaveChangesAsync();
 
         // Same reasoning as AddReview — a removed review changes the cached AverageRating/ReviewsCount.
+        _cache.Remove(ProfileCacheKey(id));
+
+        return NoContent();
+    }
+
+    // Admin-only, one agent at a time (no bulk variant) — soft delete, same reasoning as
+    // ListingsController.Delete: keeps the agent's reviews/listings history and any inquiries
+    // that reference them intact instead of cascading a hard delete through everything.
+    [Authorize(Roles = "Admin")]
+    [HttpDelete("{id:int}")]
+    public async Task<IActionResult> Delete(int id)
+    {
+        var agent = await _db.Agents.FindAsync(id);
+        if (agent is null || agent.IsDeleted) return NotFound();
+
+        agent.IsDeleted = true;
+        agent.DeletedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
+
         _cache.Remove(ProfileCacheKey(id));
 
         return NoContent();
