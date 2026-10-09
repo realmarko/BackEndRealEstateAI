@@ -52,6 +52,7 @@ public class ListingsController : ControllerBase
     [HttpGet]
     public async Task<ActionResult<PagedResult<ListingDto>>> Search([FromQuery] ListingSearchQuery q)
     {
+        var isAuthenticated = User.IsAuthenticated();
         var query = _db.Listings
             .Include(l => l.Images)
             .Include(l => l.Owner)
@@ -118,7 +119,7 @@ public class ListingsController : ControllerBase
             .OrderByDescending(l => l.CreatedAt)
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
-            .Select(l => l.ToDto())
+            .Select(l => l.ToDto(isAuthenticated))
             .ToListAsync();
 
         await AttachOwnerAgentDetailsAsync(items);
@@ -196,7 +197,7 @@ public class ListingsController : ControllerBase
 
         if (listing is null) return NotFound();
 
-        var dto = listing.ToDto();
+        var dto = listing.ToDto(User.IsAuthenticated());
         await AttachOwnerAgentDetailsAsync([dto]);
         return Ok(dto);
     }
@@ -257,7 +258,7 @@ public class ListingsController : ControllerBase
                 && l.Address!.CityLower == listing.Address!.CityLower)
             .OrderBy(l => Math.Abs(l.Price - listing.Price))
             .Take(4)
-            .Select(l => l.ToDto())
+            .Select(l => l.ToDto(User.IsAuthenticated()))
             .ToListAsync();
 
         return Ok(similar);
@@ -277,7 +278,7 @@ public class ListingsController : ControllerBase
             .OrderByDescending(l => l.CreatedAt)
             .ToListAsync();
 
-        return Ok(listings.Select(l => l.ToDto()));
+        return Ok(listings.Select(l => l.ToDto(isAuthenticated: true)));
     }
 
     // Owners (including Agents, who are also Owners) may publish at most this many listings
@@ -409,7 +410,7 @@ public class ListingsController : ControllerBase
             .Include(l => l.Images).Include(l => l.Owner).Include(l => l.Address)
             .FirstAsync(l => l.Id == listing.Id);
 
-        var createdDto = created.ToDto();
+        var createdDto = created.ToDto(isAuthenticated: true);
         // ListingService.create() splices this response straight into the same client-side
         // listings signal the company filter reads, so it needs OwnerCompany just like Search.
         await AttachOwnerAgentDetailsAsync([createdDto]);
@@ -569,7 +570,7 @@ public class ListingsController : ControllerBase
 
         await _db.SaveChangesAsync();
 
-        var updatedDto = listing.ToDto();
+        var updatedDto = listing.ToDto(isAuthenticated: true);
         // Same reason as Create: ListingService.update() splices this response into the
         // client-side listings signal, overwriting whatever OwnerCompany Search had attached.
         await AttachOwnerAgentDetailsAsync([updatedDto]);
@@ -642,7 +643,7 @@ public class ListingsController : ControllerBase
             .Include(l => l.Owner)
             .Include(l => l.Address)
             .FirstAsync(l => l.Id == id);
-        var updatedDto = updated.ToDto();
+        var updatedDto = updated.ToDto(isAuthenticated: true);
         await AttachOwnerAgentDetailsAsync([updatedDto]);
         return Ok(updatedDto);
     }

@@ -21,8 +21,10 @@ public class AuthController : ControllerBase
     private readonly IEmailService _emailService;
     private readonly ILogger<AuthController> _logger;
     private readonly IGoogleTokenValidator _googleTokenValidator;
+    private readonly IFacebookTokenValidator _facebookTokenValidator;
     private readonly string _frontendBaseUrl;
     private readonly string _googleClientId;
+    private readonly FacebookOptions _facebookOptions;
 
     public AuthController(
         UserManager<ApplicationUser> userManager,
@@ -31,8 +33,10 @@ public class AuthController : ControllerBase
         IEmailService emailService,
         ILogger<AuthController> logger,
         IGoogleTokenValidator googleTokenValidator,
+        IFacebookTokenValidator facebookTokenValidator,
         IOptions<FrontendOptions> frontendOptions,
-        IOptions<GoogleOptions> googleOptions)
+        IOptions<GoogleOptions> googleOptions,
+        IOptions<FacebookOptions> facebookOptions)
     {
         _userManager = userManager;
         _roleManager = roleManager;
@@ -40,8 +44,10 @@ public class AuthController : ControllerBase
         _emailService = emailService;
         _logger = logger;
         _googleTokenValidator = googleTokenValidator;
+        _facebookTokenValidator = facebookTokenValidator;
         _frontendBaseUrl = frontendOptions.Value.BaseUrl;
         _googleClientId = googleOptions.Value.ClientId;
+        _facebookOptions = facebookOptions.Value;
     }
 
     // Registration length allowed for a code entry field (6 digits).
@@ -171,6 +177,81 @@ public class AuthController : ControllerBase
 
         // A random password Identity requires but this account never needs — the user only ever
         // signs in via Google (or sets a real one later through the normal forgot-password flow).
+        var result = await _userManager.CreateAsync(newUser, Guid.NewGuid().ToString("N") + "Aa1!");
+        if (!result.Succeeded)
+            return BadRequest(result.Errors.Select(e => e.Description));
+
+        await _userManager.AddToRolesAsync(newUser, roles);
+
+        return await BuildAuthResponse(newUser);
+    }
+
+    // Same find-or-create-by-email shape as Google above, but verified against Facebook's Graph
+    // API instead of a signed JWT (Facebook has no equivalent to Google's ID token). A Facebook
+    // account that hasn't granted the "email" permission (or has no email on file) can't be
+    // matched to an account here at all — email is this app's identity key for every sign-in
+    // path, so there's no safe fallback (e.g. a synthetic id@facebook address) that wouldn't risk
+    // colliding with or impersonating a real account later.
+    [HttpPost("facebook")]
+    public async Task<ActionResult<AuthResponseDto>> Facebook(FacebookAuthDto dto)
+    {
+        FacebookProfile profile;
+        try
+        {
+            profile = await _facebookTokenValidator.ValidateAsync(
+                dto.AccessToken, _facebookOptions.AppId, _facebookOptions.AppSecret);
+        }
+        catch (FacebookAuthException ex)
+        {
+            _logger.LogWarning(ex, "Rejected a Facebook sign-in token");
+            return Unauthorized(new { message = "Invalid Facebook sign-in." });
+        }
+        // Same reasoning as Google's catch (Exception ex) below: a timeout/network blip reaching
+        // Facebook's Graph API isn't the visitor's fault, so it gets a retryable 502 instead of
+        // the 401 above, which would wrongly blame an invalid token.
+        catch (FacebookUnavailableException ex)
+        {
+            _logger.LogError(ex, "Failed to reach Facebook while validating a sign-in token");
+            return StatusCode(StatusCodes.Status502BadGateway,
+                new { message = "Couldn't verify your Facebook sign-in right now. Please try again." });
+        }
+
+        if (string.IsNullOrEmpty(profile.Email))
+        {
+            return BadRequest(new
+            {
+                message = "Your Facebook account needs to share an email address to sign in."
+            });
+        }
+
+        var user = await _userManager.FindByEmailAsync(profile.Email);
+        if (user is not null)
+        {
+            if (!user.EmailConfirmed)
+            {
+                user.EmailConfirmed = true;
+                await _userManager.UpdateAsync(user);
+            }
+
+            return await BuildAuthResponse(user);
+        }
+
+        var roles = RolesFor(dto.Role);
+        foreach (var role in roles)
+        {
+            if (!await _roleManager.RoleExistsAsync(role))
+                await _roleManager.CreateAsync(new IdentityRole<Guid>(role));
+        }
+
+        var newUser = new ApplicationUser
+        {
+            UserName = profile.Email,
+            Email = profile.Email,
+            FirstName = profile.FirstName ?? string.Empty,
+            LastName = profile.LastName ?? string.Empty,
+            EmailConfirmed = true
+        };
+
         var result = await _userManager.CreateAsync(newUser, Guid.NewGuid().ToString("N") + "Aa1!");
         if (!result.Succeeded)
             return BadRequest(result.Errors.Select(e => e.Description));

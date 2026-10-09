@@ -46,6 +46,14 @@ public class GoogleAuthDto
     public string? Role { get; set; }
 }
 
+public class FacebookAuthDto
+{
+    [Required] public string AccessToken { get; set; } = string.Empty;
+
+    // Same meaning as GoogleAuthDto.Role — only used the first time this email signs in.
+    public string? Role { get; set; }
+}
+
 public class AddRoleDto
 {
     // "Owner" or "Agent" only — unlike RegisterDto.Role, there's no fallback-to-Buyer here:

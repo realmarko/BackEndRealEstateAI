@@ -62,6 +62,11 @@ builder.Services.Configure<FrontendOptions>(builder.Configuration.GetSection("Fr
 builder.Services.Configure<GoogleOptions>(builder.Configuration.GetSection("Google"));
 builder.Services.AddScoped<IGoogleTokenValidator, GoogleTokenValidator>();
 
+// ---- Facebook Login (access token verified against Graph API in AuthController.Facebook) ----
+builder.Services.Configure<FacebookOptions>(builder.Configuration.GetSection("Facebook"));
+builder.Services.AddHttpClient<IFacebookTokenValidator, FacebookTokenValidator>(
+    client => client.Timeout = TimeSpan.FromSeconds(5));
+
 // ---- INEGI DENUE (business-density lookups for the map's opportunity-analysis tools) ----
 builder.Services.Configure<DenueOptions>(builder.Configuration.GetSection("Inegi:Denue"));
 // 5s, not the default 100s or the 10s first tried: the map fires this on every click with no

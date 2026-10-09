@@ -32,6 +32,7 @@ public class AuthControllerTests
         Mock<IEmailService>? emailService = null,
         Mock<ITokenService>? tokenService = null,
         Mock<IGoogleTokenValidator>? googleTokenValidator = null,
+        Mock<IFacebookTokenValidator>? facebookTokenValidator = null,
         string frontendBaseUrl = "https://dev.espacial.com.mx",
         string googleClientId = "test-google-client-id")
     {
@@ -42,8 +43,10 @@ public class AuthControllerTests
             (emailService ?? new Mock<IEmailService>()).Object,
             NullLogger<AuthController>.Instance,
             (googleTokenValidator ?? new Mock<IGoogleTokenValidator>()).Object,
+            (facebookTokenValidator ?? new Mock<IFacebookTokenValidator>()).Object,
             Options.Create(new FrontendOptions { BaseUrl = frontendBaseUrl }),
-            Options.Create(new GoogleOptions { ClientId = googleClientId }));
+            Options.Create(new GoogleOptions { ClientId = googleClientId }),
+            Options.Create(new FacebookOptions { AppId = "test-fb-app-id", AppSecret = "test-fb-app-secret" }));
     }
 
     // AddRole reads the caller's identity from ControllerBase.User (via TryGetEmail), unlike

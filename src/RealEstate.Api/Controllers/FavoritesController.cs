@@ -36,7 +36,7 @@ public class FavoritesController : ControllerBase
         {
             Id = f.Id,
             CreatedAt = f.CreatedAt,
-            Listing = f.Listing!.ToDto()
+            Listing = f.Listing!.ToDto(isAuthenticated: true)
         }));
     }
 

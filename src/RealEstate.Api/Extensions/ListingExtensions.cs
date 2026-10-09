@@ -5,10 +5,18 @@ namespace RealEstate.Api.Extensions;
 
 public static class ListingExtensions
 {
+    // Shown instead of the owner's real email to anyone who hasn't signed in — never sent at all
+    // in that case, not just hidden by the frontend's CSS blur. Mirrors AgentsController's
+    // RedactedEmail; kept as its own copy since the two aren't allowed to share a project
+    // reference in either direction.
+    private const string RedactedOwnerEmail = "•••••••@•••••.com";
+
     /// <summary>Maps a Listing entity (with its Images, Owner, and Address loaded) to the API's
-    /// ListingDto shape. Shared by ListingsController and AgentsController so both return
-    /// listings in exactly the same shape.</summary>
-    public static ListingDto ToDto(this Listing l) => new()
+    /// ListingDto shape. Shared by ListingsController, AgentsController, FavoritesController, and
+    /// FraccionamientosController so all four return listings in exactly the same shape.
+    /// isAuthenticated must be passed explicitly by every caller (no default) so an anonymous
+    /// endpoint can never forget to redact OwnerEmail by omission.</summary>
+    public static ListingDto ToDto(this Listing l, bool isAuthenticated) => new()
     {
         Id = l.Id,
         Title = l.Title,
@@ -64,7 +72,7 @@ public static class ListingExtensions
         CadastralValue = l.CadastralValue,
         OwnerId = l.OwnerId,
         OwnerName = l.Owner is null ? string.Empty : $"{l.Owner.FirstName} {l.Owner.LastName}",
-        OwnerEmail = l.Owner?.Email ?? string.Empty,
+        OwnerEmail = isAuthenticated ? (l.Owner?.Email ?? string.Empty) : RedactedOwnerEmail,
         CreatedAt = l.CreatedAt,
         ImageUrls = l.Images.OrderBy(i => i.SortOrder).Select(i => i.Url).ToList(),
         ViewCount = l.ViewCount

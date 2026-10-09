@@ -153,8 +153,9 @@ public class AgentsController : ControllerBase
         // ViewCount here comes from the cached profile (up to SearchCacheDuration stale), same
         // as AverageRating/ReviewsCount — unlike GetById, which reads it live (see below). A
         // list of agents doesn't need per-request-fresh counters the way a single profile does.
+        var isAuthenticated = User.IsAuthenticated();
         var items = cachedPage!.Profiles
-            .Select(p => ToPublicDto(p, currentUserId != null && p.UserId == currentUserId))
+            .Select(p => ToPublicDto(p, currentUserId != null && p.UserId == currentUserId, isAuthenticated))
             .ToList();
 
         return Ok(new PagedResult<AgentDto>
@@ -219,7 +220,7 @@ public class AgentsController : ControllerBase
 
         if (cachedProfile is null) return NotFound();
 
-        var dto = ToPublicDto(cachedProfile, currentUserId != null && cachedProfile.UserId == currentUserId);
+        var dto = ToPublicDto(cachedProfile, currentUserId != null && cachedProfile.UserId == currentUserId, User.IsAuthenticated());
         // Read live rather than trusting the (up to 5-minute-stale) cached value — a view
         // counter that visibly lags behind "you just loaded this page" reads as broken in a way
         // a slightly-stale bio/rating doesn't. Cheap: single indexed PK column lookup.
@@ -268,7 +269,7 @@ public class AgentsController : ControllerBase
             .OrderByDescending(l => l.CreatedAt)
             .ToListAsync();
 
-        return Ok(listings.Select(l => l.ToDto()));
+        return Ok(listings.Select(l => l.ToDto(User.IsAuthenticated())));
     }
 
     // Completes the agent profile for the currently logged-in user (registered with the Agent role)
@@ -698,17 +699,26 @@ public class AgentsController : ControllerBase
         public int TotalCount { get; set; }
     }
 
+    // Shown instead of the real email/phone to anyone who hasn't signed in — never sent at all
+    // in that case, not just hidden by the frontend's CSS blur, so the real value never reaches
+    // an anonymous visitor's network tab/devtools either.
+    private const string RedactedEmail = "•••••••@•••••.com";
+    private const string RedactedPhone = "••• ••• ••••";
+
     // Always builds a brand-new AgentDto rather than mutating the cached CachedAgentProfile in
     // place — IMemoryCache hands back the same shared instance to every caller, so writing
     // IsOwnProfile onto it directly would leak one caller's identity into every other caller's
-    // response until the cache entry expired.
-    private static AgentDto ToPublicDto(CachedAgentProfile cached, bool isOwnProfile) => new()
+    // response until the cache entry expired. isAuthenticated gates Email/Phone the same way —
+    // isOwnProfile implies it (you can't own a profile anonymously), but a signed-in visitor
+    // looking at someone ELSE's profile should still see the real contact info, which isOwnProfile
+    // alone wouldn't allow for.
+    private static AgentDto ToPublicDto(CachedAgentProfile cached, bool isOwnProfile, bool isAuthenticated) => new()
     {
         Id = cached.Id,
         IsOwnProfile = isOwnProfile,
         Name = cached.Name,
-        Email = cached.Email,
-        Phone = cached.Phone,
+        Email = isAuthenticated ? cached.Email : RedactedEmail,
+        Phone = isAuthenticated ? cached.Phone : RedactedPhone,
         Company = cached.Company,
         IsIndependent = cached.IsIndependent,
         PhotoUrl = cached.PhotoUrl,

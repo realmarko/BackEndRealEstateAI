@@ -235,7 +235,7 @@ public class FraccionamientosController : ControllerBase
             ContactPhone = entity.ContactPhone,
             ContactEmail = entity.ContactEmail,
             PublishedAt = entity.PublishedAt,
-            Listings = listings.Select(l => l.ToDto()).ToList()
+            Listings = listings.Select(l => l.ToDto(User.IsAuthenticated())).ToList()
         });
     }
 

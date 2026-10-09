@@ -35,7 +35,7 @@ public class ListingExtensionsTests
             Country = "México"
         };
 
-        var dto = listing.ToDto();
+        var dto = listing.ToDto(isAuthenticated: true);
 
         Assert.Equal("Calle Reforma 123", dto.Street);
         Assert.Equal("Centro", dto.Colonia);
@@ -53,7 +53,7 @@ public class ListingExtensionsTests
         var listing = MakeListing();
         listing.Address = null;
 
-        var dto = listing.ToDto();
+        var dto = listing.ToDto(isAuthenticated: true);
 
         Assert.Equal(string.Empty, dto.Street);
         Assert.Equal(string.Empty, dto.Colonia);
@@ -75,7 +75,7 @@ public class ListingExtensionsTests
             UserName = "marco@example.com"
         };
 
-        var dto = listing.ToDto();
+        var dto = listing.ToDto(isAuthenticated: true);
 
         Assert.Equal("Marco Martinez", dto.OwnerName);
     }
@@ -86,7 +86,7 @@ public class ListingExtensionsTests
         var listing = MakeListing();
         listing.Owner = null;
 
-        var dto = listing.ToDto();
+        var dto = listing.ToDto(isAuthenticated: true);
 
         Assert.Equal(string.Empty, dto.OwnerName);
     }
@@ -102,7 +102,7 @@ public class ListingExtensionsTests
             new ListingImage { Url = "second.jpg", SortOrder = 1 }
         ];
 
-        var dto = listing.ToDto();
+        var dto = listing.ToDto(isAuthenticated: true);
 
         Assert.Equal(["first.jpg", "second.jpg", "third.jpg"], dto.ImageUrls);
     }
@@ -115,10 +115,45 @@ public class ListingExtensionsTests
         listing.PropertyType = PropertyType.Apartment;
         listing.Status = ListingStatus.Pending;
 
-        var dto = listing.ToDto();
+        var dto = listing.ToDto(isAuthenticated: true);
 
         Assert.Equal("Rent", dto.ListingType);
         Assert.Equal("Apartment", dto.PropertyType);
         Assert.Equal("Pending", dto.Status);
+    }
+
+    [Fact]
+    public void ToDto_Authenticated_IncludesRealOwnerEmail()
+    {
+        var listing = MakeListing();
+        listing.Owner = new ApplicationUser
+        {
+            FirstName = "Marco",
+            LastName = "Martinez",
+            Email = "marco@example.com",
+            UserName = "marco@example.com"
+        };
+
+        var dto = listing.ToDto(isAuthenticated: true);
+
+        Assert.Equal("marco@example.com", dto.OwnerEmail);
+    }
+
+    [Fact]
+    public void ToDto_Anonymous_RedactsOwnerEmail()
+    {
+        var listing = MakeListing();
+        listing.Owner = new ApplicationUser
+        {
+            FirstName = "Marco",
+            LastName = "Martinez",
+            Email = "marco@example.com",
+            UserName = "marco@example.com"
+        };
+
+        var dto = listing.ToDto(isAuthenticated: false);
+
+        Assert.NotEqual("marco@example.com", dto.OwnerEmail);
+        Assert.NotEmpty(dto.OwnerEmail);
     }
 }

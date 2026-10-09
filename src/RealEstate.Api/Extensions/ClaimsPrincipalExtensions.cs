@@ -22,4 +22,10 @@ public static class ClaimsPrincipalExtensions
     /// MapInboundClaims configuration — TokenService issues the JWT-standard name.</summary>
     public static string? TryGetEmail(this ClaimsPrincipal user) =>
         user.FindFirstValue(JwtRegisteredClaimNames.Email) ?? user.FindFirstValue(ClaimTypes.Email);
+
+    /// <summary>True when the caller sent a valid bearer token — works even on an endpoint with no
+    /// [Authorize] attribute, since UseAuthentication() always tries to populate the request's
+    /// ClaimsPrincipal regardless of whether the action requires it.</summary>
+    public static bool IsAuthenticated(this ClaimsPrincipal user) =>
+        user.Identity?.IsAuthenticated == true;
 }
