@@ -46,6 +46,7 @@ public class Listing
     public decimal? LotSizeSqm { get; set; }
     public decimal? GardenSizeSqm { get; set; }
     public bool HasHeatingCooling { get; set; }
+    public bool HasRoofGarden { get; set; }
     public decimal? HoaFee { get; set; }
     public string? VideoTourUrl { get; set; }
 

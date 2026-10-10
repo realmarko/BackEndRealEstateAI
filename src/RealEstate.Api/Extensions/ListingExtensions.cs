@@ -43,6 +43,7 @@ public static class ListingExtensions
         LotSizeSqm = l.LotSizeSqm,
         GardenSizeSqm = l.GardenSizeSqm,
         HasHeatingCooling = l.HasHeatingCooling,
+        HasRoofGarden = l.HasRoofGarden,
         HoaFee = l.HoaFee,
         VideoTourUrl = l.VideoTourUrl,
         LandUseZoning = l.LandUseZoning,

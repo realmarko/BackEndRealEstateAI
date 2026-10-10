@@ -37,6 +37,7 @@ public class ListingCreateDto
     public decimal? LotSizeSqm { get; set; }
     public decimal? GardenSizeSqm { get; set; }
     public bool HasHeatingCooling { get; set; }
+    public bool HasRoofGarden { get; set; }
     public decimal? HoaFee { get; set; }
     [MaxLength(2048)] public string? VideoTourUrl { get; set; }
 
@@ -115,6 +116,7 @@ public class ListingDto
     public decimal? LotSizeSqm { get; set; }
     public decimal? GardenSizeSqm { get; set; }
     public bool HasHeatingCooling { get; set; }
+    public bool HasRoofGarden { get; set; }
     public decimal? HoaFee { get; set; }
     public string? VideoTourUrl { get; set; }
     public string? LandUseZoning { get; set; }

@@ -360,6 +360,7 @@ public class ListingsController : ControllerBase
             LotSizeSqm = dto.LotSizeSqm,
             GardenSizeSqm = dto.GardenSizeSqm,
             HasHeatingCooling = dto.HasHeatingCooling,
+            HasRoofGarden = dto.HasRoofGarden,
             HoaFee = dto.HoaFee,
             VideoTourUrl = dto.VideoTourUrl,
             LandUseZoning = dto.LandUseZoning,
@@ -523,6 +524,7 @@ public class ListingsController : ControllerBase
         listing.LotSizeSqm = dto.LotSizeSqm;
         listing.GardenSizeSqm = dto.GardenSizeSqm;
         listing.HasHeatingCooling = dto.HasHeatingCooling;
+        listing.HasRoofGarden = dto.HasRoofGarden;
         listing.HoaFee = dto.HoaFee;
         listing.VideoTourUrl = dto.VideoTourUrl;
         listing.LandUseZoning = dto.LandUseZoning;
