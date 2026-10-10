@@ -1,3 +1,7 @@
+using System.ComponentModel.DataAnnotations;
+using System.Globalization;
+using CsvHelper;
+using CsvHelper.Configuration.Attributes;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -54,6 +58,176 @@ public class BrokeragesController : ControllerBase
             .ToListAsync();
 
         return Ok(names);
+    }
+
+    // POST /api/brokerages — an admin pinning a brokerage's physical office on the map (see the
+    // "Agregar inmobiliaria" tool on /map). Creates the row directly, unlike
+    // AgentsController.ResolveOrCreateBrokerageAsync's name-only resolve-or-create during agent
+    // signup — there's no dedup concern here since an admin is placing one specific, deliberate
+    // pin, not matching free-text company names typed by different agents.
+    [HttpPost]
+    [Authorize(Roles = "Admin")]
+    public async Task<ActionResult<BrokerageDto>> Create([FromForm] CreateBrokerageDto dto)
+    {
+        var brokerage = new Brokerage
+        {
+            Name = dto.Name,
+            Latitude = dto.Latitude,
+            Longitude = dto.Longitude,
+            Address = dto.Address,
+            Phone = dto.Phone,
+            Email = dto.Email,
+            WorkingHours = dto.WorkingHours,
+            Website = dto.Website
+        };
+
+        if (dto.Photo is not null)
+        {
+            var result = await _photoUploadService.UploadAsync(dto.Photo, $"brokerages/new-{Guid.NewGuid()}");
+            if (result.ErrorKind is not null) return result.ErrorKind.Value.ToActionResult(this);
+            brokerage.LogoUrl = result.Urls.FirstOrDefault();
+        }
+
+        _db.Brokerages.Add(brokerage);
+        await _db.SaveChangesAsync();
+
+        return await GetById(brokerage.Id);
+    }
+
+    // POST /api/brokerages/import — Admin-only bulk upload for /admin/inmobiliarias. Expected CSV
+    // header: nombre,lat,lng,direccion,telefono,email,horario (RFC4180 quoting for fields with
+    // embedded commas, e.g. direccion — handled by CsvHelper). Each row is validated and created
+    // independently, reported back by row number, rather than all-or-nothing: an admin pasting a
+    // spreadsheet export is exactly the kind of input likely to have a typo in one row out of a
+    // hundred, and that shouldn't block the other ninety-nine.
+    private const long MaxImportFileBytes = 2 * 1024 * 1024;
+    private const int MaxImportRows = 1000;
+
+    [HttpPost("import")]
+    [Authorize(Roles = "Admin")]
+    public async Task<ActionResult<BrokerageImportResultDto>> Import([FromForm] BrokerageImportDto dto)
+    {
+        var file = dto.File;
+        if (file is null || file.Length == 0) return BadRequest(new { message = "A CSV file is required." });
+        if (file.Length > MaxImportFileBytes)
+            return BadRequest(new { message = $"The file must be {MaxImportFileBytes / 1024 / 1024} MB or less." });
+
+        List<BrokerageCsvRow> rows;
+        try
+        {
+            using var reader = new StreamReader(file.OpenReadStream());
+            using var csv = new CsvReader(reader, CultureInfo.InvariantCulture);
+            rows = csv.GetRecords<BrokerageCsvRow>().ToList();
+        }
+        catch (Exception ex) when (ex is CsvHelperException or IOException)
+        {
+            return BadRequest(new { message = "Could not read the CSV file — check its format and header row (nombre,lat,lng,direccion,telefono,email,horario)." });
+        }
+
+        if (rows.Count > MaxImportRows)
+            return BadRequest(new { message = $"A single import is limited to {MaxImportRows} rows." });
+
+        var result = new BrokerageImportResultDto();
+        var toCreate = new List<Brokerage>();
+
+        for (var i = 0; i < rows.Count; i++)
+        {
+            // +1 for 1-based counting, +1 for the header row — matches the line an admin would
+            // count in the original file.
+            var rowNumber = i + 2;
+            var error = ValidateImportRow(rows[i], out var brokerage);
+            if (error is not null)
+            {
+                result.Errors.Add(new BrokerageImportRowErrorDto { RowNumber = rowNumber, Message = error });
+                continue;
+            }
+            toCreate.Add(brokerage!);
+        }
+
+        if (toCreate.Count > 0)
+        {
+            _db.Brokerages.AddRange(toCreate);
+            await _db.SaveChangesAsync();
+        }
+
+        result.CreatedCount = toCreate.Count;
+        return Ok(result);
+    }
+
+    private static string? ValidateImportRow(BrokerageCsvRow row, out Brokerage? brokerage)
+    {
+        brokerage = null;
+
+        var name = row.Nombre?.Trim();
+        if (string.IsNullOrWhiteSpace(name)) return "nombre is required.";
+        if (name.Length > 200) return "nombre must be 200 characters or less.";
+
+        if (!double.TryParse(row.Lat, NumberStyles.Float, CultureInfo.InvariantCulture, out var lat))
+            return "lat must be a number.";
+        if (!double.TryParse(row.Lng, NumberStyles.Float, CultureInfo.InvariantCulture, out var lng))
+            return "lng must be a number.";
+        var geoError = GeoValidation.ValidateLatLng(lat, lng);
+        if (geoError is not null) return geoError;
+
+        var address = row.Direccion?.Trim();
+        var phone = row.Telefono?.Trim();
+        var email = row.Email?.Trim();
+        var workingHours = row.Horario?.Trim();
+
+        if (address is { Length: > 300 }) return "direccion must be 300 characters or less.";
+        if (phone is { Length: > 30 }) return "telefono must be 30 characters or less.";
+        if (email is { Length: > 320 }) return "email must be 320 characters or less.";
+        if (!string.IsNullOrEmpty(email) && !new EmailAddressAttribute().IsValid(email)) return "email is not a valid email address.";
+        if (workingHours is { Length: > 200 }) return "horario must be 200 characters or less.";
+
+        brokerage = new Brokerage
+        {
+            Name = name,
+            Latitude = lat,
+            Longitude = lng,
+            Address = string.IsNullOrWhiteSpace(address) ? null : address,
+            Phone = string.IsNullOrWhiteSpace(phone) ? null : phone,
+            Email = string.IsNullOrWhiteSpace(email) ? null : email,
+            WorkingHours = string.IsNullOrWhiteSpace(workingHours) ? null : workingHours
+        };
+        return null;
+    }
+
+    // Lat/Lng are read as strings (not double) so a malformed value becomes a row-level
+    // ValidateImportRow error message instead of a CsvHelper TypeConverterException thrown mid-
+    // enumeration — which would abort GetRecords<T>() for every row after it, not just the bad one.
+    private sealed class BrokerageCsvRow
+    {
+        [Name("nombre")] public string? Nombre { get; set; }
+        [Name("lat")] public string? Lat { get; set; }
+        [Name("lng")] public string? Lng { get; set; }
+        [Name("direccion")] public string? Direccion { get; set; }
+        [Name("telefono")] public string? Telefono { get; set; }
+        [Name("email")] public string? Email { get; set; }
+        [Name("horario")] public string? Horario { get; set; }
+    }
+
+    // GET /api/brokerages/map — every brokerage an admin has pinned with a location, for the
+    // map's own marker layer. Deliberately excludes the (much more common) rows that only have a
+    // Name resolved from agent signup — those have no Latitude/Longitude to plot. Uncached and
+    // unpaginated: there's no listing-page-scale traffic driving this one (only /map loads it,
+    // once per page load), and the row count is bounded by how many an admin has manually added.
+    [HttpGet("map")]
+    public async Task<ActionResult<List<BrokerageMapItemDto>>> Map()
+    {
+        var items = await _db.Brokerages
+            .Where(b => b.Latitude != null && b.Longitude != null)
+            .Select(b => new BrokerageMapItemDto
+            {
+                Id = b.Id,
+                Name = b.Name,
+                LogoUrl = b.LogoUrl,
+                Latitude = b.Latitude!.Value,
+                Longitude = b.Longitude!.Value
+            })
+            .ToListAsync();
+
+        return Ok(items);
     }
 
     // GET /api/brokerages/directory?name=&state=&city=&page=&pageSize= — the public
@@ -137,6 +311,25 @@ public class BrokeragesController : ControllerBase
         return Ok(ToPublicDto(cachedProfile, callerBrokerageId.HasValue && callerBrokerageId.Value == cachedProfile.Id));
     }
 
+    // GET /api/brokerages/by-slug/some_brokerage_name — resolves a brokerage the same way the
+    // frontend builds every link to one now (ToSlug(name) in brokerage-api.adapter.ts: spaces
+    // replaced with underscores), so a visitor never sees the numeric id in the URL. Name has no
+    // uniqueness constraint, so two brokerages could in theory share a slug — the oldest (lowest
+    // id) wins; not actively guarded against since brokerage rows are admin/agent-curated and
+    // collisions are expected to be rare enough not to need a disambiguation scheme yet.
+    [HttpGet("by-slug/{slug}")]
+    public async Task<ActionResult<BrokerageDto>> GetBySlug(string slug)
+    {
+        var id = await _db.Brokerages
+            .Where(b => b.Name.Replace(" ", "_") == slug)
+            .OrderBy(b => b.Id)
+            .Select(b => (int?)b.Id)
+            .FirstOrDefaultAsync();
+
+        if (id is null) return NotFound();
+        return await GetById(id.Value);
+    }
+
     // GET /api/brokerages/mine — the caller's own agency, so the "edit my agency" entry point
     // doesn't need to already know its id. 404 if the agent is independent or has no profile yet.
     [Authorize(Roles = "Agent")]
@@ -188,6 +381,55 @@ public class BrokeragesController : ControllerBase
         return await GetById(id);
     }
 
+    // PUT /api/brokerages/5/admin — Admin-only, every field (see AdminUpdateBrokerageDto). Unlike
+    // Update() above, there's no membership check: this is how an admin-pinned brokerage (which
+    // has no member agent at all) gets edited, and also lets an admin fix/relocate any brokerage
+    // regardless of who it's resolved from.
+    [Authorize(Roles = "Admin")]
+    [HttpPut("{id:int}/admin")]
+    public async Task<ActionResult<BrokerageDto>> AdminUpdate(int id, [FromForm] AdminUpdateBrokerageDto dto)
+    {
+        if (dto.Latitude.HasValue != dto.Longitude.HasValue)
+            return BadRequest(new { message = "Latitude and Longitude must both be set, or both left empty." });
+        if (dto.Latitude.HasValue)
+        {
+            var geoError = GeoValidation.ValidateLatLng(dto.Latitude.Value, dto.Longitude!.Value);
+            if (geoError is not null) return BadRequest(new { message = geoError });
+        }
+
+        var brokerage = await _db.Brokerages.FindAsync(id);
+        if (brokerage is null) return NotFound();
+
+        if (dto.Logo is not null)
+        {
+            var result = await _photoUploadService.UploadAsync(dto.Logo, $"brokerages/{id}");
+            if (result.ErrorKind is not null) return result.ErrorKind.Value.ToActionResult(this);
+            brokerage.LogoUrl = result.Urls.FirstOrDefault();
+        }
+
+        brokerage.Name = dto.Name;
+        brokerage.Latitude = dto.Latitude;
+        brokerage.Longitude = dto.Longitude;
+        brokerage.Address = dto.Address;
+        brokerage.Phone = dto.Phone;
+        brokerage.Email = dto.Email;
+        brokerage.WorkingHours = dto.WorkingHours;
+        brokerage.State = dto.State;
+        brokerage.City = dto.City;
+        brokerage.Website = dto.Website;
+        brokerage.Description = dto.Description;
+        brokerage.FacebookUrl = dto.FacebookUrl;
+        brokerage.InstagramUrl = dto.InstagramUrl;
+
+        await _db.SaveChangesAsync();
+
+        // Same reasoning as Update() above — an admin editing a brokerage should see their own
+        // change immediately, not the stale cached profile for up to ProfileCacheDuration.
+        _cache.Remove(ProfileCacheKey(id));
+
+        return await GetById(id);
+    }
+
     private async Task<int?> GetCallerBrokerageIdAsync()
     {
         var currentUserId = User.TryGetUserId();
@@ -211,6 +453,12 @@ public class BrokeragesController : ControllerBase
         Description = b.Description,
         FacebookUrl = b.FacebookUrl,
         InstagramUrl = b.InstagramUrl,
+        Latitude = b.Latitude,
+        Longitude = b.Longitude,
+        Address = b.Address,
+        Phone = b.Phone,
+        Email = b.Email,
+        WorkingHours = b.WorkingHours,
         AgentsCount = b.Agents.Count(a => !a.IsDeleted),
         AgentUserIds = b.Agents.Where(a => !a.IsDeleted && a.UserId != null).Select(a => a.UserId!.Value).ToList()
     };
@@ -226,6 +474,12 @@ public class BrokeragesController : ControllerBase
         public string? Description { get; set; }
         public string? FacebookUrl { get; set; }
         public string? InstagramUrl { get; set; }
+        public double? Latitude { get; set; }
+        public double? Longitude { get; set; }
+        public string? Address { get; set; }
+        public string? Phone { get; set; }
+        public string? Email { get; set; }
+        public string? WorkingHours { get; set; }
         public int AgentsCount { get; set; }
         public List<Guid> AgentUserIds { get; set; } = new();
     }
@@ -244,6 +498,12 @@ public class BrokeragesController : ControllerBase
         public string? Description { get; set; }
         public string? FacebookUrl { get; set; }
         public string? InstagramUrl { get; set; }
+        public double? Latitude { get; set; }
+        public double? Longitude { get; set; }
+        public string? Address { get; set; }
+        public string? Phone { get; set; }
+        public string? Email { get; set; }
+        public string? WorkingHours { get; set; }
         public int AgentsCount { get; set; }
         public int ListingsCount { get; set; }
     }
@@ -280,6 +540,12 @@ public class BrokeragesController : ControllerBase
             Description = b.Description,
             FacebookUrl = b.FacebookUrl,
             InstagramUrl = b.InstagramUrl,
+            Latitude = b.Latitude,
+            Longitude = b.Longitude,
+            Address = b.Address,
+            Phone = b.Phone,
+            Email = b.Email,
+            WorkingHours = b.WorkingHours,
             AgentsCount = b.AgentsCount,
             ListingsCount = b.AgentUserIds.Sum(uid => listingCounts.GetValueOrDefault(uid, 0))
         }).ToList();
@@ -300,6 +566,12 @@ public class BrokeragesController : ControllerBase
         Description = cached.Description,
         FacebookUrl = cached.FacebookUrl,
         InstagramUrl = cached.InstagramUrl,
+        Latitude = cached.Latitude,
+        Longitude = cached.Longitude,
+        Address = cached.Address,
+        Phone = cached.Phone,
+        Email = cached.Email,
+        WorkingHours = cached.WorkingHours,
         AgentsCount = cached.AgentsCount,
         ListingsCount = cached.ListingsCount,
         CanEdit = canEdit

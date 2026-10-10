@@ -232,6 +232,25 @@ public class AgentsController : ControllerBase
         return Ok(dto);
     }
 
+    // GET /api/agents/by-slug/JuanPerez — resolves an agent the same way the frontend builds
+    // every link to one now (toSlug(name) in agent-api.adapter.ts: spaces removed entirely, not
+    // replaced — the brokerage slug convention uses an underscore instead; the two were asked
+    // for separately and deliberately differ), so a visitor never sees the numeric id in the URL.
+    // Name has no uniqueness constraint, so two agents could in theory share a slug — the oldest
+    // (lowest id) wins, same reasoning as BrokeragesController.GetBySlug.
+    [HttpGet("by-slug/{slug}")]
+    public async Task<ActionResult<AgentDto>> GetBySlug(string slug)
+    {
+        var id = await _db.Agents
+            .Where(a => !a.IsDeleted && a.Name.Replace(" ", "") == slug)
+            .OrderBy(a => a.Id)
+            .Select(a => (int?)a.Id)
+            .FirstOrDefaultAsync();
+
+        if (id is null) return NotFound();
+        return await GetById(id.Value);
+    }
+
     // Fire-and-forget from the detail page on load (see agent-detail.component.ts) — the
     // frontend debounces repeat calls per browser via localStorage. Deliberately not cached and
     // doesn't evict ProfileCacheKey: GetById reads ViewCount live (above), so an increment here
