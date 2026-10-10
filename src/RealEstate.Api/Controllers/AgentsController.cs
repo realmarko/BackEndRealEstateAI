@@ -42,6 +42,7 @@ public class AgentsController : ControllerBase
     private readonly ApplicationDbContext _listingsDb;
     private readonly IPhotoUploadService _photoUploadService;
     private readonly IEmailService _emailService;
+    private readonly IOwnerAgentLookupService _ownerAgentLookup;
     private readonly IMemoryCache _cache;
     private readonly ILogger<AgentsController> _logger;
 
@@ -50,6 +51,7 @@ public class AgentsController : ControllerBase
         ApplicationDbContext listingsDb,
         IPhotoUploadService photoUploadService,
         IEmailService emailService,
+        IOwnerAgentLookupService ownerAgentLookup,
         IMemoryCache cache,
         ILogger<AgentsController> logger)
     {
@@ -57,6 +59,7 @@ public class AgentsController : ControllerBase
         _listingsDb = listingsDb;
         _photoUploadService = photoUploadService;
         _emailService = emailService;
+        _ownerAgentLookup = ownerAgentLookup;
         _cache = cache;
         _logger = logger;
     }
@@ -408,7 +411,7 @@ public class AgentsController : ControllerBase
         // two fields, keyed by this agent's own UserId) so their listing cards update immediately
         // too, not just their agent profile.
         if (agent.UserId.HasValue)
-            _cache.Remove(ListingsController.OwnerAgentCacheKey(agent.UserId.Value));
+            _ownerAgentLookup.Evict(agent.UserId.Value);
 
         return Ok(await ToDtoAsync(agent, isOwnProfile: true));
     }

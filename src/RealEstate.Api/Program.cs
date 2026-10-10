@@ -14,6 +14,8 @@ using RealEstate.Api.Middleware;
 using RealEstate.Api.Models.Entities;
 using RealEstate.Api.Services;
 
+QuestPDF.Settings.License = QuestPDF.Infrastructure.LicenseType.Community;
+
 var builder = WebApplication.CreateBuilder(args);
 
 // ---- Error tracking (Sentry) ----
@@ -51,9 +53,18 @@ builder.Services.AddScoped<IS3UploadService, S3UploadService>();
 builder.Services.AddScoped<IImageProcessingService, ImageProcessingService>();
 builder.Services.AddScoped<IPhotoUploadService, PhotoUploadService>();
 
+// Shared by ListingsController (batched) and InquiriesController (single-owner) — see
+// OwnerAgentLookupService for why this isn't a per-controller query.
+builder.Services.AddScoped<IOwnerAgentLookupService, OwnerAgentLookupService>();
+
 // ---- Email (SMTP) ----
 builder.Services.Configure<EmailOptions>(builder.Configuration.GetSection("Email"));
 builder.Services.AddScoped<IEmailService, SmtpEmailService>();
+builder.Services.AddScoped<IFactSheetPdfService, FactSheetPdfService>();
+// Used by InquiriesController to pull listing photos (S3 URLs) into the fact-sheet PDF —
+// short timeout since it's a best-effort embellishment, not something the inquiry's success
+// should ever wait long on or fail over.
+builder.Services.AddHttpClient("FactSheetPhotos", client => client.Timeout = TimeSpan.FromSeconds(5));
 
 // ---- Frontend (for building links back into the app from server-sent emails) ----
 builder.Services.Configure<FrontendOptions>(builder.Configuration.GetSection("Frontend"));

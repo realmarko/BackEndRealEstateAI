@@ -1,8 +1,6 @@
-using System.Net.Mail;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Options;
 using RealEstate.Api.Data;
 using RealEstate.Api.Extensions;
 using RealEstate.Api.Models.DTOs;
@@ -17,18 +15,24 @@ public class InquiriesController : ControllerBase
 {
     private readonly ApplicationDbContext _db;
     private readonly IEmailService _emailService;
-    private readonly string _frontendBaseUrl;
+    private readonly IFactSheetPdfService _factSheetPdfService;
+    private readonly IOwnerAgentLookupService _ownerAgentLookup;
+    private readonly IHttpClientFactory _httpClientFactory;
     private readonly ILogger<InquiriesController> _logger;
 
     public InquiriesController(
         ApplicationDbContext db,
         IEmailService emailService,
-        IOptions<FrontendOptions> frontendOptions,
+        IFactSheetPdfService factSheetPdfService,
+        IOwnerAgentLookupService ownerAgentLookup,
+        IHttpClientFactory httpClientFactory,
         ILogger<InquiriesController> logger)
     {
         _db = db;
         _emailService = emailService;
-        _frontendBaseUrl = frontendOptions.Value.BaseUrl;
+        _factSheetPdfService = factSheetPdfService;
+        _ownerAgentLookup = ownerAgentLookup;
+        _httpClientFactory = httpClientFactory;
         _logger = logger;
     }
 
@@ -38,7 +42,12 @@ public class InquiriesController : ControllerBase
     [HttpPost]
     public async Task<IActionResult> Create(InquiryCreateDto dto)
     {
-        var listing = await _db.Listings.Include(l => l.Address).FirstOrDefaultAsync(l => l.Id == dto.ListingId);
+        // Images/Owner aren't included here — only the qualifying-timeline branch below ever
+        // needs them (for the fact-sheet PDF), and that's the minority of inquiries. See
+        // SendFactSheetPdfAsync, which loads them itself only when it actually runs.
+        var listing = await _db.Listings
+            .Include(l => l.Address)
+            .FirstOrDefaultAsync(l => l.Id == dto.ListingId);
         if (listing is null) return NotFound(new { message = "Listing not found" });
 
         _db.Inquiries.Add(new Inquiry
@@ -61,35 +70,84 @@ public class InquiriesController : ControllerBase
         // null (the quick-message box never asks) or JustBrowsing doesn't count as "passing".
         if (dto.Timeline is PurchaseTimeline.ReadyNow or PurchaseTimeline.OneToThreeMonths or PurchaseTimeline.ThreeToSixMonths)
         {
-            await SendFactSheetLinkAsync(dto.SenderEmail, dto.SenderName, listing);
+            await SendFactSheetPdfAsync(dto.SenderEmail, dto.SenderName, listing);
         }
 
         return NoContent();
     }
 
-    // Emails the sender a link back to the listing's own detail page (photos, full spec sheet,
-    // mortgage calculator, etc. all already live there) rather than generating a separate
-    // document — the page is always up to date and this needs no new dependency.
-    private async Task SendFactSheetLinkAsync(string toEmail, string toName, Listing listing)
+    // Emails the sender a generated PDF fact sheet (specs, address, contact) for the listing —
+    // built from the same ListingDto shape the listing-detail page renders from, so it can never
+    // show different numbers than what the lead already saw online. The lead has just identified
+    // themselves via the inquiry, which is why the owner's real email/contact can go on it (see
+    // ListingExtensions.ToDto's isAuthenticated redaction, which this bypasses on purpose).
+    private async Task SendFactSheetPdfAsync(string toEmail, string toName, Listing listing)
     {
         try
         {
-            var listingUrl = $"{_frontendBaseUrl.TrimEnd('/')}/listings/{listing.Id}";
+            // Create()'s query only loads Address; these two are sequential (not WhenAll) because
+            // both run against the same ApplicationDbContext, which — like any EF Core context —
+            // isn't safe for concurrent operations.
+            await _db.Entry(listing).Collection(l => l.Images).LoadAsync();
+            await _db.Entry(listing).Reference(l => l.Owner).LoadAsync();
+
+            var dto = listing.ToDto(isAuthenticated: true);
+
+            // Independent of each other (separate DbContext / HttpClient underneath), so run
+            // concurrently instead of one after the other — this is the slowest part of handling
+            // a qualifying inquiry, so overlapping them matters.
+            var photosTask = DownloadPhotosAsync(dto.ImageUrls);
+            var agentInfoTask = _ownerAgentLookup.GetAsync(listing.OwnerId);
+            await Task.WhenAll(photosTask, agentInfoTask);
+
+            var (company, photoUrl) = agentInfoTask.Result;
+            dto.OwnerCompany = company;
+            dto.OwnerPhotoUrl = photoUrl;
+
+            var pdfBytes = _factSheetPdfService.Generate(dto, photosTask.Result);
+
             var subject = $"Ficha técnica: {listing.Title}";
             var body =
                 $"Gracias por tu interés en esta propiedad:\n\n" +
                 $"{listing.Title}\n{listing.Address!.ToEmailLine()}\n{listing.Currency} {listing.Price}\n\n" +
-                $"Consulta la ficha técnica completa (fotos, características y más) aquí:\n{listingUrl}\n\n" +
-                "Un agente se pondrá en contacto contigo pronto.";
-            await _emailService.SendAsync(toEmail, toName, subject, body);
+                "Adjuntamos la ficha técnica en PDF con todas las características. Un agente se pondrá en contacto contigo pronto.";
+            var fileName = $"ficha-tecnica-{listing.Id}.pdf";
+            await _emailService.SendAsync(toEmail, toName, subject, body, new EmailAttachment(pdfBytes, fileName, "application/pdf"));
         }
-        // NullReferenceException included alongside the SMTP/formatting failures this filter was
-        // written for: the inquiry above this call already saved successfully, so a null
-        // listing.Address (which should never happen, but this is a best-effort notification,
-        // not the inquiry itself) must not turn into a 500 for a request that already succeeded.
-        catch (Exception ex) when (ex is SmtpException or FormatException or ArgumentException or InvalidOperationException or NullReferenceException)
+        // Deliberately catches everything, not a filtered list: the inquiry above this call
+        // already saved successfully, so nothing in here — SMTP, formatting, or an exception
+        // thrown by QuestPDF/SkiaSharp while rendering a malformed downloaded photo, which isn't
+        // an enumerable/predictable exception type — may ever turn into an error response for a
+        // request that already succeeded.
+        catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to send fact-sheet email to {Email} for listing {ListingId}", toEmail, listing.Id);
+        }
+    }
+
+    // Downloads up to FactSheetPdfService.MaxPhotos listing photos (S3 URLs, already in
+    // ImageUrls' SortOrder) concurrently for the fact sheet's photo strip. Each download is
+    // independently best-effort: one broken/slow image (a transient S3 hiccup, a malformed URL,
+    // a photo deleted after the listing loaded) is logged and skipped rather than failing the
+    // others or the email.
+    private async Task<List<byte[]>> DownloadPhotosAsync(List<string> imageUrls)
+    {
+        var client = _httpClientFactory.CreateClient("FactSheetPhotos");
+        var downloads = imageUrls.Take(FactSheetPdfService.MaxPhotos).Select(url => DownloadPhotoAsync(client, url));
+        var results = await Task.WhenAll(downloads);
+        return results.Where(bytes => bytes is not null).Select(bytes => bytes!).ToList();
+    }
+
+    private async Task<byte[]?> DownloadPhotoAsync(HttpClient client, string url)
+    {
+        try
+        {
+            return await client.GetByteArrayAsync(url);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to download listing photo {Url} for fact sheet", url);
+            return null;
         }
     }
 

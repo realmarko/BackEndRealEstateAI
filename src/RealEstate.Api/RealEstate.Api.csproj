@@ -8,6 +8,14 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- Liberation Sans (SIL OFL), embedded so FactSheetPdfService renders identically in dev
+         (Windows) and on the EB Linux host, which has no guaranteed system fonts for QuestPDF /
+         SkiaSharp to fall back on — see FactSheetPdfService's font registration. -->
+    <EmbeddedResource Include="Resources\Fonts\LiberationSans-Regular.ttf" />
+    <EmbeddedResource Include="Resources\Fonts\LiberationSans-Bold.ttf" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="AWSSDK.Extensions.NETCore.Setup" Version="4.0.100.9" />
     <PackageReference Include="AWSSDK.S3" Version="4.0.102.3" />
     <PackageReference Include="EFCore.NamingConventions" Version="10.0.1" />
@@ -21,6 +29,7 @@
     <PackageReference Include="NetTopologySuite.IO.GeoJSON" Version="4.0.0" />
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.3" />
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL.NetTopologySuite" Version="10.0.3" />
+    <PackageReference Include="QuestPDF" Version="2025.7.0" />
     <PackageReference Include="Sentry.AspNetCore" Version="6.11.0" />
     <PackageReference Include="SkiaSharp" Version="4.152.1" />
     <PackageReference Include="SkiaSharp.NativeAssets.Linux" Version="4.152.1" />
