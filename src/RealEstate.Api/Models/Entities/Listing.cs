@@ -63,6 +63,10 @@ public class Listing
     public int? LandUseCategoryId { get; set; }
     public LandUseCategory? LandUseCategory { get; set; }
     public LandTenureType? LandTenure { get; set; }
+    // Whether the seller actually holds the constancia ejidal (the agrarian-registry document
+    // proving ejido land rights) — distinct from LandTenure's classification above: a lot can be
+    // tenure type Ejidal without the seller having this specific certificate in hand yet.
+    public bool? HasEjidalCertificate { get; set; }
     public decimal? CosCoefficient { get; set; }             // Coeficiente de Ocupacion del Suelo
     public decimal? CusCoefficient { get; set; }             // Coeficiente de Utilizacion del Suelo
     public decimal? MaxHeightMeters { get; set; }

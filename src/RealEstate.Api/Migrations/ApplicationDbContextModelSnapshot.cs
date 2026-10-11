@@ -778,6 +778,10 @@ namespace RealEstate.Api.Migrations
                         .HasColumnType("boolean")
                         .HasColumnName("has_drainage");
 
+                    b.Property<bool?>("HasEjidalCertificate")
+                        .HasColumnType("boolean")
+                        .HasColumnName("has_ejidal_certificate");
+
                     b.Property<bool?>("HasElectricity")
                         .HasColumnType("boolean")
                         .HasColumnName("has_electricity");

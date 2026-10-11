@@ -49,6 +49,7 @@ public static class ListingExtensions
         LandUseZoning = l.LandUseZoning,
         LandUseCategoryId = l.LandUseCategoryId,
         LandTenure = l.LandTenure?.ToString(),
+        HasEjidalCertificate = l.HasEjidalCertificate,
         CosCoefficient = l.CosCoefficient,
         CusCoefficient = l.CusCoefficient,
         MaxHeightMeters = l.MaxHeightMeters,

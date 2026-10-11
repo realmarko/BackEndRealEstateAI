@@ -138,6 +138,7 @@ public class FactSheetPdfService : IFactSheetPdfService
                 SectionTitle(column, "USO DE SUELO Y SERVICIOS");
                 if (!string.IsNullOrWhiteSpace(listing.LandUseZoning)) Field(column, "Zonificación", listing.LandUseZoning!);
                 if (!string.IsNullOrWhiteSpace(listing.LandTenure)) Field(column, "Tenencia", listing.LandTenure!);
+                if (listing.HasEjidalCertificate is { } ejidal) Field(column, "Constancia ejidal", YesNo(ejidal));
                 if (listing.FrontageWidthMeters is { } w) Field(column, "Frente", $"{w:N1} m");
                 if (listing.FrontageDepthMeters is { } d) Field(column, "Fondo", $"{d:N1} m");
                 Field(column, "Agua potable", YesNo(listing.HasPotableWater));
@@ -157,6 +158,7 @@ public class FactSheetPdfService : IFactSheetPdfService
 
     private static bool HasLandDetails(ListingDto l) =>
         !string.IsNullOrWhiteSpace(l.LandUseZoning) || !string.IsNullOrWhiteSpace(l.LandTenure) ||
+        l.HasEjidalCertificate.HasValue ||
         l.HasPotableWater.HasValue || l.HasDrainage.HasValue || l.HasElectricity.HasValue ||
         l.FrontageWidthMeters.HasValue || l.FrontageDepthMeters.HasValue;
 

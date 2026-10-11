@@ -44,6 +44,7 @@ public class ListingCreateDto
     [MaxLength(50)] public string? LandUseZoning { get; set; }
     public int? LandUseCategoryId { get; set; }
     public LandTenureType? LandTenure { get; set; }
+    public bool? HasEjidalCertificate { get; set; }
     // Generous, sanity-check bounds (not precise Mexican zoning limits, which vary by
     // municipality) — just enough to reject obvious data-entry errors like a misplaced decimal
     // point or a negative value, not to enforce a specific jurisdiction's actual rules.
@@ -122,6 +123,7 @@ public class ListingDto
     public string? LandUseZoning { get; set; }
     public int? LandUseCategoryId { get; set; }
     public string? LandTenure { get; set; }
+    public bool? HasEjidalCertificate { get; set; }
     public decimal? CosCoefficient { get; set; }
     public decimal? CusCoefficient { get; set; }
     public decimal? MaxHeightMeters { get; set; }

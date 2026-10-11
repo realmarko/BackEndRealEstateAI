@@ -323,6 +323,7 @@ public class ListingsController : ControllerBase
             LandUseZoning = dto.LandUseZoning,
             LandUseCategoryId = dto.LandUseCategoryId,
             LandTenure = dto.LandTenure,
+            HasEjidalCertificate = dto.HasEjidalCertificate,
             CosCoefficient = dto.CosCoefficient,
             CusCoefficient = dto.CusCoefficient,
             MaxHeightMeters = dto.MaxHeightMeters,
@@ -487,6 +488,7 @@ public class ListingsController : ControllerBase
         listing.LandUseZoning = dto.LandUseZoning;
         listing.LandUseCategoryId = dto.LandUseCategoryId;
         listing.LandTenure = dto.LandTenure;
+        listing.HasEjidalCertificate = dto.HasEjidalCertificate;
         listing.CosCoefficient = dto.CosCoefficient;
         listing.CusCoefficient = dto.CusCoefficient;
         listing.MaxHeightMeters = dto.MaxHeightMeters;
