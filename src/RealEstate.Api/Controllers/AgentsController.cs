@@ -255,6 +255,7 @@ public class AgentsController : ControllerBase
     // frontend debounces repeat calls per browser via localStorage. Deliberately not cached and
     // doesn't evict ProfileCacheKey: GetById reads ViewCount live (above), so an increment here
     // doesn't need to invalidate the rest of the cached profile.
+    [EnableRateLimiting("view-count")]
     [HttpPost("{id:int}/view")]
     public async Task<IActionResult> RecordView(int id)
     {

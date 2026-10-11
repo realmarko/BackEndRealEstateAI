@@ -54,6 +54,9 @@ public class AuthController : ControllerBase
     private const int VerificationCodeLength = 6;
     private static readonly TimeSpan VerificationCodeLifetime = TimeSpan.FromMinutes(15);
 
+    // Anonymous endpoint that sends a real email per call — same email-bombing/spam shape as
+    // forgot-password, just creating a new account instead of targeting an existing one.
+    [EnableRateLimiting("register")]
     [HttpPost("register")]
     public async Task<ActionResult<RegisterResponseDto>> Register(RegisterDto dto)
     {
@@ -88,6 +91,11 @@ public class AuthController : ControllerBase
         return Ok(new RegisterResponseDto { Email = dto.Email });
     }
 
+    // Bounds brute-force/credential-stuffing attempts: Login checks the password directly via
+    // UserManager (not SignInManager), so Identity's account-lockout mechanism never engages here
+    // regardless of its configuration — this rate limit is the only thing throttling repeated
+    // wrong-password attempts against a given IP.
+    [EnableRateLimiting("login")]
     [HttpPost("login")]
     public async Task<ActionResult<AuthResponseDto>> Login(LoginDto dto)
     {

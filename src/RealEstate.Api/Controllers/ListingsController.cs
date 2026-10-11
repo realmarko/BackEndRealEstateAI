@@ -1,6 +1,7 @@
 using System.Net.Mail;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using RealEstate.Api.Data;
 using RealEstate.Api.Extensions;
@@ -163,6 +164,7 @@ public class ListingsController : ControllerBase
     // frontend debounces repeat calls per browser via localStorage, so this isn't deduplicated
     // again here. A no-op 404 for a since-deleted listing is fine; the caller doesn't act on the
     // response either way.
+    [EnableRateLimiting("view-count")]
     [HttpPost("{id:guid}/view")]
     public async Task<IActionResult> RecordView(Guid id)
     {

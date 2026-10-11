@@ -192,6 +192,20 @@ builder.Services.AddRateLimiter(options =>
             Window = TimeSpan.FromMinutes(1),
             QueueLimit = 0
         }));
+    // Per-IP: AuthController.Login calls UserManager.CheckPasswordAsync directly (not
+    // SignInManager), so Identity's own Lockout never kicks in regardless of how it's configured —
+    // without this, a wrong password is otherwise unthrottled, which is exactly the shape of a
+    // credential-stuffing/brute-force attack. 10/15min per IP mirrors email-verification's budget:
+    // generous enough for someone genuinely mistyping their password a few times, tight enough to
+    // make guessing a real password impractical.
+    options.AddPolicy("login", httpContext => RateLimitPartition.GetFixedWindowLimiter(
+        partitionKey: httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+        factory: _ => new FixedWindowRateLimiterOptions
+        {
+            PermitLimit = 10,
+            Window = TimeSpan.FromMinutes(15),
+            QueueLimit = 0
+        }));
     // Per-IP: forgot-password sends a real email per request and deliberately always returns
     // success (so it can't be used to enumerate which emails are registered) — a global window
     // would let one bad actor exhaust everyone else's reset attempts, and per-IP is the only way
@@ -202,6 +216,30 @@ builder.Services.AddRateLimiter(options =>
         {
             PermitLimit = 3,
             Window = TimeSpan.FromMinutes(15),
+            QueueLimit = 0
+        }));
+    // Same shape and budget as forgot-password: Register is anonymous and sends a real
+    // verification-code email per call, so it's exactly the same email-bombing/account-spam
+    // surface, just with a different trigger (a new email instead of an existing one).
+    options.AddPolicy("register", httpContext => RateLimitPartition.GetFixedWindowLimiter(
+        partitionKey: httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+        factory: _ => new FixedWindowRateLimiterOptions
+        {
+            PermitLimit = 3,
+            Window = TimeSpan.FromMinutes(15),
+            QueueLimit = 0
+        }));
+    // Per-IP: both listing and agent view-counters are anonymous, unauthenticated POSTs with no
+    // other cost to calling them repeatedly — without a limit, a trivial loop can inflate a
+    // listing's or agent's ViewCount arbitrarily. The frontend already debounces repeat calls per
+    // browser via localStorage (see ListingsController.RecordView's comment), so a real visitor
+    // browsing normally never gets close to this budget; it only bites a scripted hammer.
+    options.AddPolicy("view-count", httpContext => RateLimitPartition.GetFixedWindowLimiter(
+        partitionKey: httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+        factory: _ => new FixedWindowRateLimiterOptions
+        {
+            PermitLimit = 30,
+            Window = TimeSpan.FromMinutes(1),
             QueueLimit = 0
         }));
     // Covers both verify-email (bounds code-guessing against one account) and
