@@ -62,6 +62,7 @@ public class ListingCreateDto
     public bool? HasThreePhaseElectricity { get; set; }
     public bool? HasTelecomService { get; set; }
     public bool? HasVehicleAccess { get; set; }
+    public bool? HasPavedStreet { get; set; }
     public bool? HasNearbyUTurn { get; set; }
     public bool? IsCornerLot { get; set; }
     [Range(0, 20)] public int? StreetFrontageCount { get; set; }
@@ -138,6 +139,7 @@ public class ListingDto
     public bool? HasThreePhaseElectricity { get; set; }
     public bool? HasTelecomService { get; set; }
     public bool? HasVehicleAccess { get; set; }
+    public bool? HasPavedStreet { get; set; }
     public bool? HasNearbyUTurn { get; set; }
     public bool? IsCornerLot { get; set; }
     public int? StreetFrontageCount { get; set; }

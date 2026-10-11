@@ -340,6 +340,7 @@ public class ListingsController : ControllerBase
             HasThreePhaseElectricity = dto.HasThreePhaseElectricity,
             HasTelecomService = dto.HasTelecomService,
             HasVehicleAccess = dto.HasVehicleAccess,
+            HasPavedStreet = dto.HasPavedStreet,
             HasNearbyUTurn = dto.HasNearbyUTurn,
             IsCornerLot = dto.IsCornerLot,
             StreetFrontageCount = dto.StreetFrontageCount,
@@ -505,6 +506,7 @@ public class ListingsController : ControllerBase
         listing.HasThreePhaseElectricity = dto.HasThreePhaseElectricity;
         listing.HasTelecomService = dto.HasTelecomService;
         listing.HasVehicleAccess = dto.HasVehicleAccess;
+        listing.HasPavedStreet = dto.HasPavedStreet;
         listing.HasNearbyUTurn = dto.HasNearbyUTurn;
         listing.IsCornerLot = dto.IsCornerLot;
         listing.StreetFrontageCount = dto.StreetFrontageCount;

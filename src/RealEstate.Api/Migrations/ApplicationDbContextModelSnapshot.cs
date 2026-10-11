@@ -794,6 +794,10 @@ namespace RealEstate.Api.Migrations
                         .HasColumnType("boolean")
                         .HasColumnName("has_nearby_u_turn");
 
+                    b.Property<bool?>("HasPavedStreet")
+                        .HasColumnType("boolean")
+                        .HasColumnName("has_paved_street");
+
                     b.Property<bool?>("HasPotableWater")
                         .HasColumnType("boolean")
                         .HasColumnName("has_potable_water");

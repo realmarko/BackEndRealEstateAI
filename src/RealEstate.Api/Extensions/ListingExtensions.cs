@@ -64,6 +64,7 @@ public static class ListingExtensions
         HasThreePhaseElectricity = l.HasThreePhaseElectricity,
         HasTelecomService = l.HasTelecomService,
         HasVehicleAccess = l.HasVehicleAccess,
+        HasPavedStreet = l.HasPavedStreet,
         HasNearbyUTurn = l.HasNearbyUTurn,
         IsCornerLot = l.IsCornerLot,
         StreetFrontageCount = l.StreetFrontageCount,

@@ -89,6 +89,7 @@ public class Listing
 
     // Access / lot geometry
     public bool? HasVehicleAccess { get; set; }
+    public bool? HasPavedStreet { get; set; }
     public bool? HasNearbyUTurn { get; set; }
     public bool? IsCornerLot { get; set; }
     public int? StreetFrontageCount { get; set; }
