@@ -25,6 +25,7 @@ public static class ListingExtensions
         PropertyType = l.PropertyType.ToString(),
         Status = l.Status.ToString(),
         Price = l.Price,
+        PriceOnRequest = l.PriceOnRequest,
         Currency = l.Currency,
         Street = l.Address?.Street ?? string.Empty,
         Colonia = l.Address?.Colonia ?? string.Empty,

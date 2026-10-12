@@ -896,6 +896,10 @@ namespace RealEstate.Api.Migrations
                         .HasColumnType("numeric(14,2)")
                         .HasColumnName("price");
 
+                    b.Property<bool>("PriceOnRequest")
+                        .HasColumnType("boolean")
+                        .HasColumnName("price_on_request");
+
                     b.Property<int?>("PrimaryVialidadType")
                         .HasColumnType("integer")
                         .HasColumnName("primary_vialidad_type");

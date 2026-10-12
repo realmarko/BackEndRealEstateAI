@@ -117,7 +117,10 @@ public class FactSheetPdfService : IFactSheetPdfService
     {
         container.Background(Colors.Grey.Darken2).Padding(16).Row(row =>
         {
-            Stat(row, $"$ {listing.Price:N0} {listing.Currency}", listing.ListingType == "Rent" ? "Renta mensual" : "Precio de venta");
+            var priceLabel = listing.PriceOnRequest || listing.Price <= 0
+                ? "Precio a consultar"
+                : $"$ {listing.Price:N0} {listing.Currency}";
+            Stat(row, priceLabel, listing.ListingType == "Rent" ? "Renta mensual" : "Precio de venta");
             if (listing.Bedrooms > 0) Stat(row, listing.Bedrooms.ToString(), "Recámaras");
             if (listing.Bathrooms > 0) Stat(row, listing.Bathrooms.ToString("0.#"), "Baños");
             if (listing.AreaSqFt > 0) Stat(row, $"{listing.AreaSqFt:N0}", "Pies² de construcción");

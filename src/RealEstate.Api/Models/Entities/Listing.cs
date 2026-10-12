@@ -17,6 +17,11 @@ public class Listing
 
     public decimal Price { get; set; }
     public string Currency { get; set; } = "MXN";
+    // Lets an owner explicitly publish without a number (commercial/land listings especially
+    // often go this route) instead of leaving Price at 0 — ListingsController.Create/Update
+    // reject Price <= 0 unless this is set, and the frontend shows "Price on request" instead of
+    // a misleading "$0" whenever it's true.
+    public bool PriceOnRequest { get; set; }
 
     public ListingAddress? Address { get; set; }
 

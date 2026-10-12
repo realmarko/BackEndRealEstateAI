@@ -275,6 +275,11 @@ public class ListingsController : ControllerBase
     [HttpPost]
     public async Task<ActionResult<ListingDto>> Create([FromForm] ListingCreateDto dto)
     {
+        if (!dto.PriceOnRequest && dto.Price <= 0)
+        {
+            return BadRequest(new { message = "Price must be greater than 0, or mark the listing as price-on-request." });
+        }
+
         var userId = User.GetUserId();
         var (listingsThisMonth, _) = await GetListingsUsedThisMonthAsync(userId);
         if (listingsThisMonth >= MaxListingsPerMonth)
@@ -298,6 +303,7 @@ public class ListingsController : ControllerBase
             ListingType = dto.ListingType,
             PropertyType = dto.PropertyType,
             Price = dto.Price,
+            PriceOnRequest = dto.PriceOnRequest,
             Currency = dto.Currency,
             Address = new ListingAddress
             {
@@ -441,6 +447,11 @@ public class ListingsController : ControllerBase
     [HttpPut("{id:guid}")]
     public async Task<ActionResult<ListingDto>> Update(Guid id, [FromForm] ListingUpdateDto dto)
     {
+        if (!dto.PriceOnRequest && dto.Price <= 0)
+        {
+            return BadRequest(new { message = "Price must be greater than 0, or mark the listing as price-on-request." });
+        }
+
         var listing = await _db.Listings.Include(l => l.Images).Include(l => l.Address).FirstOrDefaultAsync(l => l.Id == id);
         if (listing is null) return NotFound();
         if (listing.OwnerId != User.GetUserId()) return Forbid();
@@ -462,6 +473,7 @@ public class ListingsController : ControllerBase
         listing.PropertyType = dto.PropertyType;
         listing.Status = dto.Status;
         listing.Price = dto.Price;
+        listing.PriceOnRequest = dto.PriceOnRequest;
         listing.Currency = dto.Currency;
         // Every listing gets an Address at creation and the FK is required — same trust level
         // as every other Address access in this controller (no ??= fallback: constructing a
