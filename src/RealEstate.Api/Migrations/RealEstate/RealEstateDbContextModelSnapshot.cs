@@ -259,6 +259,65 @@ namespace RealEstate.Api.Migrations.RealEstate
                     b.ToTable("brokerages", (string)null);
                 });
 
+            modelBuilder.Entity("RealEstate.Api.Models.Entities.Owner", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Bio")
+                        .HasColumnType("text")
+                        .HasColumnName("bio");
+
+                    b.Property<DateTime?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("deleted_at");
+
+                    b.Property<string>("Email")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("email");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_deleted");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("name");
+
+                    b.Property<string>("Phone")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("phone");
+
+                    b.Property<string>("PhotoUrl")
+                        .HasColumnType("text")
+                        .HasColumnName("photo_url");
+
+                    b.Property<Guid?>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.Property<int>("ViewCount")
+                        .HasColumnType("integer")
+                        .HasColumnName("view_count");
+
+                    b.HasKey("Id")
+                        .HasName("pk_owners");
+
+                    b.HasIndex("UserId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_owners_user_id")
+                        .HasFilter("user_id IS NOT NULL");
+
+                    b.ToTable("owners", (string)null);
+                });
+
             modelBuilder.Entity("RealEstate.Api.Models.Entities.Property", b =>
                 {
                     b.Property<int>("Id")

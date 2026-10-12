@@ -49,13 +49,22 @@ public class OwnerAgentLookupService : IOwnerAgentLookupService
                 .Where(a => a.UserId != null && missingIds.Contains(a.UserId.Value))
                 .ToDictionaryAsync(a => a.UserId!.Value, a => (a.Company, a.PhotoUrl));
 
+            // A plain Owner-role user (not also an Agent) has no Agent row at all, but may still
+            // have a Propietarios profile (OwnersController) with its own PhotoUrl — Company has
+            // no owner equivalent (that's an agent/brokerage concept), so it's always null here.
+            var ownerIdsStillMissing = missingIds.Except(agents.Keys).ToList();
+            var owners = ownerIdsStillMissing.Count > 0
+                ? await _agentsDb.Owners
+                    .Where(o => o.UserId != null && ownerIdsStillMissing.Contains(o.UserId.Value))
+                    .ToDictionaryAsync(o => o.UserId!.Value, o => (Company: (string?)null, o.PhotoUrl))
+                : new Dictionary<Guid, (string?, string?)>();
+
             foreach (var ownerId in missingIds)
             {
-                // An owner with no matching Agent (a plain Owner-role user, not also an Agent)
-                // caches as the same default (null, null) as an agent with no company/photo set —
-                // identical either way to a caller, and caching it too avoids re-querying for the
-                // same non-agent owner on every subsequent lookup.
-                var info = agents.GetValueOrDefault(ownerId);
+                // Neither an Agent nor an Owner profile for this user caches as the same default
+                // (null, null) either way to a caller, and caching it too avoids re-querying for
+                // the same profile-less owner on every subsequent lookup.
+                var info = agents.TryGetValue(ownerId, out var agentInfo) ? agentInfo : owners.GetValueOrDefault(ownerId);
                 resolved[ownerId] = info;
                 _cache.Set(CacheKey(ownerId), info, CacheDuration);
             }

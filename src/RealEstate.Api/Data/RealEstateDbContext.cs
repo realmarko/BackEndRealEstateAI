@@ -11,6 +11,7 @@ public class RealEstateDbContext : DbContext
     public DbSet<PropertyImage> PropertyImages => Set<PropertyImage>();
     public DbSet<Agent> Agents => Set<Agent>();
     public DbSet<AgentReview> AgentReviews => Set<AgentReview>();
+    public DbSet<Owner> Owners => Set<Owner>();
     public DbSet<Brokerage> Brokerages => Set<Brokerage>();
     public DbSet<Amenity> Amenities => Set<Amenity>();
 
@@ -29,6 +30,11 @@ public class RealEstateDbContext : DbContext
                   .WithMany(b => b.Agents)
                   .HasForeignKey(a => a.BrokerageId)
                   .OnDelete(DeleteBehavior.SetNull);
+        });
+
+        builder.Entity<Owner>(entity =>
+        {
+            entity.HasIndex(o => o.UserId).IsUnique().HasFilter("user_id IS NOT NULL");
         });
 
         builder.Entity<AgentReview>(entity =>
