@@ -11,8 +11,15 @@ namespace RealEstate.Api.Services;
 // frontend's listing-detail page renders from — so the PDF never drifts from what's shown online.
 public class FactSheetPdfService : IFactSheetPdfService
 {
-    private static readonly string Navy = Colors.Blue.Darken4;
-    private static readonly string Gold = "#F2A71B";
+    // Matches the site's own design tokens (frontend styles.css :root) exactly, not QuestPDF's
+    // named palette — this document should look like it came from the same place as the website,
+    // not from a generic PDF-report default.
+    private static readonly string Navy = "#1e3a5f";
+    private static readonly string Gold = "#c6a15b";
+    // The navbar's actual background (navbar.component.css) — used only for the brand bar below,
+    // which is meant to read as "the site's masthead," not the listing-specific navy used
+    // everywhere else in this document.
+    private static readonly string BrandBlack = "#0d0d0d";
 
     // "Liberation Sans" (metric-compatible with Arial), embedded from Resources/Fonts rather than
     // relied on as a system font: the EB Linux host has no fonts installed beyond what
@@ -54,6 +61,7 @@ public class FactSheetPdfService : IFactSheetPdfService
 
                 page.Content().Column(column =>
                 {
+                    column.Item().Element(ComposeBrandHeader);
                     column.Item().Element(c => ComposeHeader(c, listing));
                     column.Item().Element(c => ComposeStatBand(c, listing));
                     if (shownPhotos.Count > 0) column.Item().Element(c => ComposePhotos(c, shownPhotos));
@@ -82,14 +90,23 @@ public class FactSheetPdfService : IFactSheetPdfService
         });
     }
 
+    // The site's own masthead look (navbar.component.css: near-black background, gold wordmark)
+    // at the top of the document — a lead shown this PDF should recognize it as coming from
+    // Espacial.com.mx at a glance, not just read it in the footer's fine print.
+    private static void ComposeBrandHeader(IContainer container) =>
+        container.Background(BrandBlack).Padding(10).Row(row =>
+        {
+            row.RelativeItem().Text("Espacial.com.mx").FontSize(13).Bold().FontColor(Gold);
+            row.ConstantItem(120).AlignRight().Text("FICHA TÉCNICA").FontSize(8).FontColor(Colors.Grey.Lighten1).LetterSpacing(0.1f);
+        });
+
     private static void ComposeHeader(IContainer container, ListingDto listing)
     {
         container.Background(Navy).Padding(24).Row(row =>
         {
             row.RelativeItem().Column(col =>
             {
-                col.Item().Text("FICHA TÉCNICA").FontSize(12).FontColor(Gold).Bold().LetterSpacing(0.1f);
-                col.Item().PaddingTop(4).Text(listing.Title).FontSize(20).FontColor(Colors.White).Bold();
+                col.Item().Text(listing.Title).FontSize(20).FontColor(Colors.White).Bold();
                 col.Item().PaddingTop(2).Text($"{listing.Street}, {listing.Colonia}, {listing.City}, {listing.State}")
                     .FontSize(10).FontColor(Colors.Grey.Lighten2);
             });
@@ -195,7 +212,16 @@ public class FactSheetPdfService : IFactSheetPdfService
         });
 
     private static void ComposeFooter(IContainer container) =>
-        container.Padding(16).AlignCenter()
-            .Text("Documento generado automáticamente — la información puede cambiar sin previo aviso.")
-            .FontSize(7).FontColor(Colors.Grey.Medium);
+        container.PaddingHorizontal(24).PaddingBottom(16).Column(column =>
+        {
+            column.Item().LineHorizontal(1).LineColor(Colors.Grey.Lighten2);
+            column.Item().PaddingTop(10).AlignCenter().Text(text =>
+            {
+                text.Span("Espacial.com.mx").FontSize(8).Bold().FontColor(Navy);
+                text.Span(" — encuentra y publica propiedades en México").FontSize(8).FontColor(Colors.Grey.Darken1);
+            });
+            column.Item().PaddingTop(2).AlignCenter()
+                .Text("Documento generado automáticamente — la información puede cambiar sin previo aviso.")
+                .FontSize(7).FontColor(Colors.Grey.Medium);
+        });
 }
