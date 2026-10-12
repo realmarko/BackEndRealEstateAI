@@ -29,4 +29,18 @@ public static class GeoFactory
             new Coordinate(swLng, swLat)
         });
     }
+
+    // For an arbitrary freehand-drawn area (ListingsController's CMA endpoint) rather than a
+    // rectangular viewport — same closed-ring requirement as CreateBoundingBox above (the ring's
+    // first and last coordinates must match), auto-closed here since the frontend's drawn path
+    // doesn't necessarily end back on its starting point.
+    public static Polygon CreatePolygon(IReadOnlyList<(double Lat, double Lng)> points)
+    {
+        if (points.Count < 3) throw new ArgumentException("At least 3 points are required to define an area.");
+
+        var coordinates = points.Select(p => new Coordinate(p.Lng, p.Lat)).ToList();
+        if (coordinates[0] != coordinates[^1]) coordinates.Add(coordinates[0]);
+
+        return Instance.CreatePolygon(coordinates.ToArray());
+    }
 }

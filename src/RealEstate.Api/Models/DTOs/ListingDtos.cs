@@ -172,6 +172,40 @@ public class ListingPriceHistoryDto
     public DateTime RecordedAt { get; set; }
 }
 
+public class LatLngPointDto
+{
+    public double Lat { get; set; }
+    public double Lng { get; set; }
+}
+
+// A CMA (comparative market analysis) request — the area an agent drew on the map, plus an
+// optional property-type narrowing so a house isn't averaged in against a commercial lot.
+public class CmaRequestDto
+{
+    public List<LatLngPointDto> Points { get; set; } = new();
+    public PropertyType? PropertyType { get; set; }
+}
+
+public class CmaStatsDto
+{
+    public int Count { get; set; }
+    public decimal? MinPrice { get; set; }
+    public decimal? MaxPrice { get; set; }
+    // Null when none of the matching listings have a usable AreaSqFt to divide by — distinct
+    // from Count == 0, which ComposeStatBand-style callers would otherwise conflate.
+    public decimal? AvgPricePerSqFt { get; set; }
+    public decimal? MedianPricePerSqFt { get; set; }
+    public double? AvgDaysOnMarket { get; set; }
+}
+
+public class CmaResultDto
+{
+    public CmaStatsDto Sale { get; set; } = new();
+    public CmaStatsDto Rent { get; set; } = new();
+    // Capped, newest first — see ListingsController.Cma for the exact limit and reasoning.
+    public List<ListingDto> Comparables { get; set; } = new();
+}
+
 public class ListingSearchQuery
 {
     public string? City { get; set; }

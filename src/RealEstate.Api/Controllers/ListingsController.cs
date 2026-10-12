@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
+using NetTopologySuite.Geometries;
 using RealEstate.Api.Data;
 using RealEstate.Api.Extensions;
 using RealEstate.Api.Models.DTOs;
@@ -125,6 +126,121 @@ public class ListingsController : ControllerBase
             PageSize = pageSize,
             TotalCount = totalCount
         });
+    }
+
+    // Comparative-market-analysis: an agent draws an area on the map (same freehand shape the
+    // map's own area-search already uses) and gets back price-per-sqft/days-on-market stats for
+    // active, priced listings inside it, split sale vs. rent, plus a capped comparables list.
+    // Open to anonymous visitors like Search/GetById above — nothing here is agent-only data,
+    // just a different view of the same public listings.
+    [HttpPost("cma")]
+    public async Task<ActionResult<CmaResultDto>> Cma(CmaRequestDto dto)
+    {
+        // Matches GeoFactory.CreatePolygon's own floor, checked here too so the error message
+        // names the actual field instead of a generic unhandled-exception 500.
+        if (dto.Points.Count < 3)
+            return BadRequest(new { message = "At least 3 points are required to define an area." });
+        // A pathologically large polygon (or a client bug sending way more vertices than any
+        // real hand-drawn shape would) shouldn't get to spend unbounded CPU building/querying
+        // it — nothing legitimate needs this many points for one map-drawn area.
+        if (dto.Points.Count > 500)
+            return BadRequest(new { message = "Area has too many points (max 500)." });
+
+        foreach (var point in dto.Points)
+        {
+            var latLngError = GeoValidation.ValidateLatLng(point.Lat, point.Lng);
+            if (latLngError is not null) return BadRequest(new { message = latLngError });
+        }
+
+        Geometry area;
+        try
+        {
+            area = GeoFactory.CreatePolygon(dto.Points.Select(p => (p.Lat, p.Lng)).ToList());
+        }
+        catch (ArgumentException)
+        {
+            return BadRequest(new { message = "The drawn area isn't a valid shape — try redrawing it." });
+        }
+
+        // CreatePolygon builds the ring without checking topology — a self-crossing path (the
+        // visitor's drawn shape loops back over itself) constructs without throwing here, and
+        // would only surface later as a Postgres/PostGIS error from Within() below instead of a
+        // clean 400. A real mouse-drawn freehand shape very commonly has a minor self-intersection
+        // like this (a wobble that briefly crosses an earlier segment) despite looking like a
+        // perfectly fine shape on screen — the frontend's own point-in-polygon check tolerates
+        // that, but GEOS's strict validity rules don't. Buffer(0) is the standard GEOS trick to
+        // repair exactly this kind of minor self-intersection (it rebuilds the geometry from its
+        // own boundary) before falling back to rejecting it outright — it can turn a self-crossing
+        // Polygon into a MultiPolygon (e.g. a bowtie splits into two touching triangles), so this
+        // stays typed as the general Geometry base (Within/Intersects both accept any Geometry)
+        // rather than the specific Polygon GeoFactory.CreatePolygon returns.
+        if (!area.IsValid)
+        {
+            area = area.Buffer(0);
+            if (area.IsEmpty || !area.IsValid)
+                return BadRequest(new { message = "The drawn area isn't a valid shape — try redrawing it." });
+        }
+
+        var query = _db.Listings
+            .Include(l => l.Images)
+            .Include(l => l.Owner)
+            .Include(l => l.Address)
+            .Where(l => l.Status == ListingStatus.Active && !l.PriceOnRequest && l.Price > 0)
+            .Where(l => l.Location!.Within(area));
+
+        if (dto.PropertyType.HasValue)
+            query = query.Where(l => l.PropertyType == dto.PropertyType);
+
+        // Same GIST-indexed Location column as Search's bounding-box filter above — Within()
+        // hits it the same way Intersects() does.
+        var listings = await query.OrderByDescending(l => l.CreatedAt).Take(500).ToListAsync();
+
+        var isAuthenticated = User.IsAuthenticated();
+        // Capped well below the up-to-500 rows the stats are computed from — an agent comparing
+        // prices needs the numbers, not 500 photo cards; the newest ones are the most useful
+        // reference point (closest to current asking-price behavior in the area).
+        const int maxComparables = 24;
+        var comparables = listings.Take(maxComparables).Select(l => l.ToDto(isAuthenticated)).ToList();
+        await AttachOwnerAgentDetailsAsync(comparables);
+
+        return Ok(new CmaResultDto
+        {
+            Sale = BuildCmaStats(listings.Where(l => l.ListingType == ListingType.Sale)),
+            Rent = BuildCmaStats(listings.Where(l => l.ListingType == ListingType.Rent)),
+            Comparables = comparables
+        });
+    }
+
+    private static CmaStatsDto BuildCmaStats(IEnumerable<Listing> matching)
+    {
+        var list = matching.ToList();
+        if (list.Count == 0) return new CmaStatsDto { Count = 0 };
+
+        var pricesPerSqFt = list
+            .Where(l => l.AreaSqFt > 0)
+            .Select(l => l.Price / l.AreaSqFt)
+            .OrderBy(p => p)
+            .ToList();
+
+        var now = DateTime.UtcNow;
+
+        return new CmaStatsDto
+        {
+            Count = list.Count,
+            MinPrice = list.Min(l => l.Price),
+            MaxPrice = list.Max(l => l.Price),
+            AvgPricePerSqFt = pricesPerSqFt.Count > 0 ? pricesPerSqFt.Average() : null,
+            MedianPricePerSqFt = pricesPerSqFt.Count > 0 ? MedianOf(pricesPerSqFt) : null,
+            AvgDaysOnMarket = list.Average(l => (now - l.CreatedAt).TotalDays)
+        };
+    }
+
+    // `sorted` must already be ascending — every caller sorts it for its own reasons just before
+    // calling this, so re-sorting here would just repeat that work.
+    private static decimal MedianOf(List<decimal> sorted)
+    {
+        var mid = sorted.Count / 2;
+        return sorted.Count % 2 == 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
     }
 
     // Brokerage/company and the agent's own profile photo aren't Listing fields, so the "show
