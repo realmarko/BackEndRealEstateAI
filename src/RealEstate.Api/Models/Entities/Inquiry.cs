@@ -23,4 +23,10 @@ public class Inquiry
 
     public bool IsRead { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+
+    // Set only by ListingsController.ContactOwner — marks this as the one persisted trace of a
+    // "contact the owner" message (the owner it was emailed to usually has no account/dashboard
+    // here at all), so InquiriesController.Received routes it to Admins instead of/alongside the
+    // listing's own OwnerId, regardless of who that owner actually is.
+    public bool IsOwnerContactNotification { get; set; }
 }

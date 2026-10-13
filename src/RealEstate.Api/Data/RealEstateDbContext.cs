@@ -35,6 +35,11 @@ public class RealEstateDbContext : DbContext
         builder.Entity<Owner>(entity =>
         {
             entity.HasIndex(o => o.UserId).IsUnique().HasFilter("user_id IS NOT NULL");
+            // Backstops ListingsController.UpdateOwnerContact's find-or-create-by-email against a
+            // concurrent duplicate insert (two admins/listings racing the same new owner's email) —
+            // same shape as the UserId index above. Filtered because Email defaults to "" for rows
+            // that somehow never got one; empty string shouldn't be "unique" across them.
+            entity.HasIndex(o => o.Email).IsUnique().HasFilter("email <> ''");
         });
 
         builder.Entity<AgentReview>(entity =>

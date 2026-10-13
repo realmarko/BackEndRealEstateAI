@@ -3,7 +3,9 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
+using RealEstate.Api.Data;
 using RealEstate.Api.Extensions;
 using RealEstate.Api.Models.DTOs;
 using RealEstate.Api.Models.Entities;
@@ -17,6 +19,7 @@ public class AuthController : ControllerBase
 {
     private readonly UserManager<ApplicationUser> _userManager;
     private readonly RoleManager<IdentityRole<Guid>> _roleManager;
+    private readonly RealEstateDbContext _ownersDb;
     private readonly ITokenService _tokenService;
     private readonly IEmailService _emailService;
     private readonly ILogger<AuthController> _logger;
@@ -29,6 +32,7 @@ public class AuthController : ControllerBase
     public AuthController(
         UserManager<ApplicationUser> userManager,
         RoleManager<IdentityRole<Guid>> roleManager,
+        RealEstateDbContext ownersDb,
         ITokenService tokenService,
         IEmailService emailService,
         ILogger<AuthController> logger,
@@ -40,6 +44,7 @@ public class AuthController : ControllerBase
     {
         _userManager = userManager;
         _roleManager = roleManager;
+        _ownersDb = ownersDb;
         _tokenService = tokenService;
         _emailService = emailService;
         _logger = logger;
@@ -162,6 +167,7 @@ public class AuthController : ControllerBase
             {
                 user.EmailConfirmed = true;
                 await _userManager.UpdateAsync(user);
+                await ClaimOwnerProfileIfMatchingAsync(user, (await _userManager.GetRolesAsync(user)).ToArray());
             }
 
             return await BuildAuthResponse(user);
@@ -190,6 +196,7 @@ public class AuthController : ControllerBase
             return BadRequest(result.Errors.Select(e => e.Description));
 
         await _userManager.AddToRolesAsync(newUser, roles);
+        await ClaimOwnerProfileIfMatchingAsync(newUser, roles);
 
         return await BuildAuthResponse(newUser);
     }
@@ -239,6 +246,7 @@ public class AuthController : ControllerBase
             {
                 user.EmailConfirmed = true;
                 await _userManager.UpdateAsync(user);
+                await ClaimOwnerProfileIfMatchingAsync(user, (await _userManager.GetRolesAsync(user)).ToArray());
             }
 
             return await BuildAuthResponse(user);
@@ -265,8 +273,32 @@ public class AuthController : ControllerBase
             return BadRequest(result.Errors.Select(e => e.Description));
 
         await _userManager.AddToRolesAsync(newUser, roles);
+        await ClaimOwnerProfileIfMatchingAsync(newUser, roles);
 
         return await BuildAuthResponse(newUser);
+    }
+
+    // Links a brand-new account to an admin-created, as-yet-unclaimed Owner directory row
+    // (ListingsController.UpdateOwnerContact — created inactive, with UserId null, as soon as an
+    // admin fills in a listing's owner-contact info) the moment this account's email is actually
+    // proven to belong to them — email-verified Register, or a Google/Facebook sign-in, both of
+    // which assert the email on their own authority. Deliberately never called from the raw
+    // Register action itself (before verification): claiming on an unverified email would let
+    // anyone take over a stranger's inactive profile just by typing their address at signup.
+    // A no-op for every other account — no matching row, or the row's already claimed by someone
+    // else (the UserId == null filter is what keeps this from ever stealing an already-claimed
+    // profile).
+    private async Task ClaimOwnerProfileIfMatchingAsync(ApplicationUser user, string[] roles)
+    {
+        if (!roles.Contains("Owner") || string.IsNullOrWhiteSpace(user.Email)) return;
+
+        var normalizedEmail = user.Email.Trim().ToLower();
+        var ownerProfile = await _ownersDb.Owners
+            .FirstOrDefaultAsync(o => o.UserId == null && o.Email.ToLower() == normalizedEmail);
+        if (ownerProfile is null) return;
+
+        ownerProfile.UserId = user.Id;
+        await _ownersDb.SaveChangesAsync();
     }
 
     // Agents can also publish listings, so they get both roles. This bundles the grant at
@@ -308,6 +340,7 @@ public class AuthController : ControllerBase
         user.EmailVerificationCode = null;
         user.EmailVerificationCodeExpiresAt = null;
         await _userManager.UpdateAsync(user);
+        await ClaimOwnerProfileIfMatchingAsync(user, (await _userManager.GetRolesAsync(user)).ToArray());
 
         return await BuildAuthResponse(user);
     }

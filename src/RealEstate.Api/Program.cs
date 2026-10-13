@@ -61,8 +61,12 @@ builder.Services.AddScoped<IOwnerAgentLookupService, OwnerAgentLookupService>();
 builder.Services.Configure<EmailOptions>(builder.Configuration.GetSection("Email"));
 builder.Services.AddScoped<IEmailService, SmtpEmailService>();
 builder.Services.AddScoped<IFactSheetPdfService, FactSheetPdfService>();
-// Used by InquiriesController to pull listing photos (S3 URLs) into the fact-sheet PDF —
-// short timeout since it's a best-effort embellishment, not something the inquiry's success
+// Shared by InquiriesController (qualifying-lead emails) and ListingsController.ContactOwner
+// (the real owner's contact email) — builds the actual PDF bytes; each caller still composes
+// its own subject/body/recipient around it.
+builder.Services.AddScoped<IFactSheetBuilderService, FactSheetBuilderService>();
+// Used by FactSheetBuilderService to pull listing photos (S3 URLs) into the fact-sheet PDF —
+// short timeout since it's a best-effort embellishment, not something the caller's own success
 // should ever wait long on or fail over.
 builder.Services.AddHttpClient("FactSheetPhotos", client => client.Timeout = TimeSpan.FromSeconds(5));
 

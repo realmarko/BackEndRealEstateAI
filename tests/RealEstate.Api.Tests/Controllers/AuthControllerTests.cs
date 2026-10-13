@@ -3,10 +3,12 @@ using Google.Apis.Auth;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Moq;
 using RealEstate.Api.Controllers;
+using RealEstate.Api.Data;
 using RealEstate.Api.Models.DTOs;
 using RealEstate.Api.Models.Entities;
 using RealEstate.Api.Services;
@@ -27,6 +29,18 @@ public class AuthControllerTests
         return new Mock<RoleManager<IdentityRole<Guid>>>(store.Object, null!, null!, null!, null!);
     }
 
+    // A fresh in-memory RealEstateDbContext per call (unique database name) — AuthController only
+    // uses it for ClaimOwnerProfileIfMatchingAsync's ExecuteUpdateAsync, which (like any
+    // IQueryable extension method) Moq can't intercept on a mocked DbSet, so a real EF Core
+    // provider is simplest here.
+    private static RealEstateDbContext MakeOwnersDb()
+    {
+        var options = new DbContextOptionsBuilder<RealEstateDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString())
+            .Options;
+        return new RealEstateDbContext(options);
+    }
+
     private static AuthController MakeController(
         Mock<UserManager<ApplicationUser>> userManager,
         Mock<IEmailService>? emailService = null,
@@ -39,6 +53,7 @@ public class AuthControllerTests
         return new AuthController(
             userManager.Object,
             MockRoleManager().Object,
+            MakeOwnersDb(),
             (tokenService ?? new Mock<ITokenService>()).Object,
             (emailService ?? new Mock<IEmailService>()).Object,
             NullLogger<AuthController>.Instance,

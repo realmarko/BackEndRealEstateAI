@@ -15,24 +15,18 @@ public class InquiriesController : ControllerBase
 {
     private readonly ApplicationDbContext _db;
     private readonly IEmailService _emailService;
-    private readonly IFactSheetPdfService _factSheetPdfService;
-    private readonly IOwnerAgentLookupService _ownerAgentLookup;
-    private readonly IHttpClientFactory _httpClientFactory;
+    private readonly IFactSheetBuilderService _factSheetBuilder;
     private readonly ILogger<InquiriesController> _logger;
 
     public InquiriesController(
         ApplicationDbContext db,
         IEmailService emailService,
-        IFactSheetPdfService factSheetPdfService,
-        IOwnerAgentLookupService ownerAgentLookup,
-        IHttpClientFactory httpClientFactory,
+        IFactSheetBuilderService factSheetBuilder,
         ILogger<InquiriesController> logger)
     {
         _db = db;
         _emailService = emailService;
-        _factSheetPdfService = factSheetPdfService;
-        _ownerAgentLookup = ownerAgentLookup;
-        _httpClientFactory = httpClientFactory;
+        _factSheetBuilder = factSheetBuilder;
         _logger = logger;
     }
 
@@ -76,35 +70,15 @@ public class InquiriesController : ControllerBase
         return NoContent();
     }
 
-    // Emails the sender a generated PDF fact sheet (specs, address, contact) for the listing —
-    // built from the same ListingDto shape the listing-detail page renders from, so it can never
-    // show different numbers than what the lead already saw online. The lead has just identified
-    // themselves via the inquiry, which is why the owner's real email/contact can go on it (see
-    // ListingExtensions.ToDto's isAuthenticated redaction, which this bypasses on purpose).
+    // Emails the sender the fact-sheet PDF (IFactSheetBuilderService) for the listing. The lead
+    // has just identified themselves via the inquiry, which is why the owner's real email/contact
+    // can go on it (see ListingExtensions.ToDto's isAuthenticated redaction, which the builder
+    // bypasses on purpose).
     private async Task SendFactSheetPdfAsync(string toEmail, string toName, Listing listing)
     {
         try
         {
-            // Create()'s query only loads Address; these two are sequential (not WhenAll) because
-            // both run against the same ApplicationDbContext, which — like any EF Core context —
-            // isn't safe for concurrent operations.
-            await _db.Entry(listing).Collection(l => l.Images).LoadAsync();
-            await _db.Entry(listing).Reference(l => l.Owner).LoadAsync();
-
-            var dto = listing.ToDto(isAuthenticated: true);
-
-            // Independent of each other (separate DbContext / HttpClient underneath), so run
-            // concurrently instead of one after the other — this is the slowest part of handling
-            // a qualifying inquiry, so overlapping them matters.
-            var photosTask = DownloadPhotosAsync(dto.ImageUrls);
-            var agentInfoTask = _ownerAgentLookup.GetAsync(listing.OwnerId);
-            await Task.WhenAll(photosTask, agentInfoTask);
-
-            var (company, photoUrl) = agentInfoTask.Result;
-            dto.OwnerCompany = company;
-            dto.OwnerPhotoUrl = photoUrl;
-
-            var pdfBytes = _factSheetPdfService.Generate(dto, photosTask.Result);
+            var pdfBytes = await _factSheetBuilder.BuildAsync(listing);
 
             var subject = $"Ficha técnica: {listing.Title}";
             var body =
@@ -125,54 +99,36 @@ public class InquiriesController : ControllerBase
         }
     }
 
-    // Downloads up to FactSheetPdfService.MaxPhotos listing photos (S3 URLs, already in
-    // ImageUrls' SortOrder) concurrently for the fact sheet's photo strip. Each download is
-    // independently best-effort: one broken/slow image (a transient S3 hiccup, a malformed URL,
-    // a photo deleted after the listing loaded) is logged and skipped rather than failing the
-    // others or the email.
-    private async Task<List<byte[]>> DownloadPhotosAsync(List<string> imageUrls)
-    {
-        var client = _httpClientFactory.CreateClient("FactSheetPhotos");
-        var downloads = imageUrls.Take(FactSheetPdfService.MaxPhotos).Select(url => DownloadPhotoAsync(client, url));
-        var results = await Task.WhenAll(downloads);
-        return results.Where(bytes => bytes is not null).Select(bytes => bytes!).ToList();
-    }
-
-    private async Task<byte[]?> DownloadPhotoAsync(HttpClient client, string url)
-    {
-        try
-        {
-            return await client.GetByteArrayAsync(url);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Failed to download listing photo {Url} for fact sheet", url);
-            return null;
-        }
-    }
-
-    // Inquiries received on listings owned by the current user
-    [Authorize(Roles = "Owner")]
+    // Inquiries received on listings owned by the current user, plus — for an Admin — every
+    // IsOwnerContactNotification row regardless of which listing/owner it's on (see Inquiry.
+    // IsOwnerContactNotification's comment): those are the only record of a "contact the owner"
+    // message, and the real owner they were emailed to has no account here to see them otherwise.
+    [Authorize(Roles = "Owner,Admin")]
     [HttpGet("received")]
     public async Task<ActionResult<List<InquiryDto>>> Received()
     {
         var userId = User.GetUserId();
+        var isAdmin = User.IsInRole("Admin");
         var inquiries = await _db.Inquiries
             .Include(i => i.Listing)
-            .Where(i => i.Listing!.OwnerId == userId)
+            .Where(i => i.Listing!.OwnerId == userId || (isAdmin && i.IsOwnerContactNotification))
             .OrderByDescending(i => i.CreatedAt)
             .ToListAsync();
 
         return Ok(inquiries.Select(ToDto));
     }
 
-    [Authorize(Roles = "Owner")]
+    [Authorize(Roles = "Owner,Admin")]
     [HttpPost("{id:guid}/read")]
     public async Task<IActionResult> MarkRead(Guid id)
     {
         var inquiry = await _db.Inquiries.Include(i => i.Listing).FirstOrDefaultAsync(i => i.Id == id);
         if (inquiry is null) return NotFound();
-        if (inquiry.Listing!.OwnerId != User.GetUserId()) return Forbid();
+        var isAdmin = User.IsInRole("Admin");
+        if (inquiry.Listing!.OwnerId != User.GetUserId() && !(isAdmin && inquiry.IsOwnerContactNotification))
+        {
+            return Forbid();
+        }
 
         inquiry.IsRead = true;
         await _db.SaveChangesAsync();
@@ -192,6 +148,10 @@ public class InquiriesController : ControllerBase
         Timeline = i.Timeline?.ToString(),
         HasAgent = i.HasAgent,
         IsRead = i.IsRead,
-        CreatedAt = i.CreatedAt
+        CreatedAt = i.CreatedAt,
+        IsOwnerContactNotification = i.IsOwnerContactNotification,
+        OwnerContactName = i.IsOwnerContactNotification ? i.Listing?.OwnerContactName : null,
+        OwnerContactPhone = i.IsOwnerContactNotification ? i.Listing?.OwnerContactPhone : null,
+        OwnerContactEmail = i.IsOwnerContactNotification ? i.Listing?.OwnerContactEmail : null
     };
 }

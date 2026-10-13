@@ -127,7 +127,10 @@ public class AgentsController : ControllerBase
             // per-agent, since Agent and Listing live in separate DbContexts (no SQL join possible).
             var pageUserIds = pageItems.Where(a => a.UserId.HasValue).Select(a => a.UserId!.Value).ToList();
             var listingCounts = await _listingsDb.Listings
-                .Where(l => pageUserIds.Contains(l.OwnerId) && l.Status != ListingStatus.Removed)
+                // !HideAgentContact: once a listing has a real owner-contact assigned (see
+                // ListingsController.UpdateOwnerContact), it's no longer attributed to this agent
+                // publicly — reassigned in full to the owner's own directory profile instead.
+                .Where(l => pageUserIds.Contains(l.OwnerId) && l.Status != ListingStatus.Removed && !l.HideAgentContact)
                 .GroupBy(l => l.OwnerId)
                 .Select(g => new { OwnerId = g.Key, Count = g.Count() })
                 .ToDictionaryAsync(g => g.OwnerId, g => g.Count);
@@ -272,7 +275,8 @@ public class AgentsController : ControllerBase
     private async Task<int> CountListingsAsync(Guid? userId) =>
         userId is null
             ? 0
-            : await _listingsDb.Listings.CountAsync(l => l.OwnerId == userId && l.Status != ListingStatus.Removed);
+            // !HideAgentContact: see the Search action's own listingCounts query above.
+            : await _listingsDb.Listings.CountAsync(l => l.OwnerId == userId && l.Status != ListingStatus.Removed && !l.HideAgentContact);
 
     // GET /api/agents/5/listings — the agent's own listings (Listing.OwnerId == Agent.UserId),
     // shown on their public profile so a visitor can see the real properties, not just a count.
@@ -288,7 +292,8 @@ public class AgentsController : ControllerBase
             .Include(l => l.Images)
             .Include(l => l.Owner)
             .Include(l => l.Address)
-            .Where(l => l.OwnerId == userId && l.Status != ListingStatus.Removed)
+            // !HideAgentContact: see CountListingsAsync's own comment above.
+            .Where(l => l.OwnerId == userId && l.Status != ListingStatus.Removed && !l.HideAgentContact)
             .OrderByDescending(l => l.CreatedAt)
             .ToListAsync();
 

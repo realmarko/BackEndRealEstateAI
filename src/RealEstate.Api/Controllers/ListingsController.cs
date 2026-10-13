@@ -25,6 +25,7 @@ public class ListingsController : ControllerBase
     private readonly IPhotoUploadService _photoUploadService;
     private readonly IEmailService _emailService;
     private readonly IOwnerAgentLookupService _ownerAgentLookup;
+    private readonly IFactSheetBuilderService _factSheetBuilder;
     private readonly ILogger<ListingsController> _logger;
 
     public ListingsController(
@@ -33,6 +34,7 @@ public class ListingsController : ControllerBase
         IPhotoUploadService photoUploadService,
         IEmailService emailService,
         IOwnerAgentLookupService ownerAgentLookup,
+        IFactSheetBuilderService factSheetBuilder,
         ILogger<ListingsController> logger)
     {
         _db = db;
@@ -40,6 +42,7 @@ public class ListingsController : ControllerBase
         _photoUploadService = photoUploadService;
         _emailService = emailService;
         _ownerAgentLookup = ownerAgentLookup;
+        _factSheetBuilder = factSheetBuilder;
         _logger = logger;
     }
 
@@ -740,6 +743,156 @@ public class ListingsController : ControllerBase
         await AttachOwnerAgentDetailsAsync([updatedDto]);
         return Ok(updatedDto);
     }
+
+    // Admin-only, and deliberately a separate narrow endpoint rather than folded into Update
+    // above: Update's authorization requires the caller to be the listing's exact OwnerId (no
+    // Admin override), which an admin swapping in the real property owner's contact info —
+    // typically for a listing they don't themselves own — would otherwise never pass. Keeping
+    // this endpoint scoped to only these four fields means it can't be used to edit anything else
+    // on a listing that isn't the caller's own.
+    [Authorize(Roles = "Admin")]
+    [HttpPut("{id:guid}/owner-contact")]
+    public async Task<ActionResult<ListingDto>> UpdateOwnerContact(Guid id, UpdateListingOwnerContactDto dto)
+    {
+        // Without this, an admin could hide the agent card and leave the public listing page with
+        // no usable contact at all (a blank name/no button) — the one piece of information a
+        // visitor actually needs is an email to write to.
+        if (dto.HideAgentContact && string.IsNullOrWhiteSpace(dto.OwnerContactEmail))
+        {
+            return BadRequest(new { message = "An owner email is required to hide the agent's contact." });
+        }
+
+        var listing = await _db.Listings
+            .Include(l => l.Images)
+            .Include(l => l.Owner)
+            .Include(l => l.Address)
+            .FirstOrDefaultAsync(l => l.Id == id);
+        if (listing is null) return NotFound();
+
+        listing.HideAgentContact = dto.HideAgentContact;
+        listing.OwnerContactName = dto.OwnerContactName?.Trim();
+        listing.OwnerContactPhone = dto.OwnerContactPhone?.Trim();
+        listing.OwnerContactEmail = dto.OwnerContactEmail?.Trim();
+        listing.UpdatedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
+
+        // Gives the real owner a /owners/{id} directory profile right away — inactive (Owner.
+        // UserId stays null) until someone registers an account with this same email (see
+        // AuthController.Register, which claims a matching inactive row instead of leaving it
+        // orphaned). OwnersController.GetListings/CountListingsAsync match this listing to that
+        // profile by OwnerContactEmail, not Listing.OwnerId, so it works whether or not the row is
+        // ever claimed. Only created, never overwritten — an existing (possibly already-claimed)
+        // profile's own name/phone must never be clobbered by whatever an admin typed here.
+        if (dto.HideAgentContact && !string.IsNullOrWhiteSpace(dto.OwnerContactEmail))
+        {
+            var normalizedEmail = dto.OwnerContactEmail.Trim();
+            var hasOwnerProfile = await _agentsDb.Owners.AnyAsync(o => o.Email.ToLower() == normalizedEmail.ToLower());
+            if (!hasOwnerProfile)
+            {
+                _agentsDb.Owners.Add(new Owner
+                {
+                    UserId = null,
+                    Name = dto.OwnerContactName?.Trim() ?? string.Empty,
+                    Email = normalizedEmail,
+                    Phone = dto.OwnerContactPhone?.Trim() ?? string.Empty
+                });
+                try
+                {
+                    await _agentsDb.SaveChangesAsync();
+                }
+                catch (DbUpdateException)
+                {
+                    // Another request (a second listing getting the same owner's email set
+                    // around the same time) won the AnyAsync-then-insert race and already created
+                    // this row — the unique index on Email caught it. Already exactly the
+                    // outcome this block was trying to reach, so this is a no-op, not a failure.
+                }
+            }
+        }
+
+        var updatedDto = listing.ToDto(isAuthenticated: true);
+        await AttachOwnerAgentDetailsAsync([updatedDto]);
+        return Ok(updatedDto);
+    }
+
+    // Sends the visitor's message straight to the real property owner's email (set via
+    // UpdateOwnerContact above) — unlike the agent-contact flow (InquiriesController.Create), the
+    // owner typically has no account/dashboard here to read inquiries from, so this has to be a
+    // direct email. Same shape as AgentsController.Contact/OwnersController.Contact: anonymous,
+    // rate-limited. Unlike those two, it ALSO persists an Inquiry row (flagged
+    // IsOwnerContactNotification) purely so an Admin has a record of it in /mensajes — the owner
+    // being emailed has no such view of their own.
+    [EnableRateLimiting("contact")]
+    [HttpPost("{id:guid}/contact-owner")]
+    public async Task<IActionResult> ContactOwner(Guid id, ContactOwnerDto dto)
+    {
+        var listing = await _db.Listings.FindAsync(id);
+        if (listing is null) return NotFound();
+
+        if (!listing.HideAgentContact || string.IsNullOrWhiteSpace(listing.OwnerContactEmail))
+            return NotFound();
+
+        _db.Inquiries.Add(new Inquiry
+        {
+            ListingId = id,
+            SenderId = User.TryGetUserId(),
+            SenderName = dto.Name,
+            SenderEmail = dto.Email,
+            SenderPhone = dto.Phone,
+            Message = dto.Message,
+            IsOwnerContactNotification = true
+        });
+        await _db.SaveChangesAsync();
+
+        var subject = $"New inquiry from {StripControlCharacters(dto.Name)} via RealEstateApp";
+        var body =
+            $"You have a new message from a potential client on RealEstateApp, about \"{listing.Title}\".\n\n" +
+            $"Name: {dto.Name}\n" +
+            $"Phone: {dto.Phone}\n" +
+            $"Email: {dto.Email}\n\n" +
+            $"Message:\n{dto.Message}";
+
+        // Best-effort: the real owner usually has no account/dashboard here to look the listing
+        // up on later, so attaching its fact sheet (specs, photos, address) gives them the full
+        // picture right in the inbox. A failure here (a broken photo URL, a transient S3 hiccup)
+        // must never block the contact email itself — the message still goes out, just without
+        // the attachment.
+        EmailAttachment? factSheetAttachment = null;
+        try
+        {
+            var pdfBytes = await _factSheetBuilder.BuildAsync(listing);
+            factSheetAttachment = new EmailAttachment(pdfBytes, $"ficha-tecnica-{listing.Id}.pdf", "application/pdf");
+        }
+        // Not a real failure: the visitor closed the tab or navigated away mid-request, which
+        // aborts the in-flight photo downloads — logging that as an error would just be noise in
+        // Sentry/the admin error log for something nobody did wrong.
+        catch (OperationCanceledException)
+        {
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to build the fact-sheet PDF for listing {ListingId}'s owner-contact email", id);
+        }
+
+        try
+        {
+            await _emailService.SendAsync(listing.OwnerContactEmail, listing.OwnerContactName ?? string.Empty, subject, body, factSheetAttachment);
+        }
+        catch (Exception ex) when (ex is SmtpException or FormatException or ArgumentException or InvalidOperationException)
+        {
+            _logger.LogError(ex, "Failed to send contact email to listing {ListingId}'s owner contact", id);
+            return StatusCode(StatusCodes.Status502BadGateway,
+                new { message = "Could not send the message right now. Please try again." });
+        }
+
+        return NoContent();
+    }
+
+    // Removes CR/LF (and other control characters) so a Subject built from user input can never
+    // hit MailMessage's "not in the form required for a subject" ArgumentException — same
+    // reasoning/implementation as AgentsController/OwnersController's own copy.
+    private static string StripControlCharacters(string value) =>
+        new(value.Where(c => !char.IsControl(c)).ToArray());
 
     // Combines already-hosted photo URLs (pasted links, or S3 URLs kept from a previous edit)
     // with newly uploaded files, uploading the latter to S3 and returning one ordered list —

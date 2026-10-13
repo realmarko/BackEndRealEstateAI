@@ -310,6 +310,11 @@ namespace RealEstate.Api.Migrations.RealEstate
                     b.HasKey("Id")
                         .HasName("pk_owners");
 
+                    b.HasIndex("Email")
+                        .IsUnique()
+                        .HasDatabaseName("ix_owners_email")
+                        .HasFilter("email <> ''");
+
                     b.HasIndex("UserId")
                         .IsUnique()
                         .HasDatabaseName("ix_owners_user_id")

@@ -23,6 +23,18 @@ public class Listing
     // a misleading "$0" whenever it's true.
     public bool PriceOnRequest { get; set; }
 
+    // Admin-only override (ListingsController.UpdateOwnerContact) for when the account that
+    // actually owns this listing row is an agent representing the real property owner — lets an
+    // admin swap the listing-detail contact card from that agent's info to the real owner's own,
+    // free-text contact instead (the owner often has no account here at all, which is why this
+    // is plain text rather than a link to an Owner/Agent profile). HideAgentContact alone, not a
+    // derived "has owner contact info" check, controls which card the frontend shows — an admin
+    // can fill these in ahead of time without immediately switching the public-facing card.
+    public bool HideAgentContact { get; set; }
+    public string? OwnerContactName { get; set; }
+    public string? OwnerContactPhone { get; set; }
+    public string? OwnerContactEmail { get; set; }
+
     public ListingAddress? Address { get; set; }
 
     // Incremented by POST /api/listings/{id}/view (ListingsController) — same convention as

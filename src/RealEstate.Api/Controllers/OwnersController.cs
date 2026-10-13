@@ -84,10 +84,31 @@ public class OwnersController : ControllerBase
             // Listing live in separate DbContexts, so there's no SQL join to lean on instead.
             var pageUserIds = pageItems.Where(o => o.UserId.HasValue).Select(o => o.UserId!.Value).ToList();
             var listingCounts = await _listingsDb.Listings
-                .Where(l => pageUserIds.Contains(l.OwnerId) && l.Status != ListingStatus.Removed)
+                // !HideAgentContact: a listing flagged that way is counted below instead, via
+                // ownerContactCounts — needed so a listing matching BOTH paths (e.g. an owner's
+                // own, already-claimed listing that also has HideAgentContact set) isn't added
+                // into both dictionaries and double-counted. Mirrors CountListingsAsync's single
+                // OR'd WHERE clause below, just split into two GroupBys for the batched page query.
+                .Where(l => pageUserIds.Contains(l.OwnerId) && l.Status != ListingStatus.Removed && !l.HideAgentContact)
                 .GroupBy(l => l.OwnerId)
                 .Select(g => new { OwnerId = g.Key, Count = g.Count() })
                 .ToDictionaryAsync(g => g.OwnerId, g => g.Count);
+
+            // A listing with HideAgentContact set (ListingsController.UpdateOwnerContact) is
+            // matched to this directory purely by OwnerContactEmail, not Listing.OwnerId — the
+            // real owner often has no account yet (UserId null), and even once claimed,
+            // Listing.OwnerId keeps pointing at whichever agent account actually manages it.
+            var pageEmails = pageItems
+                .Where(o => !string.IsNullOrWhiteSpace(o.Email))
+                .Select(o => o.Email.Trim().ToLower())
+                .Distinct()
+                .ToList();
+            var ownerContactCounts = await _listingsDb.Listings
+                .Where(l => l.HideAgentContact && l.OwnerContactEmail != null
+                    && pageEmails.Contains(l.OwnerContactEmail.ToLower()) && l.Status != ListingStatus.Removed)
+                .GroupBy(l => l.OwnerContactEmail!.ToLower())
+                .Select(g => new { Email = g.Key, Count = g.Count() })
+                .ToDictionaryAsync(g => g.Email, g => g.Count);
 
             var profiles = pageItems.Select(o => new CachedOwnerProfile
             {
@@ -98,7 +119,8 @@ public class OwnersController : ControllerBase
                 Phone = o.Phone,
                 PhotoUrl = o.PhotoUrl,
                 Bio = o.Bio,
-                PropertiesCount = o.UserId.HasValue && listingCounts.TryGetValue(o.UserId.Value, out var count) ? count : 0,
+                PropertiesCount = (o.UserId.HasValue && listingCounts.TryGetValue(o.UserId.Value, out var count) ? count : 0)
+                    + (!string.IsNullOrWhiteSpace(o.Email) && ownerContactCounts.TryGetValue(o.Email.Trim().ToLower(), out var ocCount) ? ocCount : 0),
                 ViewCount = o.ViewCount
             }).ToList();
 
@@ -145,7 +167,7 @@ public class OwnersController : ControllerBase
                 Phone = owner.Phone,
                 PhotoUrl = owner.PhotoUrl,
                 Bio = owner.Bio,
-                PropertiesCount = await CountListingsAsync(owner.UserId),
+                PropertiesCount = await CountListingsAsync(owner.UserId, owner.Email),
                 ViewCount = owner.ViewCount
             };
         });
@@ -188,23 +210,34 @@ public class OwnersController : ControllerBase
         return rows == 0 ? NotFound() : NoContent();
     }
 
-    private async Task<int> CountListingsAsync(Guid? userId) =>
-        userId is null
-            ? 0
-            : await _listingsDb.Listings.CountAsync(l => l.OwnerId == userId && l.Status != ListingStatus.Removed);
+    // Counts both paths a listing can belong to this owner: Listing.OwnerId == userId (the
+    // owner manages it directly under their own account) and the HideAgentContact/email match
+    // (ListingsController.UpdateOwnerContact set this directory as the listing's real owner,
+    // independent of who technically holds edit rights — see Search's own comment above).
+    private async Task<int> CountListingsAsync(Guid? userId, string? email)
+    {
+        var normalizedEmail = string.IsNullOrWhiteSpace(email) ? null : email.Trim().ToLower();
+        return await _listingsDb.Listings.CountAsync(l =>
+            l.Status != ListingStatus.Removed &&
+            ((userId != null && l.OwnerId == userId) ||
+             (normalizedEmail != null && l.HideAgentContact && l.OwnerContactEmail != null && l.OwnerContactEmail.ToLower() == normalizedEmail)));
+    }
 
-    // GET /api/owners/5/listings — same reasoning as AgentsController.GetListings.
+    // GET /api/owners/5/listings — same two-path match as CountListingsAsync above.
     [HttpGet("{id:int}/listings")]
     public async Task<ActionResult<List<ListingDto>>> GetListings(int id)
     {
-        var userId = await _db.Owners.Where(o => o.Id == id).Select(o => o.UserId).FirstOrDefaultAsync();
-        if (userId is null) return Ok(new List<ListingDto>());
+        var owner = await _db.Owners.Where(o => o.Id == id).Select(o => new { o.UserId, o.Email }).FirstOrDefaultAsync();
+        if (owner is null) return Ok(new List<ListingDto>());
 
+        var normalizedEmail = string.IsNullOrWhiteSpace(owner.Email) ? null : owner.Email.Trim().ToLower();
         var listings = await _listingsDb.Listings
             .Include(l => l.Images)
             .Include(l => l.Owner)
             .Include(l => l.Address)
-            .Where(l => l.OwnerId == userId && l.Status != ListingStatus.Removed)
+            .Where(l => l.Status != ListingStatus.Removed &&
+                ((owner.UserId != null && l.OwnerId == owner.UserId) ||
+                 (normalizedEmail != null && l.HideAgentContact && l.OwnerContactEmail != null && l.OwnerContactEmail.ToLower() == normalizedEmail)))
             .OrderByDescending(l => l.CreatedAt)
             .ToListAsync();
 
@@ -264,7 +297,7 @@ public class OwnersController : ControllerBase
         // user from an earlier listing-page view. Evict so their existing listings' cards pick up
         // the new photo immediately instead of waiting out that cache's own TTL.
         _ownerAgentLookup.Evict(userId);
-        return CreatedAtAction(nameof(GetById), new { id = owner.Id }, ToDto(owner, isOwnProfile: true, propertiesCount: await CountListingsAsync(userId)));
+        return CreatedAtAction(nameof(GetById), new { id = owner.Id }, ToDto(owner, isOwnProfile: true, propertiesCount: await CountListingsAsync(userId, owner.Email)));
     }
 
     // Returns the current user's own owner profile — same reasoning as AgentsController.GetMine
@@ -275,7 +308,7 @@ public class OwnersController : ControllerBase
     {
         var userId = User.GetUserId();
         var owner = await _db.Owners.FirstOrDefaultAsync(o => o.UserId == userId);
-        return owner is null ? NotFound() : Ok(ToDto(owner, isOwnProfile: true, propertiesCount: await CountListingsAsync(userId)));
+        return owner is null ? NotFound() : Ok(ToDto(owner, isOwnProfile: true, propertiesCount: await CountListingsAsync(userId, owner.Email)));
     }
 
     // Updates the current user's own owner profile — same reasoning as AgentsController.UpdateMine
@@ -306,7 +339,7 @@ public class OwnersController : ControllerBase
         if (owner.UserId.HasValue)
             _ownerAgentLookup.Evict(owner.UserId.Value);
 
-        return Ok(ToDto(owner, isOwnProfile: true, propertiesCount: await CountListingsAsync(userId)));
+        return Ok(ToDto(owner, isOwnProfile: true, propertiesCount: await CountListingsAsync(userId, owner.Email)));
     }
 
     // Validates and uploads a photo to S3 — same helper shape as AgentsController's own.

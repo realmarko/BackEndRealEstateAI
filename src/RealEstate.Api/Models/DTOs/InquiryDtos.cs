@@ -29,4 +29,12 @@ public class InquiryDto
     public bool? HasAgent { get; set; }
     public bool IsRead { get; set; }
     public DateTime CreatedAt { get; set; }
+
+    // True only for the admin-visible notification ListingsController.ContactOwner creates —
+    // never set by the regular buyer-inquiry flow (InquiriesController.Create). The owner contact
+    // fields below are populated from the listing only when this is true.
+    public bool IsOwnerContactNotification { get; set; }
+    public string? OwnerContactName { get; set; }
+    public string? OwnerContactPhone { get; set; }
+    public string? OwnerContactEmail { get; set; }
 }

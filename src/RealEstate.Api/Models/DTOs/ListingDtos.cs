@@ -109,6 +109,10 @@ public class ListingDto
     public string State { get; set; } = string.Empty;
     public string ZipCode { get; set; } = string.Empty;
     public string Country { get; set; } = string.Empty;
+    public bool HideAgentContact { get; set; }
+    public string? OwnerContactName { get; set; }
+    public string? OwnerContactPhone { get; set; }
+    public string? OwnerContactEmail { get; set; }
     public double Latitude { get; set; }
     public double Longitude { get; set; }
     public int Bedrooms { get; set; }
@@ -204,6 +208,16 @@ public class CmaResultDto
     public CmaStatsDto Rent { get; set; } = new();
     // Capped, newest first — see ListingsController.Cma for the exact limit and reasoning.
     public List<ListingDto> Comparables { get; set; } = new();
+}
+
+// Admin-only (ListingsController.UpdateOwnerContact) — lets an admin swap a listing's public
+// contact card from the agent who posted it to the real property owner's own free-text info.
+public class UpdateListingOwnerContactDto
+{
+    public bool HideAgentContact { get; set; }
+    [MaxLength(200)] public string? OwnerContactName { get; set; }
+    [MaxLength(30)] public string? OwnerContactPhone { get; set; }
+    [EmailAddress, MaxLength(320)] public string? OwnerContactEmail { get; set; }
 }
 
 public class ListingSearchQuery

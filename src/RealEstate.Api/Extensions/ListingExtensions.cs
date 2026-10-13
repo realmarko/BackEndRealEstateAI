@@ -11,6 +11,11 @@ public static class ListingExtensions
     // reference in either direction.
     private const string RedactedOwnerEmail = "•••••••@•••••.com";
 
+    // Same redaction rule, applied to the free-text owner-contact fields (ListingsController.
+    // UpdateOwnerContact) for the same reason: an anonymous visitor must never receive the real
+    // email/phone in the response body, not just have it hidden by the frontend's CSS blur.
+    private const string RedactedOwnerContactPhone = "••• ••• ••••";
+
     /// <summary>Maps a Listing entity (with its Images, Owner, and Address loaded) to the API's
     /// ListingDto shape. Shared by ListingsController, AgentsController, FavoritesController, and
     /// FraccionamientosController so all four return listings in exactly the same shape.
@@ -33,6 +38,10 @@ public static class ListingExtensions
         State = l.Address?.State ?? string.Empty,
         ZipCode = l.Address?.ZipCode ?? string.Empty,
         Country = l.Address?.Country ?? string.Empty,
+        HideAgentContact = l.HideAgentContact,
+        OwnerContactName = l.OwnerContactName,
+        OwnerContactPhone = isAuthenticated || l.OwnerContactPhone is null ? l.OwnerContactPhone : RedactedOwnerContactPhone,
+        OwnerContactEmail = isAuthenticated || l.OwnerContactEmail is null ? l.OwnerContactEmail : RedactedOwnerEmail,
         Latitude = l.Latitude,
         Longitude = l.Longitude,
         Bedrooms = l.Bedrooms,

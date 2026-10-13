@@ -601,6 +601,10 @@ namespace RealEstate.Api.Migrations
                         .HasColumnType("boolean")
                         .HasColumnName("has_agent");
 
+                    b.Property<bool>("IsOwnerContactNotification")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_owner_contact_notification");
+
                     b.Property<bool>("IsRead")
                         .HasColumnType("boolean")
                         .HasColumnName("is_read");
@@ -826,6 +830,10 @@ namespace RealEstate.Api.Migrations
                         .HasColumnType("boolean")
                         .HasColumnName("has_water_debt");
 
+                    b.Property<bool>("HideAgentContact")
+                        .HasColumnType("boolean")
+                        .HasColumnName("hide_agent_contact");
+
                     b.Property<decimal?>("HoaFee")
                         .HasColumnType("numeric")
                         .HasColumnName("hoa_fee");
@@ -883,6 +891,18 @@ namespace RealEstate.Api.Migrations
                     b.Property<decimal?>("MaxHeightMeters")
                         .HasColumnType("numeric")
                         .HasColumnName("max_height_meters");
+
+                    b.Property<string>("OwnerContactEmail")
+                        .HasColumnType("text")
+                        .HasColumnName("owner_contact_email");
+
+                    b.Property<string>("OwnerContactName")
+                        .HasColumnType("text")
+                        .HasColumnName("owner_contact_name");
+
+                    b.Property<string>("OwnerContactPhone")
+                        .HasColumnType("text")
+                        .HasColumnName("owner_contact_phone");
 
                     b.Property<Guid>("OwnerId")
                         .HasColumnType("uuid")

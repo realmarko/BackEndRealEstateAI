@@ -2,16 +2,23 @@ namespace RealEstate.Api.Models.Entities;
 
 // A plain property owner's public profile — the Propietarios directory's equivalent of Agent,
 // trimmed to what a non-agent owner actually has: no Brokerage/Specialties/Reviews, since those
-// are agent-specific concepts. Deliberately a separate opt-in row (created via OwnersController.
-// Create), not auto-derived from ApplicationUser, for the same reason Agent is: ApplicationUser
-// has no Phone/PhotoUrl/Bio fields, and a profile shouldn't appear in the public directory until
-// its owner has actually filled it in.
+// are agent-specific concepts. Not auto-derived from ApplicationUser, for the same reason Agent
+// isn't: ApplicationUser has no Phone/PhotoUrl/Bio fields of its own.
+//
+// Created one of two ways: self-service, by a logged-in Owner-role user filling out
+// OwnersController.Create (UserId set immediately, "active" from the start) — or admin-initiated,
+// auto-created by ListingsController.UpdateOwnerContact the moment an admin sets a listing's
+// free-text owner-contact email (UserId left null, i.e. "inactive" — unclaimed, no account of
+// its own yet). An inactive row is claimed (UserId set) the moment someone proves they own that
+// email — verifying a fresh Register, or signing in via Google/Facebook — and requests the Owner
+// role; see AuthController.ClaimOwnerProfileIfMatchingAsync.
 public class Owner
 {
     public int Id { get; set; }
 
     // Links to ApplicationUser.Id in the separate ApplicationDbContext (Identity),
     // so no navigation property / EF-enforced FK across contexts — same as Agent.UserId.
+    // Null means "inactive" — see this class's own comment above.
     public Guid? UserId { get; set; }
 
     public string Name { get; set; } = string.Empty;
