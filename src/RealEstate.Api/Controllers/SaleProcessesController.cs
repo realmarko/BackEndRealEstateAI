@@ -9,13 +9,14 @@ using RealEstate.Api.Services;
 
 namespace RealEstate.Api.Controllers;
 
-// The agent's sale pipeline: one SaleProcess per client walking through the sell-a-house
-// workflow (prospección → post-venta), with a document checklist and a task list per deal.
-// Every endpoint is scoped to the calling agent's own SaleProcesses — an agent never sees or
-// edits another agent's pipeline.
+// The sale pipeline: one SaleProcess per client walking through the sell-a-house workflow
+// (prospección → post-venta), with a document checklist and a task list per deal. Admin-only —
+// every endpoint is still scoped to the calling user's own SaleProcesses (AgentUserId == caller),
+// unchanged from when this was Agent-only; an Admin using it has their own pipeline, not a
+// cross-agent view of everyone else's.
 [ApiController]
 [Route("api")]
-[Authorize(Roles = "Agent")]
+[Authorize(Roles = "Admin")]
 public class SaleProcessesController : ControllerBase
 {
     private const int FinalStageId = 9; // Post-venta — excluded from "active" and counted as "closed"
