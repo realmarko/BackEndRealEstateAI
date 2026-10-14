@@ -294,6 +294,27 @@ public class ListingsController : ControllerBase
         return rows == 0 ? NotFound() : NoContent();
     }
 
+    // Anonymous, direct PDF download — the target of the "fact sheet" QR code shown on the
+    // listing detail page: scanning it from a printed sign or flyer should hand over the fact
+    // sheet immediately, with no login and no detour through the site itself. Rate-limited (see
+    // Program.cs's "fact-sheet" policy) since, unlike a plain GET, this renders a PDF and
+    // downloads several S3 photos per call — real cost an anonymous caller could otherwise
+    // trigger on a loop against one known listing id.
+    [EnableRateLimiting("fact-sheet")]
+    [HttpGet("{id:guid}/fact-sheet.pdf")]
+    public async Task<IActionResult> GetFactSheetPdf(Guid id)
+    {
+        var listing = await _db.Listings
+            .Include(l => l.Address)
+            .Include(l => l.Images)
+            .Include(l => l.Owner)
+            .FirstOrDefaultAsync(l => l.Id == id);
+        if (listing is null) return NotFound();
+
+        var pdfBytes = await _factSheetBuilder.BuildAsync(listing);
+        return File(pdfBytes, "application/pdf", $"ficha-tecnica-{listing.Id}.pdf");
+    }
+
     // GET /api/listings/5/price-history — oldest first, so the frontend can render it as a
     // timeline (or compute deltas between consecutive entries) without re-sorting.
     [HttpGet("{id:guid}/price-history")]

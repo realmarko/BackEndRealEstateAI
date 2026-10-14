@@ -282,6 +282,18 @@ builder.Services.AddRateLimiter(options =>
             Window = TimeSpan.FromMinutes(1),
             QueueLimit = 0
         }));
+    // Per-IP: GetFactSheetPdf is anonymous and, unlike view-count, does real work per call —
+    // rendering a PDF and concurrently downloading several S3 photos — so an unthrottled loop
+    // against one known listing id would be a cheap way to drive up S3/CPU cost. Same budget as
+    // "contact" since the cost shape (external downloads + rendering) is comparable.
+    options.AddPolicy("fact-sheet", httpContext => RateLimitPartition.GetFixedWindowLimiter(
+        partitionKey: httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+        factory: _ => new FixedWindowRateLimiterOptions
+        {
+            PermitLimit = 5,
+            Window = TimeSpan.FromMinutes(1),
+            QueueLimit = 0
+        }));
 });
 
 // ---- CORS (Angular dev server + configurable prod origin) ----
