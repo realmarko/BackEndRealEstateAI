@@ -151,6 +151,14 @@ public class FactSheetPdfService : IFactSheetPdfService
             if (listing.HasHeatingCooling) Field(column, "Calefacción / A.A.", "Sí");
             if (listing.HasRoofGarden) Field(column, "Roof garden", "Sí");
             if (listing.HoaFee is { } hoa and > 0) Field(column, "Cuota de mantenimiento", $"{listing.Currency} {hoa:N0}");
+            if (IsHttpUrl(listing.VideoTourUrl))
+            {
+                column.Item().PaddingTop(4).Row(row =>
+                {
+                    row.ConstantItem(160).Text("Recorrido virtual").FontSize(9).FontColor(Colors.Grey.Darken1);
+                    row.RelativeItem().Hyperlink(listing.VideoTourUrl!).Text(listing.VideoTourUrl!).FontSize(9).Bold();
+                });
+            }
 
             if (HasLandDetails(listing))
             {
@@ -161,10 +169,18 @@ public class FactSheetPdfService : IFactSheetPdfService
                 if (listing.HasEjidalCertificate is { } ejidal) Field(column, "Constancia ejidal", YesNo(ejidal));
                 if (listing.FrontageWidthMeters is { } w) Field(column, "Frente", $"{w:N1} m");
                 if (listing.FrontageDepthMeters is { } d) Field(column, "Fondo", $"{d:N1} m");
+                if (!string.IsNullOrWhiteSpace(listing.LotShape)) Field(column, "Forma del terreno", listing.LotShape!);
+                if (!string.IsNullOrWhiteSpace(listing.Topography)) Field(column, "Topografía", listing.Topography!);
+                if (listing.CosCoefficient is { } cos) Field(column, "COS", cos.ToString("0.##"));
+                if (listing.CusCoefficient is { } cus) Field(column, "CUS", cus.ToString("0.##"));
                 Field(column, "Agua potable", YesNo(listing.HasPotableWater));
                 Field(column, "Drenaje", YesNo(listing.HasDrainage));
                 Field(column, "Electricidad", YesNo(listing.HasElectricity));
+                if (listing.HasTelecomService is { } telecom) Field(column, "Conectividad / fibra", YesNo(telecom));
+                if (listing.HasPavedStreet is { } paved) Field(column, "Calle pavimentada", YesNo(paved));
                 if (listing.IsFreeOfLiens is { } free) Field(column, "Libre de gravámenes", YesNo(free));
+                if (listing.HasPropertyTaxDebt is { } taxDebt) Field(column, "Adeudo de predial", YesNo(taxDebt));
+                if (listing.HasWaterDebt is { } waterDebt) Field(column, "Adeudo de agua", YesNo(waterDebt));
             }
 
             if (!string.IsNullOrWhiteSpace(listing.Description))
@@ -180,9 +196,20 @@ public class FactSheetPdfService : IFactSheetPdfService
         !string.IsNullOrWhiteSpace(l.LandUseZoning) || !string.IsNullOrWhiteSpace(l.LandTenure) ||
         l.HasEjidalCertificate.HasValue ||
         l.HasPotableWater.HasValue || l.HasDrainage.HasValue || l.HasElectricity.HasValue ||
-        l.FrontageWidthMeters.HasValue || l.FrontageDepthMeters.HasValue;
+        l.FrontageWidthMeters.HasValue || l.FrontageDepthMeters.HasValue ||
+        !string.IsNullOrWhiteSpace(l.LotShape) || !string.IsNullOrWhiteSpace(l.Topography) ||
+        l.CosCoefficient.HasValue || l.CusCoefficient.HasValue ||
+        l.HasTelecomService.HasValue || l.HasPavedStreet.HasValue ||
+        l.HasPropertyTaxDebt.HasValue || l.HasWaterDebt.HasValue;
 
     private static string YesNo(bool? value) => value switch { true => "Sí", false => "No", null => "N/D" };
+
+    // VideoTourUrl only has a [MaxLength] constraint server-side (the frontend's own http(s)-only
+    // validation is client-side, bypassable by calling the API directly) — guarded here before
+    // treating it as a clickable PDF link so a non-http scheme (javascript:, file:, a custom
+    // protocol) can never end up in a Hyperlink annotation that some PDF viewer hands to the OS.
+    private static bool IsHttpUrl(string? value) =>
+        Uri.TryCreate(value, UriKind.Absolute, out var uri) && (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps);
 
     private static void ComposeSidePanel(IContainer container, ListingDto listing)
     {
@@ -200,6 +227,8 @@ public class FactSheetPdfService : IFactSheetPdfService
             column.Item().PaddingTop(4).Text(listing.Street).FontSize(9);
             column.Item().Text($"{listing.Colonia}, {listing.City}").FontSize(9);
             column.Item().Text($"{listing.State}, {listing.ZipCode}").FontSize(9);
+            if (listing.Latitude != 0 || listing.Longitude != 0)
+                column.Item().PaddingTop(2).Text($"{listing.Latitude:F6}, {listing.Longitude:F6}").FontSize(8).FontColor(Colors.Grey.Darken3);
         });
     }
 
