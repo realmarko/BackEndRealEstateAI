@@ -59,6 +59,9 @@ public class Listing
     public int AreaSqFt { get; set; }
     public int? YearBuilt { get; set; }
     public int? ParkingSpaces { get; set; }
+    // Only meaningful when ParkingSpaces is set — whether those spaces are a roofed garage/
+    // carport vs. an open-air pad.
+    public bool? ParkingIsCovered { get; set; }
     public int? Floors { get; set; }
     public decimal? LotSizeSqm { get; set; }
     public decimal? GardenSizeSqm { get; set; }
@@ -66,6 +69,12 @@ public class Listing
     public bool HasRoofGarden { get; set; }
     public decimal? HoaFee { get; set; }
     public string? VideoTourUrl { get; set; }
+    // Nueva/Usada/Remodelada/EnObra — not meaningful for raw land, same as YearBuilt above.
+    public ConstructionConditionType? ConstructionCondition { get; set; }
+    public CardinalOrientationType? FacadeOrientation { get; set; }
+    public bool? HasNaturalGas { get; set; }
+    // "Gas estacionario" in Mexican listings — an LP tank, as opposed to piped natural gas above.
+    public bool? HasLpGas { get; set; }
 
     // Land/commercial characteristics — only meaningful when PropertyType is Land, Commercial,
     // ResidentialLand, CommercialLand, or IndustrialLand (see ListingFormComponent's

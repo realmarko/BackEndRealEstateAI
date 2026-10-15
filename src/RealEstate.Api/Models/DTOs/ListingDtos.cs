@@ -34,6 +34,7 @@ public class ListingCreateDto
     public int AreaSqFt { get; set; }
     public int? YearBuilt { get; set; }
     public int? ParkingSpaces { get; set; }
+    public bool? ParkingIsCovered { get; set; }
     public int? Floors { get; set; }
     public decimal? LotSizeSqm { get; set; }
     public decimal? GardenSizeSqm { get; set; }
@@ -41,6 +42,10 @@ public class ListingCreateDto
     public bool HasRoofGarden { get; set; }
     public decimal? HoaFee { get; set; }
     [MaxLength(2048)] public string? VideoTourUrl { get; set; }
+    public ConstructionConditionType? ConstructionCondition { get; set; }
+    public CardinalOrientationType? FacadeOrientation { get; set; }
+    public bool? HasNaturalGas { get; set; }
+    public bool? HasLpGas { get; set; }
 
     [MaxLength(50)] public string? LandUseZoning { get; set; }
     public int? LandUseCategoryId { get; set; }
@@ -120,6 +125,7 @@ public class ListingDto
     public int AreaSqFt { get; set; }
     public int? YearBuilt { get; set; }
     public int? ParkingSpaces { get; set; }
+    public bool? ParkingIsCovered { get; set; }
     public int? Floors { get; set; }
     public decimal? LotSizeSqm { get; set; }
     public decimal? GardenSizeSqm { get; set; }
@@ -127,6 +133,10 @@ public class ListingDto
     public bool HasRoofGarden { get; set; }
     public decimal? HoaFee { get; set; }
     public string? VideoTourUrl { get; set; }
+    public string? ConstructionCondition { get; set; }
+    public string? FacadeOrientation { get; set; }
+    public bool? HasNaturalGas { get; set; }
+    public bool? HasLpGas { get; set; }
     public string? LandUseZoning { get; set; }
     public int? LandUseCategoryId { get; set; }
     public string? LandTenure { get; set; }

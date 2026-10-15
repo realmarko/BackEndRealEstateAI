@@ -130,3 +130,27 @@ public enum TopographyType
     Plana = 0,
     Inclinada = 1
 }
+
+// Applies to any built structure (house, apartment, commercial unit — not raw land), unlike the
+// land-only enums above.
+public enum ConstructionConditionType
+{
+    Nueva = 0,
+    Usada = 1,
+    Remodelada = 2,
+    EnObra = 3
+}
+
+// The dominant facade orientation — a single cardinal/intercardinal value, same simplification
+// as VialidadType's single "primary road" above rather than a per-wall breakdown.
+public enum CardinalOrientationType
+{
+    Norte = 0,
+    Sur = 1,
+    Este = 2,
+    Oeste = 3,
+    Noreste = 4,
+    Noroeste = 5,
+    Sureste = 6,
+    Suroeste = 7
+}

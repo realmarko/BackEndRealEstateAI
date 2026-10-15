@@ -733,6 +733,10 @@ namespace RealEstate.Api.Migrations
                         .HasColumnType("numeric")
                         .HasColumnName("cadastral_value");
 
+                    b.Property<int?>("ConstructionCondition")
+                        .HasColumnType("integer")
+                        .HasColumnName("construction_condition");
+
                     b.Property<decimal?>("CosCoefficient")
                         .HasColumnType("numeric")
                         .HasColumnName("cos_coefficient");
@@ -757,6 +761,10 @@ namespace RealEstate.Api.Migrations
                         .IsRequired()
                         .HasColumnType("text")
                         .HasColumnName("description");
+
+                    b.Property<int?>("FacadeOrientation")
+                        .HasColumnType("integer")
+                        .HasColumnName("facade_orientation");
 
                     b.Property<int?>("Floors")
                         .HasColumnType("integer")
@@ -793,6 +801,14 @@ namespace RealEstate.Api.Migrations
                     b.Property<bool>("HasHeatingCooling")
                         .HasColumnType("boolean")
                         .HasColumnName("has_heating_cooling");
+
+                    b.Property<bool?>("HasLpGas")
+                        .HasColumnType("boolean")
+                        .HasColumnName("has_lp_gas");
+
+                    b.Property<bool?>("HasNaturalGas")
+                        .HasColumnType("boolean")
+                        .HasColumnName("has_natural_gas");
 
                     b.Property<bool?>("HasNearbyUTurn")
                         .HasColumnType("boolean")
@@ -907,6 +923,10 @@ namespace RealEstate.Api.Migrations
                     b.Property<Guid>("OwnerId")
                         .HasColumnType("uuid")
                         .HasColumnName("owner_id");
+
+                    b.Property<bool?>("ParkingIsCovered")
+                        .HasColumnType("boolean")
+                        .HasColumnName("parking_is_covered");
 
                     b.Property<int?>("ParkingSpaces")
                         .HasColumnType("integer")

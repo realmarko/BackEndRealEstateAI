@@ -461,6 +461,7 @@ public class ListingsController : ControllerBase
             AreaSqFt = dto.AreaSqFt,
             YearBuilt = dto.YearBuilt,
             ParkingSpaces = dto.ParkingSpaces,
+            ParkingIsCovered = dto.ParkingIsCovered,
             Floors = dto.Floors,
             LotSizeSqm = dto.LotSizeSqm,
             GardenSizeSqm = dto.GardenSizeSqm,
@@ -468,6 +469,10 @@ public class ListingsController : ControllerBase
             HasRoofGarden = dto.HasRoofGarden,
             HoaFee = dto.HoaFee,
             VideoTourUrl = dto.VideoTourUrl,
+            ConstructionCondition = dto.ConstructionCondition,
+            FacadeOrientation = dto.FacadeOrientation,
+            HasNaturalGas = dto.HasNaturalGas,
+            HasLpGas = dto.HasLpGas,
             LandUseZoning = dto.LandUseZoning,
             LandUseCategoryId = dto.LandUseCategoryId,
             LandTenure = dto.LandTenure,
@@ -633,6 +638,7 @@ public class ListingsController : ControllerBase
         listing.AreaSqFt = dto.AreaSqFt;
         listing.YearBuilt = dto.YearBuilt;
         listing.ParkingSpaces = dto.ParkingSpaces;
+        listing.ParkingIsCovered = dto.ParkingIsCovered;
         listing.Floors = dto.Floors;
         listing.LotSizeSqm = dto.LotSizeSqm;
         listing.GardenSizeSqm = dto.GardenSizeSqm;
@@ -640,6 +646,10 @@ public class ListingsController : ControllerBase
         listing.HasRoofGarden = dto.HasRoofGarden;
         listing.HoaFee = dto.HoaFee;
         listing.VideoTourUrl = dto.VideoTourUrl;
+        listing.ConstructionCondition = dto.ConstructionCondition;
+        listing.FacadeOrientation = dto.FacadeOrientation;
+        listing.HasNaturalGas = dto.HasNaturalGas;
+        listing.HasLpGas = dto.HasLpGas;
         listing.LandUseZoning = dto.LandUseZoning;
         listing.LandUseCategoryId = dto.LandUseCategoryId;
         listing.LandTenure = dto.LandTenure;

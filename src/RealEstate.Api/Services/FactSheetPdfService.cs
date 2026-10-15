@@ -145,11 +145,17 @@ public class FactSheetPdfService : IFactSheetPdfService
             Field(column, "Tipo de propiedad", listing.PropertyType);
             Field(column, "Tipo de operación", listing.ListingType == "Rent" ? "Renta" : "Venta");
             if (listing.YearBuilt is { } year) Field(column, "Año de construcción", year.ToString());
+            if (!string.IsNullOrWhiteSpace(listing.ConstructionCondition)) Field(column, "Estado de conservación", listing.ConstructionCondition!);
             if (listing.Floors is { } floors) Field(column, "Niveles", floors.ToString());
+            if (listing.ParkingSpaces is { } parking and > 0)
+                Field(column, "Estacionamiento", listing.ParkingIsCovered switch { true => $"{parking} (techado)", false => $"{parking} (descubierto)", null => parking.ToString() });
+            if (!string.IsNullOrWhiteSpace(listing.FacadeOrientation)) Field(column, "Orientación de fachada", listing.FacadeOrientation!);
             if (listing.LotSizeSqm is { } lot) Field(column, "Tamaño del terreno", $"{lot:N0} m²");
             if (listing.GardenSizeSqm is { } garden) Field(column, "Jardín", $"{garden:N0} m²");
             if (listing.HasHeatingCooling) Field(column, "Calefacción / A.A.", "Sí");
             if (listing.HasRoofGarden) Field(column, "Roof garden", "Sí");
+            if (listing.HasNaturalGas is { } naturalGas) Field(column, "Gas natural", YesNo(naturalGas));
+            if (listing.HasLpGas is { } lpGas) Field(column, "Gas estacionario", YesNo(lpGas));
             if (listing.HoaFee is { } hoa and > 0) Field(column, "Cuota de mantenimiento", $"{listing.Currency} {hoa:N0}");
             if (IsHttpUrl(listing.VideoTourUrl))
             {
