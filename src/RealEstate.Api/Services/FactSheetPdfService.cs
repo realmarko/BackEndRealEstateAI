@@ -47,7 +47,7 @@ public class FactSheetPdfService : IFactSheetPdfService
     // fetching at the same number, instead of hardcoding its own copy of "3".
     public const int MaxPhotos = 3;
 
-    public byte[] Generate(ListingDto listing, IReadOnlyList<byte[]> photos)
+    public byte[] Generate(ListingDto listing, IReadOnlyList<byte[]> photos, byte[]? ownerPhoto = null)
     {
         var shownPhotos = photos.Take(MaxPhotos).ToList();
 
@@ -69,7 +69,7 @@ public class FactSheetPdfService : IFactSheetPdfService
                     {
                         row.RelativeItem(3).Element(c => ComposeDetails(c, listing));
                         row.ConstantItem(16);
-                        row.RelativeItem(2).Element(c => ComposeSidePanel(c, listing));
+                        row.RelativeItem(2).Element(c => ComposeSidePanel(c, listing, ownerPhoto));
                     });
                     column.Item().PaddingTop(16).Element(ComposeFooter);
                 });
@@ -211,15 +211,23 @@ public class FactSheetPdfService : IFactSheetPdfService
     private static bool IsHttpUrl(string? value) =>
         Uri.TryCreate(value, UriKind.Absolute, out var uri) && (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps);
 
-    private static void ComposeSidePanel(IContainer container, ListingDto listing)
+    private static void ComposeSidePanel(IContainer container, ListingDto listing, byte[]? ownerPhoto)
     {
         container.Background(Gold).Padding(16).Column(column =>
         {
             column.Item().Text("CONTACTO").FontSize(11).Bold().FontColor(Navy);
             column.Item().PaddingTop(8).LineHorizontal(1).LineColor(Navy);
-            column.Item().PaddingTop(8).Text(listing.OwnerName).FontSize(11).Bold();
-            if (!string.IsNullOrWhiteSpace(listing.OwnerCompany))
-                column.Item().Text(listing.OwnerCompany!).FontSize(9);
+            column.Item().PaddingTop(8).Row(row =>
+            {
+                if (ownerPhoto is { Length: > 0 })
+                    row.ConstantItem(40).Height(40).Image(ownerPhoto).FitArea();
+                row.RelativeItem().PaddingLeft(ownerPhoto is { Length: > 0 } ? 8 : 0).Column(col =>
+                {
+                    col.Item().Text(listing.OwnerName).FontSize(11).Bold();
+                    if (!string.IsNullOrWhiteSpace(listing.OwnerCompany))
+                        col.Item().Text(listing.OwnerCompany!).FontSize(9);
+                });
+            });
             column.Item().PaddingTop(4).Text(listing.OwnerEmail).FontSize(9);
 
             column.Item().PaddingTop(16).LineHorizontal(1).LineColor(Navy);

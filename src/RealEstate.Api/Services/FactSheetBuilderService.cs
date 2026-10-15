@@ -63,7 +63,13 @@ public class FactSheetBuilderService : IFactSheetBuilderService
         dto.OwnerCompany = company;
         dto.OwnerPhotoUrl = photoUrl;
 
-        return _factSheetPdfService.Generate(dto, photosTask.Result);
+        // Only known after agentInfoTask resolves, so this download can't join the WhenAll above —
+        // one extra best-effort fetch, same failure handling as the listing photos.
+        var ownerPhoto = string.IsNullOrWhiteSpace(photoUrl)
+            ? null
+            : await DownloadPhotoAsync(_httpClientFactory.CreateClient("FactSheetPhotos"), photoUrl);
+
+        return _factSheetPdfService.Generate(dto, photosTask.Result, ownerPhoto);
     }
 
     // Downloads up to FactSheetPdfService.MaxPhotos listing photos (S3 URLs, already in

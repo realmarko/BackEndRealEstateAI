@@ -4,5 +4,5 @@ namespace RealEstate.Api.Services;
 
 public interface IFactSheetPdfService
 {
-    byte[] Generate(ListingDto listing, IReadOnlyList<byte[]> photos);
+    byte[] Generate(ListingDto listing, IReadOnlyList<byte[]> photos, byte[]? ownerPhoto = null);
 }
