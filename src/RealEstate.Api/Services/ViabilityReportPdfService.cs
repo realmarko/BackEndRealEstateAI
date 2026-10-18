@@ -240,6 +240,18 @@ public class ViabilityReportPdfService : IViabilityReportPdfService
         });
     }
 
+    // Drawn as SVG rather than a Unicode glyph (✓/✗/•) in the embedded Liberation Sans font —
+    // that font has no glyphs for check/ballot-x, so SkiaSharp fell back to a mismatched/missing
+    // glyph (an empty box) on the EB Linux host, even though it looked fine rendered by whatever
+    // font substitution happens to be available locally on Windows (reported live, 2026-10-18).
+    // An SVG path always renders the same shape regardless of font/platform.
+    private static string BuildCheckMarkSvg(bool? passed, string color) => passed switch
+    {
+        true => $"<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 16 16\"><path d=\"M3 8.5 L6.5 12 L13 4\" fill=\"none\" stroke=\"{color}\" stroke-width=\"2.2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/></svg>",
+        false => $"<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 16 16\"><path d=\"M4 4 L12 12 M12 4 L4 12\" fill=\"none\" stroke=\"{color}\" stroke-width=\"2.2\" stroke-linecap=\"round\"/></svg>",
+        null => $"<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 16 16\"><circle cx=\"8\" cy=\"8\" r=\"3\" fill=\"{color}\"/></svg>"
+    };
+
     private static void ComposeBusiness(IContainer container, BusinessViabilityDto business)
     {
         var scoreColor = business.Score >= 70 ? "#15803d" : business.Score >= 40 ? "#b45309" : "#b91c1c";
@@ -256,9 +268,8 @@ public class ViabilityReportPdfService : IViabilityReportPdfService
             {
                 col.Item().PaddingTop(3).Row(row =>
                 {
-                    var mark = check.Passed is null ? "•" : check.Passed.Value ? "✓" : "✗";
                     var markColor = check.Passed is null ? "#9ca3af" : check.Passed.Value ? "#15803d" : "#b91c1c";
-                    row.ConstantItem(16).Text(mark).FontColor(markColor).Bold();
+                    row.ConstantItem(16).Height(16).Svg(BuildCheckMarkSvg(check.Passed, markColor));
                     row.RelativeItem().Text(check.Detail).FontSize(9);
                 });
             }
