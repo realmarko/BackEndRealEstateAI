@@ -167,27 +167,42 @@ public class ViabilityReportPdfService : IViabilityReportPdfService
             ("Autopista", "#7f1d1d"), ("Vía rápida", "#c2410c"), ("Avenida principal", "#dc2626"), ("Avenida secundaria", "#16a34a")
         };
 
-        container.Border(1).BorderColor(Colors.Grey.Lighten2).Padding(8).Row(row =>
+        // Two separate rows (markers, then roads) instead of one combined row — a single Row's
+        // items don't wrap in QuestPDF, so cramming both categories into it only has as much
+        // width budget as the page itself; adding a 5th marker (Gasolinera) already pushed the
+        // combined row past that and made every PDF generation throw ("conflicting size
+        // constraints") the moment a static map actually loaded (confirmed live via ErrorLog,
+        // 2026-10-18). Splitting per category keeps each row's own, much smaller item count
+        // safely within page width, and leaves room for the legend to keep growing later.
+        container.Border(1).BorderColor(Colors.Grey.Lighten2).Padding(8).Column(col =>
         {
-            row.Spacing(14);
-            foreach (var (label, color) in markers)
+            col.Spacing(4);
+            col.Item().Row(row =>
             {
-                row.AutoItem().Row(r =>
+                row.Spacing(14);
+                foreach (var (label, color) in markers)
                 {
-                    r.ConstantItem(8).Height(8).Background(color);
-                    r.ConstantItem(4);
-                    r.AutoItem().Text(label).FontSize(7).FontColor(Colors.Grey.Darken2);
-                });
-            }
-            foreach (var (label, color) in roads)
+                    row.AutoItem().Row(r =>
+                    {
+                        r.ConstantItem(8).Height(8).Background(color);
+                        r.ConstantItem(4);
+                        r.AutoItem().Text(label).FontSize(7).FontColor(Colors.Grey.Darken2);
+                    });
+                }
+            });
+            col.Item().Row(row =>
             {
-                row.AutoItem().Row(r =>
+                row.Spacing(14);
+                foreach (var (label, color) in roads)
                 {
-                    r.ConstantItem(12).Height(3).Background(color);
-                    r.ConstantItem(4);
-                    r.AutoItem().Text(label).FontSize(7).FontColor(Colors.Grey.Darken2);
-                });
-            }
+                    row.AutoItem().Row(r =>
+                    {
+                        r.ConstantItem(12).Height(3).Background(color);
+                        r.ConstantItem(4);
+                        r.AutoItem().Text(label).FontSize(7).FontColor(Colors.Grey.Darken2);
+                    });
+                }
+            });
         });
     }
 
