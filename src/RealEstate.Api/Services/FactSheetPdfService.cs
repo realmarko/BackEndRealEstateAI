@@ -1,4 +1,3 @@
-using System.Reflection;
 using QuestPDF.Fluent;
 using QuestPDF.Helpers;
 using QuestPDF.Infrastructure;
@@ -25,20 +24,13 @@ public class FactSheetPdfService : IFactSheetPdfService
     // relied on as a system font: the EB Linux host has no fonts installed beyond what
     // .platform/hooks/predeploy/01_install_fontconfig.sh adds (the fontconfig library itself, not
     // any actual typeface), so pointing SkiaSharp at a system "Arial" would work in local dev and
-    // then fail or silently substitute a different font in production.
-    private const string FontFamily = "Liberation Sans";
+    // then fail or silently substitute a different font in production. Registration itself is
+    // shared via PdfFonts so every QuestPDF-based service only pays for it once per process.
+    private const string FontFamily = PdfFonts.FontFamily;
 
     static FactSheetPdfService()
     {
-        RegisterEmbeddedFont("RealEstate.Api.Resources.Fonts.LiberationSans-Regular.ttf");
-        RegisterEmbeddedFont("RealEstate.Api.Resources.Fonts.LiberationSans-Bold.ttf");
-    }
-
-    private static void RegisterEmbeddedFont(string resourceName)
-    {
-        using var stream = Assembly.GetExecutingAssembly().GetManifestResourceStream(resourceName)
-            ?? throw new InvalidOperationException($"Embedded font resource not found: {resourceName}");
-        QuestPDF.Drawing.FontManager.RegisterFont(stream);
+        PdfFonts.EnsureRegistered();
     }
 
     // Capped at 3 — this is a one-page document, not a gallery, and each photo is a full-size

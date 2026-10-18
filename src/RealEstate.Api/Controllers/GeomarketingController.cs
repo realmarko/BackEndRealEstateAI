@@ -25,7 +25,7 @@ public class GeomarketingController : ControllerBase
     // without this, the endpoint would forward any caller-supplied text straight to INEGI,
     // turning this app's own token and rate-limit budget into a free, open DENUE search proxy
     // for anyone who finds the URL, not just the map feature this exists for.
-    private static readonly HashSet<string> AllowedSearchTerms = new(StringComparer.OrdinalIgnoreCase) { "farmacia", "gimnasio", "oxxo" };
+    private static readonly HashSet<string> AllowedSearchTerms = new(StringComparer.OrdinalIgnoreCase) { "farmacia", "gimnasio", "oxxo", "gasolinera" };
 
     private static readonly GeoJsonWriter GeoJsonWriter = new();
 

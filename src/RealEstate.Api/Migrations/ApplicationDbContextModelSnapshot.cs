@@ -352,6 +352,211 @@ namespace RealEstate.Api.Migrations
                     b.ToTable("AspNetUsers", (string)null);
                 });
 
+            modelBuilder.Entity("RealEstate.Api.Models.Entities.BusinessTypeCriteria", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<int?>("CompetitorExclusionRadiusMeters")
+                        .HasColumnType("integer")
+                        .HasColumnName("competitor_exclusion_radius_meters");
+
+                    b.Property<string>("DenueSearchTerm")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)")
+                        .HasColumnName("denue_search_term");
+
+                    b.Property<string>("DisplayName")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)")
+                        .HasColumnName("display_name");
+
+                    b.Property<string>("GooglePlacesType")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("google_places_type");
+
+                    b.Property<string>("Key")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("key");
+
+                    b.Property<double>("MinFrontageMeters")
+                        .HasColumnType("double precision")
+                        .HasColumnName("min_frontage_meters");
+
+                    b.Property<double>("MinLotSizeSqm")
+                        .HasColumnType("double precision")
+                        .HasColumnName("min_lot_size_sqm");
+
+                    b.Property<int?>("MinPopulationInRadius")
+                        .HasColumnType("integer")
+                        .HasColumnName("min_population_in_radius");
+
+                    b.Property<string>("Notes")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("notes");
+
+                    b.Property<double?>("PopulationRadiusKm")
+                        .HasColumnType("double precision")
+                        .HasColumnName("population_radius_km");
+
+                    b.Property<bool?>("PrefersCornerLot")
+                        .HasColumnType("boolean")
+                        .HasColumnName("prefers_corner_lot");
+
+                    b.Property<bool>("PrefersPrimaryRoadAccess")
+                        .HasColumnType("boolean")
+                        .HasColumnName("prefers_primary_road_access");
+
+                    b.HasKey("Id")
+                        .HasName("pk_business_type_criteria");
+
+                    b.HasIndex("Key")
+                        .IsUnique()
+                        .HasDatabaseName("ix_business_type_criteria_key");
+
+                    b.ToTable("business_type_criteria", (string)null);
+
+                    b.HasData(
+                        new
+                        {
+                            Id = 1,
+                            CompetitorExclusionRadiusMeters = 1500,
+                            DenueSearchTerm = "gasolinera",
+                            DisplayName = "Gasolinera",
+                            GooglePlacesType = "gas_station",
+                            Key = "gas_station",
+                            MinFrontageMeters = 20.0,
+                            MinLotSizeSqm = 400.0,
+                            Notes = "Basado en reglamentación municipal típica en México (p.ej. Zapopan): 400 m²/20 m de frente en esquina, 800 m²/30 m fuera de esquina — aquí se usa el mínimo de esquina. Verificar siempre con el reglamento del municipio específico.",
+                            PrefersCornerLot = true,
+                            PrefersPrimaryRoadAccess = true
+                        },
+                        new
+                        {
+                            Id = 2,
+                            CompetitorExclusionRadiusMeters = 400,
+                            DenueSearchTerm = "farmacia",
+                            DisplayName = "Farmacia",
+                            GooglePlacesType = "pharmacy",
+                            Key = "pharmacy",
+                            MinFrontageMeters = 10.0,
+                            MinLotSizeSqm = 250.0,
+                            MinPopulationInRadius = 8000,
+                            Notes = "Estimación: sin cifra oficial pública de cadenas; 250 m² coincide con una nota de prensa sobre Farmacias Guadalajara, el resto es inferencia de bienes raíces comercial.",
+                            PopulationRadiusKm = 1.5,
+                            PrefersCornerLot = true,
+                            PrefersPrimaryRoadAccess = true
+                        },
+                        new
+                        {
+                            Id = 3,
+                            CompetitorExclusionRadiusMeters = 300,
+                            DenueSearchTerm = "tienda de conveniencia",
+                            DisplayName = "Tienda de conveniencia",
+                            GooglePlacesType = "convenience_store",
+                            Key = "convenience_store",
+                            MinFrontageMeters = 8.0,
+                            MinLotSizeSqm = 180.0,
+                            Notes = "Estimación. Prioriza tráfico vehicular/peatonal y visibilidad por encima de densidad poblacional.",
+                            PrefersCornerLot = true,
+                            PrefersPrimaryRoadAccess = true
+                        },
+                        new
+                        {
+                            Id = 4,
+                            CompetitorExclusionRadiusMeters = 800,
+                            DenueSearchTerm = "gimnasio",
+                            DisplayName = "Gimnasio",
+                            GooglePlacesType = "gym",
+                            Key = "gym",
+                            MinFrontageMeters = 15.0,
+                            MinLotSizeSqm = 500.0,
+                            MinPopulationInRadius = 15000,
+                            Notes = "Estimación.",
+                            PopulationRadiusKm = 2.0,
+                            PrefersPrimaryRoadAccess = false
+                        },
+                        new
+                        {
+                            Id = 5,
+                            DenueSearchTerm = "restaurante",
+                            DisplayName = "Restaurante",
+                            GooglePlacesType = "restaurant",
+                            Key = "restaurant",
+                            MinFrontageMeters = 12.0,
+                            MinLotSizeSqm = 350.0,
+                            Notes = "Estimación.",
+                            PopulationRadiusKm = 1.5,
+                            PrefersCornerLot = true,
+                            PrefersPrimaryRoadAccess = true
+                        },
+                        new
+                        {
+                            Id = 6,
+                            CompetitorExclusionRadiusMeters = 1500,
+                            DenueSearchTerm = "supermercado",
+                            DisplayName = "Supermercado",
+                            GooglePlacesType = "supermarket",
+                            Key = "supermarket",
+                            MinFrontageMeters = 40.0,
+                            MinLotSizeSqm = 3000.0,
+                            MinPopulationInRadius = 25000,
+                            Notes = "Estimación.",
+                            PopulationRadiusKm = 3.0,
+                            PrefersPrimaryRoadAccess = true
+                        },
+                        new
+                        {
+                            Id = 7,
+                            DenueSearchTerm = "banco",
+                            DisplayName = "Sucursal bancaria",
+                            GooglePlacesType = "bank",
+                            Key = "bank_branch",
+                            MinFrontageMeters = 10.0,
+                            MinLotSizeSqm = 250.0,
+                            Notes = "Estimación; en la práctica prioriza nivel socioeconómico medio-alto más que población total (nivel socioeconómico aún no se pondera en el score).",
+                            PopulationRadiusKm = 1.5,
+                            PrefersCornerLot = true,
+                            PrefersPrimaryRoadAccess = false
+                        },
+                        new
+                        {
+                            Id = 8,
+                            DenueSearchTerm = "colegio",
+                            DisplayName = "Escuela privada",
+                            GooglePlacesType = "school",
+                            Key = "private_school",
+                            MinFrontageMeters = 20.0,
+                            MinLotSizeSqm = 1000.0,
+                            Notes = "Estimación; a diferencia de los demás tipos, evita vialidades primarias de alto tráfico por seguridad y ruido.",
+                            PopulationRadiusKm = 2.0,
+                            PrefersCornerLot = false,
+                            PrefersPrimaryRoadAccess = false
+                        },
+                        new
+                        {
+                            Id = 9,
+                            DenueSearchTerm = "bodega",
+                            DisplayName = "Bodega / nave industrial",
+                            Key = "warehouse",
+                            MinFrontageMeters = 30.0,
+                            MinLotSizeSqm = 3000.0,
+                            Notes = "Estimación; prioriza acceso a vialidad primaria/carretera y uso de suelo industrial, no densidad poblacional.",
+                            PrefersPrimaryRoadAccess = true
+                        });
+                });
+
             modelBuilder.Entity("RealEstate.Api.Models.Entities.ErrorLog", b =>
                 {
                     b.Property<Guid>("Id")

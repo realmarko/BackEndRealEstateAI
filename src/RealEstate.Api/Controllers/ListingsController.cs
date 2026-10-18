@@ -26,6 +26,8 @@ public class ListingsController : ControllerBase
     private readonly IEmailService _emailService;
     private readonly IOwnerAgentLookupService _ownerAgentLookup;
     private readonly IFactSheetBuilderService _factSheetBuilder;
+    private readonly IViabilityAnalysisService _viabilityAnalysis;
+    private readonly IViabilityReportPdfService _viabilityReportPdf;
     private readonly ILogger<ListingsController> _logger;
 
     public ListingsController(
@@ -35,6 +37,8 @@ public class ListingsController : ControllerBase
         IEmailService emailService,
         IOwnerAgentLookupService ownerAgentLookup,
         IFactSheetBuilderService factSheetBuilder,
+        IViabilityAnalysisService viabilityAnalysis,
+        IViabilityReportPdfService viabilityReportPdf,
         ILogger<ListingsController> logger)
     {
         _db = db;
@@ -43,8 +47,29 @@ public class ListingsController : ControllerBase
         _emailService = emailService;
         _ownerAgentLookup = ownerAgentLookup;
         _factSheetBuilder = factSheetBuilder;
+        _viabilityAnalysis = viabilityAnalysis;
+        _viabilityReportPdf = viabilityReportPdf;
         _logger = logger;
     }
+
+    // Property types the "Reporte de Viabilidad Comercial" applies to — mirrors the frontend's
+    // own LAND_OR_COMMERCIAL_PROPERTY_TYPES (listing.model.ts) exactly, so eligibility can't
+    // drift between the page deciding whether to show the section and this endpoint deciding
+    // whether to serve it.
+    private static readonly HashSet<PropertyType> ViabilityEligiblePropertyTypes = new()
+    {
+        PropertyType.Land,
+        PropertyType.Commercial,
+        PropertyType.ResidentialLand,
+        PropertyType.CommercialLand,
+        PropertyType.IndustrialLand,
+        PropertyType.Office,
+        PropertyType.RetailSpace,
+        PropertyType.Building,
+        PropertyType.CommercialStorage,
+        PropertyType.IndustrialStorage,
+        PropertyType.IndustrialWarehouse
+    };
 
     // GET /api/listings?city=Austin&listingType=Sale&minPrice=100000&...
     [HttpGet]
@@ -313,6 +338,96 @@ public class ListingsController : ControllerBase
 
         var pdfBytes = await _factSheetBuilder.BuildAsync(listing);
         return File(pdfBytes, "application/pdf", $"ficha-tecnica-{listing.Id}.pdf");
+    }
+
+    // GET /api/listings/5/viability-preview — the free, ungated part of the "Reporte de
+    // Viabilidad Comercial" lead magnet: every business type's score + why, shown directly on
+    // the listing-detail page. Only the PDF (ViabilityReport below) is gated behind a name/email.
+    // Anonymous, its own rate limit (see Program.cs's "viability" policy) since this fans out to
+    // several DENUE calls per request, not just one.
+    [EnableRateLimiting("viability")]
+    [HttpGet("{id:guid}/viability-preview")]
+    public async Task<ActionResult<ViabilityAnalysisDto>> GetViabilityPreview(Guid id, CancellationToken cancellationToken)
+    {
+        var listing = await _db.Listings.AsNoTracking().FirstOrDefaultAsync(l => l.Id == id, cancellationToken);
+        if (listing is null) return NotFound();
+        if (!ViabilityEligiblePropertyTypes.Contains(listing.PropertyType)) return NotFound();
+
+        var analysis = await _viabilityAnalysis.AnalyzeAsync(
+            listing.Latitude, listing.Longitude,
+            (double?)listing.FrontageWidthMeters, (double?)listing.LotSizeSqm,
+            listing.IsCornerLot, listing.HasPavedStreet,
+            cancellationToken);
+
+        return Ok(analysis);
+    }
+
+    // POST /api/listings/5/viability-report — the gated half: captures the lead (same "answer a
+    // few questions, get the PDF" shape as InquiriesController.Create, but anonymous — a lead
+    // magnet has to work for a visitor with no account), emails the full report, AND hands the
+    // same PDF back in the response body so the page can also offer an immediate download —
+    // the lead is already captured either way, so there's no reason to make them wait on an
+    // email just to see the document they were promised. Also leaves an Inquiry row (SenderId
+    // null — there's no account) so the listing owner sees "someone requested a viability
+    // report" in their own Inquiries inbox, same as any other lead.
+    [EnableRateLimiting("fact-sheet")]
+    [HttpPost("{id:guid}/viability-report")]
+    public async Task<IActionResult> RequestViabilityReport(Guid id, ViabilityReportRequestDto dto, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(dto.Name) || string.IsNullOrWhiteSpace(dto.Email))
+            return BadRequest(new { message = "Name and email are required." });
+
+        var listing = await _db.Listings
+            .Include(l => l.Address)
+            .Include(l => l.Images)
+            .Include(l => l.Owner)
+            .FirstOrDefaultAsync(l => l.Id == id, cancellationToken);
+        if (listing is null) return NotFound();
+        if (!ViabilityEligiblePropertyTypes.Contains(listing.PropertyType)) return NotFound();
+
+        _db.Inquiries.Add(new Inquiry
+        {
+            ListingId = listing.Id,
+            SenderId = null,
+            SenderName = dto.Name,
+            SenderEmail = dto.Email,
+            SenderPhone = dto.Phone,
+            Message = "Solicitó el Reporte de Viabilidad Comercial de este terreno."
+        });
+        await _db.SaveChangesAsync(cancellationToken);
+
+        var analysis = await _viabilityAnalysis.AnalyzeAsync(
+            listing.Latitude, listing.Longitude,
+            (double?)listing.FrontageWidthMeters, (double?)listing.LotSizeSqm,
+            listing.IsCornerLot, listing.HasPavedStreet,
+            cancellationToken);
+        var listingDto = listing.ToDto(isAuthenticated: true);
+        var pdfBytes = _viabilityReportPdf.Generate(listingDto, analysis);
+
+        // Best-effort, same reasoning as SendFactSheetPdfAsync: the lead is already captured
+        // (the Inquiry above) and the PDF is returned to the caller regardless, so a failure
+        // sending the email must never turn into an error response for this request.
+        await SendViabilityReportPdfAsync(dto.Email, dto.Name, listing, pdfBytes);
+
+        return File(pdfBytes, "application/pdf", $"viabilidad-comercial-{listing.Id}.pdf");
+    }
+
+    private async Task SendViabilityReportPdfAsync(string toEmail, string toName, Listing listing, byte[] pdfBytes)
+    {
+        try
+        {
+            var subject = $"Reporte de Viabilidad Comercial: {listing.Title}";
+            var body =
+                "Gracias por tu interés en este predio:\n\n" +
+                $"{listing.Title}\n{listing.Address!.ToEmailLine()}\n\n" +
+                "Adjuntamos el reporte de viabilidad comercial en PDF: qué tan apto es este terreno para distintos giros de negocio y por qué.";
+            var fileName = $"viabilidad-comercial-{listing.Id}.pdf";
+            await _emailService.SendAsync(toEmail, toName, subject, body, new EmailAttachment(pdfBytes, fileName, "application/pdf"));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to send viability-report email to {Email} for listing {ListingId}", toEmail, listing.Id);
+        }
     }
 
     // GET /api/listings/5/price-history — oldest first, so the frontend can render it as a

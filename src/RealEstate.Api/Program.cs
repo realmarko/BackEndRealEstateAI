@@ -89,6 +89,8 @@ builder.Services.Configure<DenueOptions>(builder.Configuration.GetSection("Inegi
 // DENUE should not make every click feel stuck for long.
 builder.Services.AddHttpClient<IDenueService, DenueService>(client => client.Timeout = TimeSpan.FromSeconds(5));
 builder.Services.AddScoped<IPopulationDensityService, PopulationDensityService>();
+builder.Services.AddScoped<IViabilityAnalysisService, ViabilityAnalysisService>();
+builder.Services.AddScoped<IViabilityReportPdfService, ViabilityReportPdfService>();
 
 // ---- In-process cache (single EB instance, no shared/distributed cache needed) — for static
 // reference data that's expensive to refetch on every request but changes rarely, if ever:
@@ -291,6 +293,18 @@ builder.Services.AddRateLimiter(options =>
         factory: _ => new FixedWindowRateLimiterOptions
         {
             PermitLimit = 5,
+            Window = TimeSpan.FromMinutes(1),
+            QueueLimit = 0
+        }));
+    // Per-IP: the viability preview fans out to every BusinessTypeCriteria row (9 today), each
+    // potentially a DENUE call plus one population-density lookup — several times the cost of a
+    // single "geomarketing" request, so it gets its own, tighter budget rather than sharing that
+    // one and silently eating a visitor's whole DENUE allowance in one listing-detail page view.
+    options.AddPolicy("viability", httpContext => RateLimitPartition.GetFixedWindowLimiter(
+        partitionKey: httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+        factory: _ => new FixedWindowRateLimiterOptions
+        {
+            PermitLimit = 10,
             Window = TimeSpan.FromMinutes(1),
             QueueLimit = 0
         }));
