@@ -64,6 +64,12 @@ public class NearbyBusinessDto
     public double Lng { get; set; }
 }
 
+public class LatLngDto
+{
+    public double Lat { get; set; }
+    public double Lng { get; set; }
+}
+
 public class NearbyRoadDto
 {
     public string? Name { get; set; }
@@ -71,6 +77,10 @@ public class NearbyRoadDto
     public int DistanceMeters { get; set; }
     public double Lat { get; set; }
     public double Lng { get; set; }
+    // The road's own shape near this point (OSM way geometry) — lets the frontend draw it
+    // highlighted (a dashed line), not just mark a single point on it. Empty when OSM had no
+    // geometry for this element (shouldn't happen for a way, but defend against it anyway).
+    public List<LatLngDto> Geometry { get; set; } = new();
 }
 
 public class TrafficGeneratorDto

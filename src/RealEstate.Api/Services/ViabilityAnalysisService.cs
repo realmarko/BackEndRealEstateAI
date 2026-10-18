@@ -194,7 +194,8 @@ public class ViabilityAnalysisService : IViabilityAnalysisService
                     Classification = r.Classification,
                     DistanceMeters = (int)Math.Round(GeoFactory.DistanceMeters(lat, lng, r.Lat, r.Lng)),
                     Lat = r.Lat,
-                    Lng = r.Lng
+                    Lng = r.Lng,
+                    Geometry = (r.Geometry ?? Array.Empty<(double Lat, double Lng)>()).Select(p => new LatLngDto { Lat = p.Lat, Lng = p.Lng }).ToList()
                 })
                 .OrderBy(r => r.DistanceMeters)
                 .Take(MaxNearbyRoads)

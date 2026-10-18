@@ -5,7 +5,7 @@ using RealEstate.Api.Extensions;
 
 namespace RealEstate.Api.Services;
 
-public record NearbyRoad(string? Name, string Classification, double Lat, double Lng);
+public record NearbyRoad(string? Name, string Classification, double Lat, double Lng, IReadOnlyList<(double Lat, double Lng)>? Geometry = null);
 
 public interface IRoadNetworkService
 {
@@ -102,7 +102,10 @@ public class OverpassRoadNetworkService : IRoadNetworkService
 
     private async Task<List<NearbyRoad>> FetchAsync(double lat, double lng, string overpassBody, Func<JsonElement, string> classify, CancellationToken cancellationToken)
     {
-        var query = $"[out:json][timeout:10];{overpassBody}out tags center;";
+        // "geom" adds each way's full node-by-node shape (used to draw the highlighted road line
+        // on the map) on top of "center"/"tags", which the rest of this method still relies on —
+        // a bus-stop node has no shape, so geom is simply absent for those elements.
+        var query = $"[out:json][timeout:10];{overpassBody}out tags geom center;";
 
         Exception? lastError = null;
         foreach (var baseUrl in BaseUrls)
@@ -168,13 +171,21 @@ public class OverpassRoadNetworkService : IRoadNetworkService
                 classification = classify(tags);
             }
 
+            List<(double Lat, double Lng)>? geometry = null;
+            if (element.TryGetProperty("geometry", out var geometryEl) && geometryEl.ValueKind == JsonValueKind.Array)
+            {
+                geometry = geometryEl.EnumerateArray()
+                    .Select(p => (p.GetProperty("lat").GetDouble(), p.GetProperty("lon").GetDouble()))
+                    .ToList();
+            }
+
             // OSM represents one physical feature as several elements/segments — key on name
             // (falling back to classification+rounded position for an unnamed one) and keep only
             // the one closest to the search point, not just the first one encountered.
             var key = name ?? $"{classification}:{Math.Round(elementLat, 3)}:{Math.Round(elementLng, 3)}";
             if (!byKey.TryGetValue(key, out var existing) || GeoFactory.DistanceMeters(lat, lng, elementLat, elementLng) < GeoFactory.DistanceMeters(lat, lng, existing.Lat, existing.Lng))
             {
-                byKey[key] = new NearbyRoad(name, classification, elementLat, elementLng);
+                byKey[key] = new NearbyRoad(name, classification, elementLat, elementLng, geometry);
             }
         }
 
