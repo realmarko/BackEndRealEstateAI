@@ -27,13 +27,15 @@ public class OverpassRoadNetworkService : IRoadNetworkService
 {
     // The free public overpass-api.de instance regularly returns "502 ... currently at capacity"
     // under its own documented fair-use throttling (confirmed live, 2026-10-18) — not specific to
-    // this app's traffic. Falling back to a second public mirror (same Overpass QL/API shape,
-    // independently operated) turns a capacity 502 from one into a real result instead of an
-    // empty "nothing found nearby," without needing any credential for either.
+    // this app's traffic. A third mirror was added the same day after overpass-api.de AND
+    // overpass.kumi.systems were both down at once (502 / 500, confirmed live) — two mirrors
+    // wasn't enough headroom. Each is the same Overpass QL/API shape, independently operated, no
+    // credential needed for any of them.
     private static readonly string[] BaseUrls =
     {
         "https://overpass-api.de/api/interpreter",
-        "https://overpass.kumi.systems/api/interpreter"
+        "https://overpass.kumi.systems/api/interpreter",
+        "https://overpass.openstreetmap.fr/api/interpreter"
     };
 
     // Road networks don't change day to day — same reasoning as DenueService's cache.
