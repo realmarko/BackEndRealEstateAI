@@ -106,7 +106,11 @@ public class ViabilityAnalysisService : IViabilityAnalysisService
         ("centro comercial", "Centro comercial", 1500),
         ("hospital", "Hospital", 1500)
     };
-    private const int MaxTrafficGenerators = 5;
+    // Per category, not a flat overall cap — otherwise an area with several nearby schools and
+    // no mall/hospital in range would show 5 schools and nothing else, which reads as "we only
+    // check for schools" rather than "nothing else was found nearby" (reported directly by the
+    // user, 2026-10-18).
+    private const int MaxTrafficGeneratorsPerCategory = 2;
 
     private async Task<List<TrafficGeneratorDto>> FindTrafficGeneratorsAsync(double lat, double lng, CancellationToken cancellationToken)
     {
@@ -115,12 +119,15 @@ public class ViabilityAnalysisService : IViabilityAnalysisService
             try
             {
                 var establishments = await _denueService.ListNearbyAsync(s.SearchTerm, lat, lng, s.RadiusMeters, cancellationToken);
-                return establishments.Select(e => new TrafficGeneratorDto
-                {
-                    Name = e.Name,
-                    DistanceMeters = (int)Math.Round(GeoFactory.DistanceMeters(lat, lng, e.Lat, e.Lng)),
-                    Category = s.Category
-                });
+                return establishments
+                    .Select(e => new TrafficGeneratorDto
+                    {
+                        Name = e.Name,
+                        DistanceMeters = (int)Math.Round(GeoFactory.DistanceMeters(lat, lng, e.Lat, e.Lng)),
+                        Category = s.Category
+                    })
+                    .OrderBy(g => g.DistanceMeters)
+                    .Take(MaxTrafficGeneratorsPerCategory);
             }
             catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or System.Text.Json.JsonException or InvalidOperationException)
             {
@@ -130,7 +137,7 @@ public class ViabilityAnalysisService : IViabilityAnalysisService
         });
 
         var results = await Task.WhenAll(searches);
-        return results.SelectMany(r => r).OrderBy(g => g.DistanceMeters).Take(MaxTrafficGenerators).ToList();
+        return results.SelectMany(r => r).OrderBy(g => g.DistanceMeters).ToList();
     }
 
     private async Task<BusinessViabilityDto> ScoreBusinessAsync(
