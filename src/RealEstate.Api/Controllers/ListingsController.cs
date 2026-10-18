@@ -28,6 +28,7 @@ public class ListingsController : ControllerBase
     private readonly IFactSheetBuilderService _factSheetBuilder;
     private readonly IViabilityAnalysisService _viabilityAnalysis;
     private readonly IViabilityReportPdfService _viabilityReportPdf;
+    private readonly IStaticMapService _staticMap;
     private readonly ILogger<ListingsController> _logger;
 
     public ListingsController(
@@ -39,6 +40,7 @@ public class ListingsController : ControllerBase
         IFactSheetBuilderService factSheetBuilder,
         IViabilityAnalysisService viabilityAnalysis,
         IViabilityReportPdfService viabilityReportPdf,
+        IStaticMapService staticMap,
         ILogger<ListingsController> logger)
     {
         _db = db;
@@ -49,6 +51,7 @@ public class ListingsController : ControllerBase
         _factSheetBuilder = factSheetBuilder;
         _viabilityAnalysis = viabilityAnalysis;
         _viabilityReportPdf = viabilityReportPdf;
+        _staticMap = staticMap;
         _logger = logger;
     }
 
@@ -349,18 +352,30 @@ public class ListingsController : ControllerBase
     [HttpGet("{id:guid}/viability-preview")]
     public async Task<ActionResult<ViabilityAnalysisDto>> GetViabilityPreview(Guid id, CancellationToken cancellationToken)
     {
-        var listing = await _db.Listings.AsNoTracking().FirstOrDefaultAsync(l => l.Id == id, cancellationToken);
+        var listing = await _db.Listings.AsNoTracking().Include(l => l.LandUseCategory).FirstOrDefaultAsync(l => l.Id == id, cancellationToken);
         if (listing is null) return NotFound();
         if (!ViabilityEligiblePropertyTypes.Contains(listing.PropertyType)) return NotFound();
 
-        var analysis = await _viabilityAnalysis.AnalyzeAsync(
-            listing.Latitude, listing.Longitude,
-            (double?)listing.FrontageWidthMeters, (double?)listing.LotSizeSqm,
-            listing.IsCornerLot, listing.HasPavedStreet,
-            cancellationToken);
+        var analysis = await _viabilityAnalysis.AnalyzeAsync(listing.Latitude, listing.Longitude, BuildLotContext(listing), cancellationToken);
 
         return Ok(analysis);
     }
+
+    private static ViabilityLotContext BuildLotContext(Listing listing) => new(
+        FrontageMeters: (double?)listing.FrontageWidthMeters,
+        LotSizeSqm: (double?)listing.LotSizeSqm,
+        IsCornerLot: listing.IsCornerLot,
+        HasPavedStreet: listing.HasPavedStreet,
+        HasVehicleAccess: listing.HasVehicleAccess,
+        LandUseCategoryName: listing.LandUseCategory?.Name,
+        HasPotableWater: listing.HasPotableWater,
+        HasDrainage: listing.HasDrainage,
+        HasElectricity: listing.HasElectricity,
+        Topography: listing.Topography,
+        IsFloodRiskZone: listing.IsFloodRiskZone,
+        IsFreeOfLiens: listing.IsFreeOfLiens,
+        HasPropertyTaxDebt: listing.HasPropertyTaxDebt,
+        HasWaterDebt: listing.HasWaterDebt);
 
     // POST /api/listings/5/viability-report — the gated half: captures the lead (same "answer a
     // few questions, get the PDF" shape as InquiriesController.Create, but anonymous — a lead
@@ -381,6 +396,7 @@ public class ListingsController : ControllerBase
             .Include(l => l.Address)
             .Include(l => l.Images)
             .Include(l => l.Owner)
+            .Include(l => l.LandUseCategory)
             .FirstOrDefaultAsync(l => l.Id == id, cancellationToken);
         if (listing is null) return NotFound();
         if (!ViabilityEligiblePropertyTypes.Contains(listing.PropertyType)) return NotFound();
@@ -396,13 +412,12 @@ public class ListingsController : ControllerBase
         });
         await _db.SaveChangesAsync(cancellationToken);
 
-        var analysis = await _viabilityAnalysis.AnalyzeAsync(
-            listing.Latitude, listing.Longitude,
-            (double?)listing.FrontageWidthMeters, (double?)listing.LotSizeSqm,
-            listing.IsCornerLot, listing.HasPavedStreet,
-            cancellationToken);
+        var analysisTask = _viabilityAnalysis.AnalyzeAsync(listing.Latitude, listing.Longitude, BuildLotContext(listing), cancellationToken);
+        var mapImageTask = _staticMap.GetStaticMapAsync(listing.Latitude, listing.Longitude, cancellationToken);
+        await Task.WhenAll(analysisTask, mapImageTask);
+
         var listingDto = listing.ToDto(isAuthenticated: true);
-        var pdfBytes = _viabilityReportPdf.Generate(listingDto, analysis);
+        var pdfBytes = _viabilityReportPdf.Generate(listingDto, analysisTask.Result, mapImageTask.Result);
 
         // Best-effort, same reasoning as SendFactSheetPdfAsync: the lead is already captured
         // (the Inquiry above) and the PDF is returned to the caller regardless, so a failure

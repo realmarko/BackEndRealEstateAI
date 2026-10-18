@@ -37,6 +37,16 @@ public class AgebBoundaryDto
     public string? EstimatedSocioeconomicLevel { get; set; }
 }
 
+public class AgebCompetitorDensityDto
+{
+    public string Cvegeo { get; set; } = string.Empty;
+    public JsonElement Boundary { get; set; }
+    // Count at this AGEB's centroid, not a true area aggregate (see GeomarketingController's
+    // endpoint comment) — null means the DENUE lookup failed for this one AGEB, shown distinct
+    // from a genuine 0.
+    public int? CompetitorCount { get; set; }
+}
+
 public class PopulationDensityDto
 {
     public int Population { get; set; }

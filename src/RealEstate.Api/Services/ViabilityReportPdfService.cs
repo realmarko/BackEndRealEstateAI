@@ -7,7 +7,11 @@ namespace RealEstate.Api.Services;
 
 public interface IViabilityReportPdfService
 {
-    byte[] Generate(ListingDto listing, ViabilityAnalysisDto analysis);
+    // mapImage: a static map PNG centered on the listing (IStaticMapService), or null — the
+    // caller fetches it (best-effort, may fail/be unconfigured) rather than this service reaching
+    // out to Google itself, same separation as FactSheetBuilderService downloading photos before
+    // calling FactSheetPdfService.Generate.
+    byte[] Generate(ListingDto listing, ViabilityAnalysisDto analysis, byte[]? mapImage = null);
 }
 
 // Renders the "Reporte de Viabilidad Comercial" PDF emailed to a lead after they request it on a
@@ -30,7 +34,7 @@ public class ViabilityReportPdfService : IViabilityReportPdfService
         PdfFonts.EnsureRegistered();
     }
 
-    public byte[] Generate(ListingDto listing, ViabilityAnalysisDto analysis)
+    public byte[] Generate(ListingDto listing, ViabilityAnalysisDto analysis, byte[]? mapImage = null)
     {
         var ranked = analysis.Businesses.OrderByDescending(b => b.Score).Take(MaxBusinessesShown).ToList();
 
@@ -47,7 +51,15 @@ public class ViabilityReportPdfService : IViabilityReportPdfService
                 page.Content().PaddingTop(16).Column(column =>
                 {
                     column.Spacing(12);
+                    if (mapImage is not null)
+                    {
+                        column.Item().Height(140).Element(c => c.Image(mapImage).FitArea());
+                    }
                     column.Item().Element(c => ComposeSummary(c, analysis));
+                    if (analysis.TrafficGenerators.Count > 0)
+                    {
+                        column.Item().Element(c => ComposeTrafficGenerators(c, analysis.TrafficGenerators));
+                    }
                     foreach (var business in ranked)
                     {
                         column.Item().Element(c => ComposeBusiness(c, business));
@@ -92,6 +104,23 @@ public class ViabilityReportPdfService : IViabilityReportPdfService
         });
     }
 
+    private static void ComposeTrafficGenerators(IContainer container, List<TrafficGeneratorDto> generators)
+    {
+        container.Border(1).BorderColor(Colors.Grey.Lighten2).Padding(10).Column(col =>
+        {
+            col.Item().Text("Generadores de tráfico cercanos").FontSize(11).Bold().FontColor(Navy);
+            foreach (var generator in generators)
+            {
+                col.Item().PaddingTop(3).Row(row =>
+                {
+                    row.RelativeItem(3).Text(generator.Name).FontSize(9);
+                    row.RelativeItem(2).Text(generator.Category).FontSize(9).FontColor(Colors.Grey.Darken1);
+                    row.ConstantItem(60).AlignRight().Text($"{generator.DistanceMeters:N0} m").FontSize(9);
+                });
+            }
+        });
+    }
+
     private static void ComposeBusiness(IContainer container, BusinessViabilityDto business)
     {
         var scoreColor = business.Score >= 70 ? "#15803d" : business.Score >= 40 ? "#b45309" : "#b91c1c";
@@ -113,6 +142,20 @@ public class ViabilityReportPdfService : IViabilityReportPdfService
                     row.ConstantItem(16).Text(mark).FontColor(markColor).Bold();
                     row.RelativeItem().Text(check.Detail).FontSize(9);
                 });
+            }
+
+            if (business.ScoreCapReason is not null)
+            {
+                col.Item().PaddingTop(4).Text(business.ScoreCapReason).FontSize(8).Italic().FontColor("#b91c1c");
+            }
+
+            if (business.NearbyCompetitors.Count > 0)
+            {
+                col.Item().PaddingTop(6).Text("Competidores cercanos:").FontSize(8).SemiBold().FontColor(Colors.Grey.Darken2);
+                foreach (var competitor in business.NearbyCompetitors)
+                {
+                    col.Item().PaddingLeft(8).Text($"{competitor.Name} — {competitor.DistanceMeters:N0} m").FontSize(8).FontColor(Colors.Grey.Darken2);
+                }
             }
         });
     }

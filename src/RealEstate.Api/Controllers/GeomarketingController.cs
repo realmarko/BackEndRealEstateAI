@@ -279,4 +279,82 @@ public class GeomarketingController : ControllerBase
             return StatusCode(StatusCodes.Status500InternalServerError, new { message = "Could not load census zones right now." });
         }
     }
+
+    // Bounds how many AGEBs (and therefore how many DENUE calls) one request can trigger — the
+    // opt-in competitor-density map layer is explicitly "on demand, with a limit" (not an
+    // automatic on-pan layer like the plain AGEB/socioeconomic one above), so this caps a single
+    // click's cost instead of silently truncating or quietly burning the DENUE budget.
+    private const int MaxCompetitorDensityAgebs = 40;
+
+    // GET /api/geomarketing/competitor-density?searchTerm=farmacia&radiusMeters=1000&swLat=...
+    // Same AGEBs as /agebs above, each colored by a DENUE competitor count at its centroid
+    // instead of by socioeconomic level — the "mapa de color competitivo" layer, toggled on by
+    // the visitor (see map-view.component.ts), not refetched automatically on every pan. Each
+    // AGEB's own DenueService.CountNearbyAsync call is already cached 24h, so re-opening the same
+    // area a second time is effectively free; only a genuinely new area pays the real DENUE cost.
+    [HttpGet("competitor-density")]
+    [EnableRateLimiting("geomarketing")]
+    public async Task<ActionResult<List<AgebCompetitorDensityDto>>> GetCompetitorDensity(
+        [FromQuery] string searchTerm,
+        [FromQuery] int radiusMeters,
+        [FromQuery] double swLat,
+        [FromQuery] double swLng,
+        [FromQuery] double neLat,
+        [FromQuery] double neLng,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(searchTerm) || !AllowedSearchTerms.Contains(searchTerm))
+            return BadRequest(new { message = "searchTerm is not a supported business category." });
+        if (radiusMeters is <= 0 or > 5000)
+            return BadRequest(new { message = "radiusMeters must be between 1 and 5000." });
+        if (!GeoValidation.IsValidLat(swLat)) return BadRequest(new { message = "swLat must be a finite number between -90 and 90." });
+        if (!GeoValidation.IsValidLat(neLat)) return BadRequest(new { message = "neLat must be a finite number between -90 and 90." });
+        if (!GeoValidation.IsValidLng(swLng)) return BadRequest(new { message = "swLng must be a finite number between -180 and 180." });
+        if (!GeoValidation.IsValidLng(neLng)) return BadRequest(new { message = "neLng must be a finite number between -180 and 180." });
+        if (swLat >= neLat) return BadRequest(new { message = "swLat must be less than neLat." });
+        if (swLng >= neLng) return BadRequest(new { message = "swLng must be less than neLng." });
+        if (neLat - swLat > MaxAgebBoundsSpanDegrees || neLng - swLng > MaxAgebBoundsSpanDegrees)
+            return BadRequest(new { message = $"Bounding box must not exceed {MaxAgebBoundsSpanDegrees} degrees in either dimension." });
+
+        var bbox = GeoFactory.CreateBoundingBox(swLat, swLng, neLat, neLng);
+
+        try
+        {
+            var agebs = await _db.AgebPopulations.AsNoTracking()
+                .Where(a => a.Boundary.Intersects(bbox))
+                .ToListAsync(cancellationToken);
+
+            if (agebs.Count > MaxCompetitorDensityAgebs)
+                return BadRequest(new { message = $"Too many census zones in view ({agebs.Count}) — zoom in further to use the competitor-density layer (max {MaxCompetitorDensityAgebs})." });
+
+            var countTasks = agebs.Select(async a =>
+            {
+                var centroid = a.Boundary.Centroid;
+                try
+                {
+                    return (int?)await _denueService.CountNearbyAsync(searchTerm, centroid.Y, centroid.X, radiusMeters, cancellationToken);
+                }
+                catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or System.Text.Json.JsonException or InvalidOperationException)
+                {
+                    _logger.LogWarning(ex, "DENUE competitor-density lookup failed for AGEB {Cvegeo}", a.Cvegeo);
+                    return null;
+                }
+            });
+            var counts = await Task.WhenAll(countTasks);
+
+            var result = agebs.Select((a, i) => new AgebCompetitorDensityDto
+            {
+                Cvegeo = a.Cvegeo,
+                Boundary = ToGeoJsonElement(a.Boundary),
+                CompetitorCount = counts[i]
+            }).ToList();
+
+            return Ok(result);
+        }
+        catch (Exception ex) when (ex is NpgsqlException or InvalidOperationException)
+        {
+            _logger.LogError(ex, "Failed to compute competitor density in bounds {SwLat},{SwLng} - {NeLat},{NeLng}", swLat, swLng, neLat, neLng);
+            return StatusCode(StatusCodes.Status500InternalServerError, new { message = "Could not load competitor density right now." });
+        }
+    }
 }

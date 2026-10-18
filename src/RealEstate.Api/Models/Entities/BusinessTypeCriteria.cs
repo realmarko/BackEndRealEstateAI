@@ -33,6 +33,11 @@ public class BusinessTypeCriteria
 
     public bool PrefersPrimaryRoadAccess { get; set; }
 
+    // Comma-separated LandUseCategory.Name values this business type can legally operate on
+    // (e.g. "Urbano,Comercial") — checked against the listing's own LandUseCategory, not an
+    // external lookup, so (unlike the DENUE/population checks) it's never "no data available."
+    public string AcceptableLandUseCategories { get; set; } = string.Empty;
+
     // Catchment used for the population-density check — null means this business type weighs
     // traffic/access over population (e.g. a convenience store or gas station).
     public double? PopulationRadiusKm { get; set; }

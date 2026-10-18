@@ -361,6 +361,12 @@ namespace RealEstate.Api.Migrations
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
 
+                    b.Property<string>("AcceptableLandUseCategories")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("acceptable_land_use_categories");
+
                     b.Property<int?>("CompetitorExclusionRadiusMeters")
                         .HasColumnType("integer")
                         .HasColumnName("competitor_exclusion_radius_meters");
@@ -431,6 +437,7 @@ namespace RealEstate.Api.Migrations
                         new
                         {
                             Id = 1,
+                            AcceptableLandUseCategories = "Urbano,Comercial",
                             CompetitorExclusionRadiusMeters = 1500,
                             DenueSearchTerm = "gasolinera",
                             DisplayName = "Gasolinera",
@@ -445,6 +452,7 @@ namespace RealEstate.Api.Migrations
                         new
                         {
                             Id = 2,
+                            AcceptableLandUseCategories = "Urbano,Comercial",
                             CompetitorExclusionRadiusMeters = 400,
                             DenueSearchTerm = "farmacia",
                             DisplayName = "Farmacia",
@@ -461,6 +469,7 @@ namespace RealEstate.Api.Migrations
                         new
                         {
                             Id = 3,
+                            AcceptableLandUseCategories = "Urbano,Comercial",
                             CompetitorExclusionRadiusMeters = 300,
                             DenueSearchTerm = "tienda de conveniencia",
                             DisplayName = "Tienda de conveniencia",
@@ -475,6 +484,7 @@ namespace RealEstate.Api.Migrations
                         new
                         {
                             Id = 4,
+                            AcceptableLandUseCategories = "Urbano,Comercial",
                             CompetitorExclusionRadiusMeters = 800,
                             DenueSearchTerm = "gimnasio",
                             DisplayName = "Gimnasio",
@@ -490,6 +500,7 @@ namespace RealEstate.Api.Migrations
                         new
                         {
                             Id = 5,
+                            AcceptableLandUseCategories = "Urbano,Comercial",
                             DenueSearchTerm = "restaurante",
                             DisplayName = "Restaurante",
                             GooglePlacesType = "restaurant",
@@ -504,6 +515,7 @@ namespace RealEstate.Api.Migrations
                         new
                         {
                             Id = 6,
+                            AcceptableLandUseCategories = "Urbano,Comercial",
                             CompetitorExclusionRadiusMeters = 1500,
                             DenueSearchTerm = "supermercado",
                             DisplayName = "Supermercado",
@@ -519,6 +531,7 @@ namespace RealEstate.Api.Migrations
                         new
                         {
                             Id = 7,
+                            AcceptableLandUseCategories = "Urbano,Comercial",
                             DenueSearchTerm = "banco",
                             DisplayName = "Sucursal bancaria",
                             GooglePlacesType = "bank",
@@ -533,6 +546,7 @@ namespace RealEstate.Api.Migrations
                         new
                         {
                             Id = 8,
+                            AcceptableLandUseCategories = "Urbano,Comercial,Residencial",
                             DenueSearchTerm = "colegio",
                             DisplayName = "Escuela privada",
                             GooglePlacesType = "school",
@@ -547,6 +561,7 @@ namespace RealEstate.Api.Migrations
                         new
                         {
                             Id = 9,
+                            AcceptableLandUseCategories = "Industrial,Urbano",
                             DenueSearchTerm = "bodega",
                             DisplayName = "Bodega / nave industrial",
                             Key = "warehouse",

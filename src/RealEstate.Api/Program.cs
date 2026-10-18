@@ -92,6 +92,12 @@ builder.Services.AddScoped<IPopulationDensityService, PopulationDensityService>(
 builder.Services.AddScoped<IViabilityAnalysisService, ViabilityAnalysisService>();
 builder.Services.AddScoped<IViabilityReportPdfService, ViabilityReportPdfService>();
 
+// A server-side Google Maps key (separate from the browser-exposed one) just for embedding a
+// static map image in the viability-report PDF — see GoogleMapsOptions for why it has to be a
+// different key than the frontend's.
+builder.Services.Configure<GoogleMapsOptions>(builder.Configuration.GetSection("GoogleMaps"));
+builder.Services.AddHttpClient<IStaticMapService, StaticMapService>(client => client.Timeout = TimeSpan.FromSeconds(5));
+
 // ---- In-process cache (single EB instance, no shared/distributed cache needed) — for static
 // reference data that's expensive to refetch on every request but changes rarely, if ever:
 // land-use categories, states, municipalities (see those controllers for cache keys/TTLs).

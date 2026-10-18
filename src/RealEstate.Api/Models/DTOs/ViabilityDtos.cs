@@ -12,6 +12,7 @@ public class BusinessTypeCriteriaDto
     public double? PopulationRadiusKm { get; set; }
     public int? MinPopulationInRadius { get; set; }
     public int? CompetitorExclusionRadiusMeters { get; set; }
+    public string AcceptableLandUseCategories { get; set; } = string.Empty;
     public string Notes { get; set; } = string.Empty;
 }
 
@@ -27,6 +28,7 @@ public class BusinessTypeCriteriaUpdateDto
     public double? PopulationRadiusKm { get; set; }
     public int? MinPopulationInRadius { get; set; }
     public int? CompetitorExclusionRadiusMeters { get; set; }
+    public string AcceptableLandUseCategories { get; set; } = string.Empty;
     public string Notes { get; set; } = string.Empty;
 }
 
@@ -38,7 +40,33 @@ public class BusinessViabilityDto
     public string DisplayName { get; set; } = string.Empty;
     // 0-100. See ViabilityAnalysisService for the weighting.
     public int Score { get; set; }
+    // Set when a hard-blocker check (flood risk, unresolved liens/debts) caps the score below
+    // what the passed/applicable ratio alone would give — explains the gap between "most checks
+    // passed" and a low score, instead of leaving it looking inconsistent.
+    public string? ScoreCapReason { get; set; }
     public List<ViabilityCheckDto> Checks { get; set; } = new();
+    // Named establishments behind the "Competencia directa" check's count — nearest first,
+    // capped (see ViabilityAnalysisService.MaxNamedCompetitors). Empty when the business type
+    // isn't competitor-sensitive (no CompetitorExclusionRadiusMeters) or none were found.
+    public List<NearbyBusinessDto> NearbyCompetitors { get; set; } = new();
+}
+
+// A named, real establishment near the point — either a same-category competitor
+// (BusinessViabilityDto.NearbyCompetitors) or a traffic generator (ViabilityAnalysisDto.
+// TrafficGenerators). Distance is straight-line (GeoFactory.DistanceMeters), not driving distance.
+public class NearbyBusinessDto
+{
+    public string Name { get; set; } = string.Empty;
+    public int DistanceMeters { get; set; }
+}
+
+public class TrafficGeneratorDto
+{
+    public string Name { get; set; } = string.Empty;
+    public int DistanceMeters { get; set; }
+    // Human label for which search turned this up — "Escuela", "Centro comercial", "Transporte
+    // público" (see ViabilityAnalysisService.TrafficGeneratorSearches).
+    public string Category { get; set; } = string.Empty;
 }
 
 public class ViabilityCheckDto
@@ -65,4 +93,8 @@ public class ViabilityAnalysisDto
     public double? SocioeconomicScore { get; set; }
     public bool PopulationDataAvailable { get; set; }
     public List<BusinessViabilityDto> Businesses { get; set; } = new();
+    // Nearby anchors (schools, malls, transit) a business would benefit from being close to —
+    // shared across every business type, unlike NearbyCompetitors which is per-type. See
+    // ViabilityAnalysisService.TrafficGeneratorSearches for what's searched.
+    public List<TrafficGeneratorDto> TrafficGenerators { get; set; } = new();
 }
