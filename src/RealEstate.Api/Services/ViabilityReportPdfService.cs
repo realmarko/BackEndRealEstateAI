@@ -48,14 +48,18 @@ public class ViabilityReportPdfService : IViabilityReportPdfService
 
                 page.Header().Element(c => ComposeHeader(c, listing));
 
+                var topBusiness = analysis.Businesses.OrderByDescending(b => b.Score).FirstOrDefault();
+
                 page.Content().PaddingTop(16).Column(column =>
                 {
                     column.Spacing(12);
+                    column.Item().Element(c => ComposeKpiRow(c, listing, analysis, topBusiness));
+                    column.Item().Element(c => ComposeFactSheet(c, listing));
                     if (mapImage is not null)
                     {
                         column.Item().Height(140).Element(c => c.Image(mapImage).FitArea());
+                        column.Item().Element(ComposeLegend);
                     }
-                    column.Item().Element(c => ComposeSummary(c, analysis));
                     if (analysis.NearbyRoads.Count > 0)
                     {
                         column.Item().Element(c => ComposeNearbyRoads(c, analysis.NearbyRoads));
@@ -94,17 +98,96 @@ public class ViabilityReportPdfService : IViabilityReportPdfService
         });
     }
 
-    private static void ComposeSummary(IContainer container, ViabilityAnalysisDto analysis)
+    private static void ComposeKpiRow(IContainer container, ListingDto listing, ViabilityAnalysisDto analysis, BusinessViabilityDto? topBusiness)
     {
-        container.Border(1).BorderColor(Colors.Grey.Lighten2).Padding(10).Row(row =>
+        container.Row(row =>
         {
-            row.RelativeItem().Text(text =>
+            row.Spacing(10);
+            row.RelativeItem().Element(c => ComposeKpiTile(
+                c, "SUPERFICIE TOTAL",
+                listing.LotSizeSqm is { } lot ? $"{lot:N0} m²" : "—",
+                listing.FrontageWidthMeters is { } frontage ? $"Frente: {frontage:0.#} m" : null));
+
+            row.RelativeItem().Element(c => ComposeKpiTile(
+                c, "POBLACIÓN CERCANA",
+                analysis.PopulationDataAvailable ? $"{analysis.PopulationInRadius:N0}" : "—",
+                analysis.PopulationDataAvailable ? "habitantes" : "dato no disponible"));
+
+            row.RelativeItem().Element(c => ComposeKpiTile(
+                c, "MEJOR VIABILIDAD",
+                topBusiness is not null ? $"{topBusiness.Score}%" : "—",
+                topBusiness?.DisplayName));
+        });
+    }
+
+    private static void ComposeKpiTile(IContainer container, string label, string value, string? sub)
+    {
+        container.Background("#eff6ff").Border(1).BorderColor("#bfdbfe").Padding(8).Column(col =>
+        {
+            col.Item().AlignCenter().Text(label).FontSize(7).Bold().FontColor(Colors.Grey.Darken2);
+            col.Item().AlignCenter().Text(value).FontSize(16).Bold().FontColor(Navy);
+            if (sub is not null)
             {
-                text.Span("Población estimada de la zona: ").SemiBold();
-                text.Span(analysis.PopulationDataAvailable
-                    ? $"{analysis.PopulationInRadius:N0} habitantes"
-                    : "dato no disponible para esta ubicación todavía.");
-            });
+                col.Item().AlignCenter().Text(sub).FontSize(7).FontColor(Colors.Grey.Darken1);
+            }
+        });
+    }
+
+    private static void ComposeFactSheet(IContainer container, ListingDto listing)
+    {
+        container.Border(1).BorderColor(Colors.Grey.Lighten2).Padding(10).Column(col =>
+        {
+            col.Item().Text("Ficha técnica del predio").FontSize(11).Bold().FontColor(Navy);
+
+            ComposeFactRow(col, "Tipología", listing.IsCornerLot is { } corner ? (corner ? "Esquina" : "No es esquina") : "—");
+            ComposeFactRow(col, "Estatus", listing.Topography is { } topo ? (topo == "Plana" ? "Terreno plano" : "Terreno inclinado") : "—");
+            ComposeFactRow(col, "Acceso", listing.HasPavedStreet is { } paved ? (paved ? "Calle pavimentada" : "Sin pavimentar") : "—");
+        });
+    }
+
+    private static void ComposeFactRow(ColumnDescriptor col, string label, string value)
+    {
+        col.Item().PaddingTop(3).Row(row =>
+        {
+            row.ConstantItem(90).Text(label).FontSize(9).SemiBold().FontColor(Colors.Grey.Darken2);
+            row.RelativeItem().Text(value).FontSize(9);
+        });
+    }
+
+    // Mirrors the interactive page's own map-legend panel (same categories/colors) — the PDF's
+    // static map plots the same markers/road lines, so it needs the same key explaining them.
+    private static void ComposeLegend(IContainer container)
+    {
+        (string Label, string Color)[] markers =
+        {
+            ("Escuela", "#15803d"), ("Centro comercial", "#c2410c"), ("Hospital", "#b91c1c"), ("Transporte público", "#2563eb")
+        };
+        (string Label, string Color)[] roads =
+        {
+            ("Autopista", "#7f1d1d"), ("Vía rápida", "#c2410c"), ("Avenida principal", "#dc2626"), ("Avenida secundaria", "#16a34a")
+        };
+
+        container.Border(1).BorderColor(Colors.Grey.Lighten2).Padding(8).Row(row =>
+        {
+            row.Spacing(14);
+            foreach (var (label, color) in markers)
+            {
+                row.AutoItem().Row(r =>
+                {
+                    r.ConstantItem(8).Height(8).Background(color);
+                    r.ConstantItem(4);
+                    r.AutoItem().Text(label).FontSize(7).FontColor(Colors.Grey.Darken2);
+                });
+            }
+            foreach (var (label, color) in roads)
+            {
+                row.AutoItem().Row(r =>
+                {
+                    r.ConstantItem(12).Height(3).Background(color);
+                    r.ConstantItem(4);
+                    r.AutoItem().Text(label).FontSize(7).FontColor(Colors.Grey.Darken2);
+                });
+            }
         });
     }
 
