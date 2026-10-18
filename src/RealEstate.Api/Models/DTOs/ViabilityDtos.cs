@@ -58,6 +58,10 @@ public class NearbyBusinessDto
 {
     public string Name { get; set; } = string.Empty;
     public int DistanceMeters { get; set; }
+    // So the frontend can plot a real marker on the viability-report map, not just list the
+    // name/distance as text.
+    public double Lat { get; set; }
+    public double Lng { get; set; }
 }
 
 public class NearbyRoadDto
@@ -65,6 +69,8 @@ public class NearbyRoadDto
     public string? Name { get; set; }
     public string Classification { get; set; } = string.Empty;
     public int DistanceMeters { get; set; }
+    public double Lat { get; set; }
+    public double Lng { get; set; }
 }
 
 public class TrafficGeneratorDto
@@ -74,6 +80,8 @@ public class TrafficGeneratorDto
     // Human label for which search turned this up — "Escuela", "Centro comercial", "Transporte
     // público" (see ViabilityAnalysisService.TrafficGeneratorSearches).
     public string Category { get; set; } = string.Empty;
+    public double Lat { get; set; }
+    public double Lng { get; set; }
 }
 
 public class ViabilityCheckDto

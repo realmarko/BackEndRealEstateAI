@@ -133,7 +133,9 @@ public class ViabilityAnalysisService : IViabilityAnalysisService
                     {
                         Name = e.Name,
                         DistanceMeters = (int)Math.Round(GeoFactory.DistanceMeters(lat, lng, e.Lat, e.Lng)),
-                        Category = s.Category
+                        Category = s.Category,
+                        Lat = e.Lat,
+                        Lng = e.Lng
                     })
                     .OrderBy(g => g.DistanceMeters)
                     .Take(MaxTrafficGeneratorsPerCategory);
@@ -162,7 +164,9 @@ public class ViabilityAnalysisService : IViabilityAnalysisService
                 {
                     Name = t.Name ?? t.Classification,
                     DistanceMeters = (int)Math.Round(GeoFactory.DistanceMeters(lat, lng, t.Lat, t.Lng)),
-                    Category = t.Classification
+                    Category = t.Classification,
+                    Lat = t.Lat,
+                    Lng = t.Lng
                 })
                 .GroupBy(t => t.Category)
                 .SelectMany(g => g.OrderBy(t => t.DistanceMeters).Take(MaxTrafficGeneratorsPerCategory))
@@ -188,7 +192,9 @@ public class ViabilityAnalysisService : IViabilityAnalysisService
                 {
                     Name = r.Name,
                     Classification = r.Classification,
-                    DistanceMeters = (int)Math.Round(GeoFactory.DistanceMeters(lat, lng, r.Lat, r.Lng))
+                    DistanceMeters = (int)Math.Round(GeoFactory.DistanceMeters(lat, lng, r.Lat, r.Lng)),
+                    Lat = r.Lat,
+                    Lng = r.Lng
                 })
                 .OrderBy(r => r.DistanceMeters)
                 .Take(MaxNearbyRoads)
@@ -405,7 +411,7 @@ public class ViabilityAnalysisService : IViabilityAnalysisService
                         : $"{establishments.Count} competidor(es) de este giro dentro de {criterion.CompetitorExclusionRadiusMeters.Value:N0} m."
                 });
                 nearbyCompetitors = establishments
-                    .Select(e => new NearbyBusinessDto { Name = e.Name, DistanceMeters = (int)Math.Round(GeoFactory.DistanceMeters(lat, lng, e.Lat, e.Lng)) })
+                    .Select(e => new NearbyBusinessDto { Name = e.Name, DistanceMeters = (int)Math.Round(GeoFactory.DistanceMeters(lat, lng, e.Lat, e.Lng)), Lat = e.Lat, Lng = e.Lng })
                     .OrderBy(e => e.DistanceMeters)
                     .Take(MaxNamedCompetitors)
                     .ToList();
