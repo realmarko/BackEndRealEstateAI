@@ -105,9 +105,13 @@ public class OverpassRoadNetworkService : IRoadNetworkService
     private async Task<List<NearbyRoad>> FetchAsync(double lat, double lng, string overpassBody, Func<JsonElement, string> classify, CancellationToken cancellationToken)
     {
         // "geom" adds each way's full node-by-node shape (used to draw the highlighted road line
-        // on the map) on top of "center"/"tags", which the rest of this method still relies on —
-        // a bus-stop node has no shape, so geom is simply absent for those elements.
-        var query = $"[out:json][timeout:10];{overpassBody}out tags geom center;";
+        // on the map); deliberately NOT combined with "center" here — overpass.openstreetmap.fr
+        // (confirmed live, 2026-10-18) treats geom/center as mutually exclusive and silently
+        // returns center-only when both are requested together, dropping geometry entirely, even
+        // though the two reference instances (overpass-api.de, overpass.kumi.systems) return
+        // both just fine. FetchFromAsync derives a way's position from its own geometry instead
+        // of relying on the server's "center", so this works the same across every mirror.
+        var query = $"[out:json][timeout:10];{overpassBody}out tags geom;";
 
         Exception? lastError = null;
         foreach (var baseUrl in BaseUrls)
@@ -145,19 +149,28 @@ public class OverpassRoadNetworkService : IRoadNetworkService
         var byKey = new Dictionary<string, NearbyRoad>();
         foreach (var element in elements.EnumerateArray())
         {
-            // A "way" (queried with `out ... center`) carries its midpoint under "center"; a
-            // "node" (a bus stop is a single point, not a shape) carries its position directly as
-            // top-level "lat"/"lon" — Overpass never adds a "center" wrapper for a node.
-            double elementLat, elementLng;
-            if (element.TryGetProperty("center", out var center))
+            // A "node" (a bus stop is a single point, not a shape) carries its position directly
+            // as top-level "lat"/"lon". A "way" has no such top-level position — its location is
+            // derived below from its own "geometry" (not a server-provided "center"; see FetchAsync
+            // for why), as the midpoint of its shape.
+            List<(double Lat, double Lng)>? geometry = null;
+            if (element.TryGetProperty("geometry", out var geometryEl) && geometryEl.ValueKind == JsonValueKind.Array)
             {
-                elementLat = center.GetProperty("lat").GetDouble();
-                elementLng = center.GetProperty("lon").GetDouble();
+                geometry = geometryEl.EnumerateArray()
+                    .Select(p => (p.GetProperty("lat").GetDouble(), p.GetProperty("lon").GetDouble()))
+                    .ToList();
             }
-            else if (element.TryGetProperty("lat", out var latEl) && element.TryGetProperty("lon", out var lonEl))
+
+            double elementLat, elementLng;
+            if (element.TryGetProperty("lat", out var latEl) && element.TryGetProperty("lon", out var lonEl))
             {
                 elementLat = latEl.GetDouble();
                 elementLng = lonEl.GetDouble();
+            }
+            else if (geometry is { Count: > 0 })
+            {
+                var mid = geometry[geometry.Count / 2];
+                (elementLat, elementLng) = mid;
             }
             else
             {
@@ -171,14 +184,6 @@ public class OverpassRoadNetworkService : IRoadNetworkService
                 if (tags.TryGetProperty("name", out var nameEl)) name = nameEl.GetString();
                 else if (tags.TryGetProperty("ref", out var refEl)) name = refEl.GetString();
                 classification = classify(tags);
-            }
-
-            List<(double Lat, double Lng)>? geometry = null;
-            if (element.TryGetProperty("geometry", out var geometryEl) && geometryEl.ValueKind == JsonValueKind.Array)
-            {
-                geometry = geometryEl.EnumerateArray()
-                    .Select(p => (p.GetProperty("lat").GetDouble(), p.GetProperty("lon").GetDouble()))
-                    .ToList();
             }
 
             // OSM represents one physical feature as several elements/segments — key on name
