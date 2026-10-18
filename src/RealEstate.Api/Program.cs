@@ -89,6 +89,9 @@ builder.Services.Configure<DenueOptions>(builder.Configuration.GetSection("Inegi
 // DENUE should not make every click feel stuck for long.
 builder.Services.AddHttpClient<IDenueService, DenueService>(client => client.Timeout = TimeSpan.FromSeconds(5));
 builder.Services.AddScoped<IPopulationDensityService, PopulationDensityService>();
+// OpenStreetMap Overpass API — free, keyless lookup of real mapped major roads (autopista/vía
+// rápida/avenida principal) near a point, for the viability report's "nearby roads" check.
+builder.Services.AddHttpClient<IRoadNetworkService, OverpassRoadNetworkService>(client => client.Timeout = TimeSpan.FromSeconds(10));
 builder.Services.AddScoped<IViabilityAnalysisService, ViabilityAnalysisService>();
 builder.Services.AddScoped<IViabilityReportPdfService, ViabilityReportPdfService>();
 

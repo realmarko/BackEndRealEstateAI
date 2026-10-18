@@ -23,7 +23,8 @@ public record ViabilityLotContext(
     bool? IsFloodRiskZone,
     bool? IsFreeOfLiens,
     bool? HasPropertyTaxDebt,
-    bool? HasWaterDebt);
+    bool? HasWaterDebt,
+    VialidadType? PrimaryVialidadType);
 
 public interface IViabilityAnalysisService
 {
@@ -44,17 +45,20 @@ public class ViabilityAnalysisService : IViabilityAnalysisService
     private readonly ApplicationDbContext _db;
     private readonly IDenueService _denueService;
     private readonly IPopulationDensityService _populationDensityService;
+    private readonly IRoadNetworkService _roadNetworkService;
     private readonly ILogger<ViabilityAnalysisService> _logger;
 
     public ViabilityAnalysisService(
         ApplicationDbContext db,
         IDenueService denueService,
         IPopulationDensityService populationDensityService,
+        IRoadNetworkService roadNetworkService,
         ILogger<ViabilityAnalysisService> logger)
     {
         _db = db;
         _denueService = denueService;
         _populationDensityService = populationDensityService;
+        _roadNetworkService = roadNetworkService;
         _logger = logger;
     }
 
@@ -78,6 +82,10 @@ public class ViabilityAnalysisService : IViabilityAnalysisService
             _logger.LogWarning(ex, "Population-density lookup failed during viability analysis at {Lat},{Lng}", lat, lng);
         }
 
+        var trafficGeneratorsTask = FindTrafficGeneratorsAsync(lat, lng, cancellationToken);
+        var nearbyRoadsTask = FindNearbyRoadsAsync(lat, lng, cancellationToken);
+        await Task.WhenAll(trafficGeneratorsTask, nearbyRoadsTask);
+
         var result = new ViabilityAnalysisDto
         {
             Lat = lat,
@@ -85,7 +93,8 @@ public class ViabilityAnalysisService : IViabilityAnalysisService
             PopulationDataAvailable = population is not null,
             PopulationInRadius = population?.Population,
             SocioeconomicScore = population?.SocioeconomicScore,
-            TrafficGenerators = await FindTrafficGeneratorsAsync(lat, lng, cancellationToken)
+            TrafficGenerators = trafficGeneratorsTask.Result,
+            NearbyRoads = nearbyRoadsTask.Result
         };
 
         foreach (var criterion in criteria)
@@ -136,8 +145,60 @@ public class ViabilityAnalysisService : IViabilityAnalysisService
             }
         });
 
-        var results = await Task.WhenAll(searches);
-        return results.SelectMany(r => r).OrderBy(g => g.DistanceMeters).ToList();
+        var denueResults = await Task.WhenAll(searches);
+        var transit = await FindTransitGeneratorsAsync(lat, lng, cancellationToken);
+        return denueResults.SelectMany(r => r).Concat(transit).OrderBy(g => g.DistanceMeters).ToList();
+    }
+
+    private const int TransitSearchRadiusMeters = 800;
+
+    private async Task<List<TrafficGeneratorDto>> FindTransitGeneratorsAsync(double lat, double lng, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var transit = await _roadNetworkService.FindTransitNearbyAsync(lat, lng, TransitSearchRadiusMeters, cancellationToken);
+            return transit
+                .Select(t => new TrafficGeneratorDto
+                {
+                    Name = t.Name ?? t.Classification,
+                    DistanceMeters = (int)Math.Round(GeoFactory.DistanceMeters(lat, lng, t.Lat, t.Lng)),
+                    Category = t.Classification
+                })
+                .GroupBy(t => t.Category)
+                .SelectMany(g => g.OrderBy(t => t.DistanceMeters).Take(MaxTrafficGeneratorsPerCategory))
+                .ToList();
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or System.Text.Json.JsonException or InvalidOperationException)
+        {
+            _logger.LogWarning(ex, "Overpass transit lookup failed at {Lat},{Lng}", lat, lng);
+            return new List<TrafficGeneratorDto>();
+        }
+    }
+
+    private const int RoadSearchRadiusMeters = 1500;
+    private const int MaxNearbyRoads = 3;
+
+    private async Task<List<NearbyRoadDto>> FindNearbyRoadsAsync(double lat, double lng, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var roads = await _roadNetworkService.FindMajorRoadsNearbyAsync(lat, lng, RoadSearchRadiusMeters, cancellationToken);
+            return roads
+                .Select(r => new NearbyRoadDto
+                {
+                    Name = r.Name,
+                    Classification = r.Classification,
+                    DistanceMeters = (int)Math.Round(GeoFactory.DistanceMeters(lat, lng, r.Lat, r.Lng))
+                })
+                .OrderBy(r => r.DistanceMeters)
+                .Take(MaxNearbyRoads)
+                .ToList();
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or System.Text.Json.JsonException or InvalidOperationException)
+        {
+            _logger.LogWarning(ex, "Overpass road lookup failed at {Lat},{Lng}", lat, lng);
+            return new List<NearbyRoadDto>();
+        }
     }
 
     private async Task<BusinessViabilityDto> ScoreBusinessAsync(
@@ -205,6 +266,29 @@ public class ViabilityAnalysisService : IViabilityAnalysisService
                 Label = "Acceso vehicular",
                 Passed = lot.HasVehicleAccess.Value,
                 Detail = lot.HasVehicleAccess.Value ? "El predio tiene acceso vehicular." : "El predio no reporta acceso vehicular."
+            });
+        }
+
+        if (lot.PrimaryVialidadType is not null)
+        {
+            var vialidadLabel = lot.PrimaryVialidadType.Value switch
+            {
+                VialidadType.AvenidaPrincipal => "avenida principal",
+                VialidadType.CalleSecundaria => "calle secundaria",
+                VialidadType.Privada => "calle privada",
+                _ => "vialidad"
+            };
+            // Only scored pass/fail for road-dependent giros (same gate as the paved-street check
+            // above) — for a business type that doesn't particularly care about road type, this
+            // is shown as information, not a judgment (Passed left null).
+            var onAvenidaPrincipal = lot.PrimaryVialidadType.Value == VialidadType.AvenidaPrincipal;
+            checks.Add(new ViabilityCheckDto
+            {
+                Label = "Tipo de vialidad",
+                Passed = criterion.PrefersPrimaryRoadAccess ? onAvenidaPrincipal : null,
+                Detail = criterion.PrefersPrimaryRoadAccess
+                    ? $"Vialidad reportada: {vialidadLabel} ({(onAvenidaPrincipal ? "ideal" : "este giro suele preferir una avenida principal")})."
+                    : $"Vialidad reportada: {vialidadLabel}."
             });
         }
 

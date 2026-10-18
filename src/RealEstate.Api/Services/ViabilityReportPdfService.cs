@@ -56,6 +56,10 @@ public class ViabilityReportPdfService : IViabilityReportPdfService
                         column.Item().Height(140).Element(c => c.Image(mapImage).FitArea());
                     }
                     column.Item().Element(c => ComposeSummary(c, analysis));
+                    if (analysis.NearbyRoads.Count > 0)
+                    {
+                        column.Item().Element(c => ComposeNearbyRoads(c, analysis.NearbyRoads));
+                    }
                     if (analysis.TrafficGenerators.Count > 0)
                     {
                         column.Item().Element(c => ComposeTrafficGenerators(c, analysis.TrafficGenerators));
@@ -101,6 +105,23 @@ public class ViabilityReportPdfService : IViabilityReportPdfService
                     ? $"{analysis.PopulationInRadius:N0} habitantes"
                     : "dato no disponible para esta ubicación todavía.");
             });
+        });
+    }
+
+    private static void ComposeNearbyRoads(IContainer container, List<NearbyRoadDto> roads)
+    {
+        container.Border(1).BorderColor(Colors.Grey.Lighten2).Padding(10).Column(col =>
+        {
+            col.Item().Text("Vialidades cercanas").FontSize(11).Bold().FontColor(Navy);
+            foreach (var road in roads)
+            {
+                col.Item().PaddingTop(3).Row(row =>
+                {
+                    row.RelativeItem(3).Text(road.Name ?? road.Classification).FontSize(9);
+                    row.RelativeItem(2).Text(road.Classification).FontSize(9).FontColor(Colors.Grey.Darken1);
+                    row.ConstantItem(60).AlignRight().Text($"{road.DistanceMeters:N0} m").FontSize(9);
+                });
+            }
         });
     }
 

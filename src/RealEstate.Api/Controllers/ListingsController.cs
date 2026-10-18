@@ -375,7 +375,8 @@ public class ListingsController : ControllerBase
         IsFloodRiskZone: listing.IsFloodRiskZone,
         IsFreeOfLiens: listing.IsFreeOfLiens,
         HasPropertyTaxDebt: listing.HasPropertyTaxDebt,
-        HasWaterDebt: listing.HasWaterDebt);
+        HasWaterDebt: listing.HasWaterDebt,
+        PrimaryVialidadType: listing.PrimaryVialidadType);
 
     // POST /api/listings/5/viability-report — the gated half: captures the lead (same "answer a
     // few questions, get the PDF" shape as InquiriesController.Create, but anonymous — a lead

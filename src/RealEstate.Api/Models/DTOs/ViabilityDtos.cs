@@ -60,6 +60,13 @@ public class NearbyBusinessDto
     public int DistanceMeters { get; set; }
 }
 
+public class NearbyRoadDto
+{
+    public string? Name { get; set; }
+    public string Classification { get; set; } = string.Empty;
+    public int DistanceMeters { get; set; }
+}
+
 public class TrafficGeneratorDto
 {
     public string Name { get; set; } = string.Empty;
@@ -97,4 +104,7 @@ public class ViabilityAnalysisDto
     // shared across every business type, unlike NearbyCompetitors which is per-type. See
     // ViabilityAnalysisService.TrafficGeneratorSearches for what's searched.
     public List<TrafficGeneratorDto> TrafficGenerators { get; set; } = new();
+    // Real mapped highways/avenues near the point (OpenStreetMap), not just the listing's own
+    // self-reported PrimaryVialidadType — see ViabilityAnalysisService.FindNearbyRoadsAsync.
+    public List<NearbyRoadDto> NearbyRoads { get; set; } = new();
 }
