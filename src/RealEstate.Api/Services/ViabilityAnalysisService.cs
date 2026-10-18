@@ -46,6 +46,7 @@ public class ViabilityAnalysisService : IViabilityAnalysisService
     private readonly IDenueService _denueService;
     private readonly IPopulationDensityService _populationDensityService;
     private readonly IRoadNetworkService _roadNetworkService;
+    private readonly IErrorLogService _errorLogService;
     private readonly ILogger<ViabilityAnalysisService> _logger;
 
     public ViabilityAnalysisService(
@@ -53,13 +54,31 @@ public class ViabilityAnalysisService : IViabilityAnalysisService
         IDenueService denueService,
         IPopulationDensityService populationDensityService,
         IRoadNetworkService roadNetworkService,
+        IErrorLogService errorLogService,
         ILogger<ViabilityAnalysisService> logger)
     {
         _db = db;
         _denueService = denueService;
         _populationDensityService = populationDensityService;
         _roadNetworkService = roadNetworkService;
+        _errorLogService = errorLogService;
         _logger = logger;
+    }
+
+    // Best-effort: a failure writing to ErrorLog must never mask or compound the original
+    // lookup failure. CancellationToken.None, not the request's own token — the lookup we're
+    // logging about often failed WITH a TaskCanceledException (an HttpClient timeout), and this
+    // write must still land even then (same reasoning as GlobalExceptionMiddleware's own catch).
+    private async Task LogDataSourceFailureAsync(string section, Exception ex)
+    {
+        try
+        {
+            await _errorLogService.LogAsync(ErrorSource.Backend, ErrorSeverity.Warning, section, ex.Message, ex.ToString(), null, null, null, CancellationToken.None);
+        }
+        catch (Exception logEx)
+        {
+            _logger.LogWarning(logEx, "Failed to write ErrorLog for a {Section} data-source failure", section);
+        }
     }
 
     public async Task<ViabilityAnalysisDto> AnalyzeAsync(double lat, double lng, ViabilityLotContext lot, CancellationToken cancellationToken = default)
@@ -86,6 +105,25 @@ public class ViabilityAnalysisService : IViabilityAnalysisService
         var nearbyRoadsTask = FindNearbyRoadsAsync(lat, lng, cancellationToken);
         await Task.WhenAll(trafficGeneratorsTask, nearbyRoadsTask);
 
+        var (trafficGenerators, trafficGeneratorsDataUnavailable, trafficGeneratorFailures) = trafficGeneratorsTask.Result;
+        var (nearbyRoads, roadsDataUnavailable, roadsFailure) = nearbyRoadsTask.Result;
+
+        // Logged one at a time, only now that every parallel branch above has finished — never
+        // from inside those branches themselves. Two or more of the lookups above commonly fail
+        // in the same request (an Overpass outage hits roads AND transit together), and
+        // LogDataSourceFailureAsync writes through the same scoped DbContext this method uses
+        // for everything else; firing those writes concurrently throws ("a second operation was
+        // started on this context instance before a previous operation completed"), which would
+        // have silently dropped exactly the simultaneous-failure case this logging exists for.
+        foreach (var (section, error) in trafficGeneratorFailures)
+        {
+            await LogDataSourceFailureAsync(section, error);
+        }
+        if (roadsFailure is { } roadsError)
+        {
+            await LogDataSourceFailureAsync("ViabilityAnalysis.Roads", roadsError);
+        }
+
         var result = new ViabilityAnalysisDto
         {
             Lat = lat,
@@ -93,8 +131,10 @@ public class ViabilityAnalysisService : IViabilityAnalysisService
             PopulationDataAvailable = population is not null,
             PopulationInRadius = population?.Population,
             SocioeconomicScore = population?.SocioeconomicScore,
-            TrafficGenerators = trafficGeneratorsTask.Result,
-            NearbyRoads = nearbyRoadsTask.Result
+            TrafficGenerators = trafficGenerators,
+            NearbyRoads = nearbyRoads,
+            TrafficGeneratorsDataUnavailable = trafficGeneratorsDataUnavailable,
+            RoadsDataUnavailable = roadsDataUnavailable
         };
 
         foreach (var criterion in criteria)
@@ -113,7 +153,8 @@ public class ViabilityAnalysisService : IViabilityAnalysisService
     {
         ("escuela", "Escuela", 1000),
         ("centro comercial", "Centro comercial", 1500),
-        ("hospital", "Hospital", 1500)
+        ("hospital", "Hospital", 1500),
+        ("gasolinera", "Gasolinera", 1500)
     };
     // Per category, not a flat overall cap — otherwise an area with several nearby schools and
     // no mall/hospital in range would show 5 schools and nothing else, which reads as "we only
@@ -121,14 +162,14 @@ public class ViabilityAnalysisService : IViabilityAnalysisService
     // user, 2026-10-18).
     private const int MaxTrafficGeneratorsPerCategory = 2;
 
-    private async Task<List<TrafficGeneratorDto>> FindTrafficGeneratorsAsync(double lat, double lng, CancellationToken cancellationToken)
+    private async Task<(List<TrafficGeneratorDto> Generators, bool DataUnavailable, List<(string Section, Exception Error)> Failures)> FindTrafficGeneratorsAsync(double lat, double lng, CancellationToken cancellationToken)
     {
         var searches = TrafficGeneratorSearches.Select(async s =>
         {
             try
             {
                 var establishments = await _denueService.ListNearbyAsync(s.SearchTerm, lat, lng, s.RadiusMeters, cancellationToken);
-                return establishments
+                var generators = establishments
                     .Select(e => new TrafficGeneratorDto
                     {
                         Name = e.Name,
@@ -139,27 +180,39 @@ public class ViabilityAnalysisService : IViabilityAnalysisService
                     })
                     .OrderBy(g => g.DistanceMeters)
                     .Take(MaxTrafficGeneratorsPerCategory);
+                return (Generators: generators, Error: (Exception?)null, Section: $"ViabilityAnalysis.TrafficGenerators.{s.Category}");
             }
             catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or System.Text.Json.JsonException or InvalidOperationException)
             {
                 _logger.LogWarning(ex, "DENUE traffic-generator lookup failed for {Category} at {Lat},{Lng}", s.Category, lat, lng);
-                return Enumerable.Empty<TrafficGeneratorDto>();
+                return (Generators: Enumerable.Empty<TrafficGeneratorDto>(), Error: (Exception?)ex, Section: $"ViabilityAnalysis.TrafficGenerators.{s.Category}");
             }
         });
 
         var denueResults = await Task.WhenAll(searches);
-        var transit = await FindTransitGeneratorsAsync(lat, lng, cancellationToken);
-        return denueResults.SelectMany(r => r).Concat(transit).OrderBy(g => g.DistanceMeters).ToList();
+        var (transit, transitFailure) = await FindTransitGeneratorsAsync(lat, lng, cancellationToken);
+        var combined = denueResults.SelectMany(r => r.Generators).Concat(transit).OrderBy(g => g.DistanceMeters).ToList();
+
+        var failures = denueResults
+            .Where(r => r.Error is not null)
+            .Select(r => (r.Section, r.Error!))
+            .ToList();
+        if (transitFailure is { } transitError)
+        {
+            failures.Add(("ViabilityAnalysis.TrafficGenerators.Transit", transitError));
+        }
+
+        return (combined, failures.Count > 0, failures);
     }
 
     private const int TransitSearchRadiusMeters = 800;
 
-    private async Task<List<TrafficGeneratorDto>> FindTransitGeneratorsAsync(double lat, double lng, CancellationToken cancellationToken)
+    private async Task<(List<TrafficGeneratorDto> Generators, Exception? Error)> FindTransitGeneratorsAsync(double lat, double lng, CancellationToken cancellationToken)
     {
         try
         {
             var transit = await _roadNetworkService.FindTransitNearbyAsync(lat, lng, TransitSearchRadiusMeters, cancellationToken);
-            return transit
+            var generators = transit
                 .Select(t => new TrafficGeneratorDto
                 {
                     Name = t.Name ?? t.Classification,
@@ -171,23 +224,24 @@ public class ViabilityAnalysisService : IViabilityAnalysisService
                 .GroupBy(t => t.Category)
                 .SelectMany(g => g.OrderBy(t => t.DistanceMeters).Take(MaxTrafficGeneratorsPerCategory))
                 .ToList();
+            return (generators, null);
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or System.Text.Json.JsonException or InvalidOperationException)
         {
             _logger.LogWarning(ex, "Overpass transit lookup failed at {Lat},{Lng}", lat, lng);
-            return new List<TrafficGeneratorDto>();
+            return (new List<TrafficGeneratorDto>(), ex);
         }
     }
 
     private const int RoadSearchRadiusMeters = 1500;
     private const int MaxNearbyRoads = 3;
 
-    private async Task<List<NearbyRoadDto>> FindNearbyRoadsAsync(double lat, double lng, CancellationToken cancellationToken)
+    private async Task<(List<NearbyRoadDto> Roads, bool Failed, Exception? Error)> FindNearbyRoadsAsync(double lat, double lng, CancellationToken cancellationToken)
     {
         try
         {
             var roads = await _roadNetworkService.FindMajorRoadsNearbyAsync(lat, lng, RoadSearchRadiusMeters, cancellationToken);
-            return roads
+            var result = roads
                 .Select(r => new NearbyRoadDto
                 {
                     Name = r.Name,
@@ -200,11 +254,12 @@ public class ViabilityAnalysisService : IViabilityAnalysisService
                 .OrderBy(r => r.DistanceMeters)
                 .Take(MaxNearbyRoads)
                 .ToList();
+            return (result, false, null);
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or System.Text.Json.JsonException or InvalidOperationException)
         {
             _logger.LogWarning(ex, "Overpass road lookup failed at {Lat},{Lng}", lat, lng);
-            return new List<NearbyRoadDto>();
+            return (new List<NearbyRoadDto>(), true, ex);
         }
     }
 

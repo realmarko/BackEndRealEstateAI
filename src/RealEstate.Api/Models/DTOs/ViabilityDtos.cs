@@ -125,4 +125,12 @@ public class ViabilityAnalysisDto
     // Real mapped highways/avenues near the point (OpenStreetMap), not just the listing's own
     // self-reported PrimaryVialidadType — see ViabilityAnalysisService.FindNearbyRoadsAsync.
     public List<NearbyRoadDto> NearbyRoads { get; set; } = new();
+    // True when the OSM/Overpass road lookup itself failed (both mirrors down/erroring) rather
+    // than genuinely finding nothing — an empty NearbyRoads otherwise reads identically to "no
+    // major roads nearby", which is what a 2026-10-18 Overpass outage was mistaken for a bug.
+    public bool RoadsDataUnavailable { get; set; }
+    // Same distinction for TrafficGenerators: true when at least one of its sources (a DENUE
+    // category search or the Overpass transit search) failed, so the list may be incomplete
+    // rather than exhaustive.
+    public bool TrafficGeneratorsDataUnavailable { get; set; }
 }

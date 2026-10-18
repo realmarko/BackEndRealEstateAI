@@ -160,7 +160,7 @@ public class ViabilityReportPdfService : IViabilityReportPdfService
     {
         (string Label, string Color)[] markers =
         {
-            ("Escuela", "#15803d"), ("Centro comercial", "#c2410c"), ("Hospital", "#b91c1c"), ("Transporte público", "#2563eb")
+            ("Escuela", "#15803d"), ("Centro comercial", "#c2410c"), ("Hospital", "#b91c1c"), ("Transporte público", "#2563eb"), ("Gasolinera", "#ca8a04")
         };
         (string Label, string Color)[] roads =
         {

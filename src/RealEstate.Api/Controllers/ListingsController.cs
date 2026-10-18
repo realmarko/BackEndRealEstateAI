@@ -387,7 +387,8 @@ public class ListingsController : ControllerBase
         ["Centro comercial"] = "purple",
         ["Hospital"] = "red",
         ["Parada de autobús"] = "green",
-        ["Central de autobuses"] = "green"
+        ["Central de autobuses"] = "green",
+        ["Gasolinera"] = "yellow"
     };
 
     private static List<StaticMapMarker> BuildMapMarkers(ViabilityAnalysisDto analysis)
@@ -395,7 +396,7 @@ public class ListingsController : ControllerBase
         var markers = new List<StaticMapMarker>();
         foreach (var generator in analysis.TrafficGenerators)
         {
-            var color = TrafficGeneratorMarkerColors.GetValueOrDefault(generator.Category, "yellow");
+            var color = TrafficGeneratorMarkerColors.GetValueOrDefault(generator.Category, "gray");
             markers.Add(new StaticMapMarker(generator.Lat, generator.Lng, color));
         }
         foreach (var road in analysis.NearbyRoads)
