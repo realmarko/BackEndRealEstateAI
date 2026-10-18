@@ -378,6 +378,33 @@ public class ListingsController : ControllerBase
         HasWaterDebt: listing.HasWaterDebt,
         PrimaryVialidadType: listing.PrimaryVialidadType);
 
+    // Mirrors the interactive viability-report page's own marker color scheme
+    // (viability-report-page.component.ts's CATEGORY_MARKER_COLORS) so the PDF's static map and
+    // the live page read as the same product, not two different visualizations of the same data.
+    private static readonly Dictionary<string, string> TrafficGeneratorMarkerColors = new()
+    {
+        ["Escuela"] = "blue",
+        ["Centro comercial"] = "purple",
+        ["Hospital"] = "red",
+        ["Parada de autobús"] = "green",
+        ["Central de autobuses"] = "green"
+    };
+
+    private static List<StaticMapMarker> BuildMapMarkers(ViabilityAnalysisDto analysis)
+    {
+        var markers = new List<StaticMapMarker>();
+        foreach (var generator in analysis.TrafficGenerators)
+        {
+            var color = TrafficGeneratorMarkerColors.GetValueOrDefault(generator.Category, "yellow");
+            markers.Add(new StaticMapMarker(generator.Lat, generator.Lng, color));
+        }
+        foreach (var road in analysis.NearbyRoads)
+        {
+            markers.Add(new StaticMapMarker(road.Lat, road.Lng, "orange"));
+        }
+        return markers;
+    }
+
     // POST /api/listings/5/viability-report — the gated half: captures the lead (same "answer a
     // few questions, get the PDF" shape as InquiriesController.Create, but anonymous — a lead
     // magnet has to work for a visitor with no account), emails the full report, AND hands the
@@ -413,12 +440,11 @@ public class ListingsController : ControllerBase
         });
         await _db.SaveChangesAsync(cancellationToken);
 
-        var analysisTask = _viabilityAnalysis.AnalyzeAsync(listing.Latitude, listing.Longitude, BuildLotContext(listing), cancellationToken);
-        var mapImageTask = _staticMap.GetStaticMapAsync(listing.Latitude, listing.Longitude, cancellationToken);
-        await Task.WhenAll(analysisTask, mapImageTask);
+        var analysis = await _viabilityAnalysis.AnalyzeAsync(listing.Latitude, listing.Longitude, BuildLotContext(listing), cancellationToken);
+        var mapImage = await _staticMap.GetStaticMapAsync(listing.Latitude, listing.Longitude, BuildMapMarkers(analysis), cancellationToken);
 
         var listingDto = listing.ToDto(isAuthenticated: true);
-        var pdfBytes = _viabilityReportPdf.Generate(listingDto, analysisTask.Result, mapImageTask.Result);
+        var pdfBytes = _viabilityReportPdf.Generate(listingDto, analysis, mapImage);
 
         // Best-effort, same reasoning as SendFactSheetPdfAsync: the lead is already captured
         // (the Inquiry above) and the PDF is returned to the caller regardless, so a failure
