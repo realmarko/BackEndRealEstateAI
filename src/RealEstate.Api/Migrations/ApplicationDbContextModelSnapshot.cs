@@ -569,6 +569,35 @@ namespace RealEstate.Api.Migrations
                             MinLotSizeSqm = 3000.0,
                             Notes = "Estimación; prioriza acceso a vialidad primaria/carretera y uso de suelo industrial, no densidad poblacional.",
                             PrefersPrimaryRoadAccess = true
+                        },
+                        new
+                        {
+                            Id = 10,
+                            AcceptableLandUseCategories = "Residencial,Urbano,Urbanizable",
+                            DenueSearchTerm = "fraccionadora",
+                            DisplayName = "Desarrollo Inmobiliario Residencial",
+                            Key = "residential_development",
+                            MinFrontageMeters = 30.0,
+                            MinLotSizeSqm = 5000.0,
+                            Notes = "Estimación; sin cifra oficial por municipio — superficie/frente mínimos típicos para un fraccionamiento residencial de escala pequeña. No evalúa densidad poblacional ni competencia directa, ya que un desarrollo genera su propia demanda en vez de depender de la existente.",
+                            PrefersPrimaryRoadAccess = true
+                        },
+                        new
+                        {
+                            Id = 11,
+                            AcceptableLandUseCategories = "Urbano,Comercial",
+                            CompetitorExclusionRadiusMeters = 2000,
+                            DenueSearchTerm = "centro comercial",
+                            DisplayName = "Plaza Comercial",
+                            GooglePlacesType = "shopping_mall",
+                            Key = "shopping_plaza",
+                            MinFrontageMeters = 40.0,
+                            MinLotSizeSqm = 5000.0,
+                            MinPopulationInRadius = 20000,
+                            Notes = "Estimación; prioriza alta visibilidad/acceso vehicular y evita otra plaza o centro comercial cercano que compita por el mismo catchment.",
+                            PopulationRadiusKm = 3.0,
+                            PrefersCornerLot = true,
+                            PrefersPrimaryRoadAccess = true
                         });
                 });
 
