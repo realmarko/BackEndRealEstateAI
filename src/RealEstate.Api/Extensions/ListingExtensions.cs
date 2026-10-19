@@ -61,6 +61,8 @@ public static class ListingExtensions
         FacadeOrientation = l.FacadeOrientation?.ToString(),
         HasNaturalGas = l.HasNaturalGas,
         HasLpGas = l.HasLpGas,
+        HasCistern = l.HasCistern,
+        HasWell = l.HasWell,
         LandUseZoning = l.LandUseZoning,
         LandUseCategoryId = l.LandUseCategoryId,
         LandTenure = l.LandTenure?.ToString(),

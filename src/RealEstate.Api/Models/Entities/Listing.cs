@@ -75,6 +75,14 @@ public class Listing
     public bool? HasNaturalGas { get; set; }
     // "Gas estacionario" in Mexican listings — an LP tank, as opposed to piped natural gas above.
     public bool? HasLpGas { get; set; }
+    // A rooftop/underground water storage tank — common even in apartment buildings in Mexico
+    // given irregular municipal water pressure/schedules, so (unlike HasWell below) this applies
+    // to any property type.
+    public bool? HasCistern { get; set; }
+    // An on-site well — frontend-gated to hide/disable this for PropertyType.Apartment (not
+    // something a single apartment unit would have its own well for), but left ungated here at
+    // the entity/DB level, same as every other optional boolean on this model.
+    public bool? HasWell { get; set; }
 
     // Land/commercial characteristics — only meaningful when PropertyType is Land, Commercial,
     // ResidentialLand, CommercialLand, or IndustrialLand (see ListingFormComponent's

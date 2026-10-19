@@ -631,6 +631,8 @@ public class ListingsController : ControllerBase
             FacadeOrientation = dto.FacadeOrientation,
             HasNaturalGas = dto.HasNaturalGas,
             HasLpGas = dto.HasLpGas,
+            HasCistern = dto.HasCistern,
+            HasWell = dto.HasWell,
             LandUseZoning = dto.LandUseZoning,
             LandUseCategoryId = dto.LandUseCategoryId,
             LandTenure = dto.LandTenure,
@@ -808,6 +810,8 @@ public class ListingsController : ControllerBase
         listing.FacadeOrientation = dto.FacadeOrientation;
         listing.HasNaturalGas = dto.HasNaturalGas;
         listing.HasLpGas = dto.HasLpGas;
+        listing.HasCistern = dto.HasCistern;
+        listing.HasWell = dto.HasWell;
         listing.LandUseZoning = dto.LandUseZoning;
         listing.LandUseCategoryId = dto.LandUseCategoryId;
         listing.LandTenure = dto.LandTenure;

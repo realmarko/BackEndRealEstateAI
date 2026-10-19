@@ -46,6 +46,8 @@ public class ListingCreateDto
     public CardinalOrientationType? FacadeOrientation { get; set; }
     public bool? HasNaturalGas { get; set; }
     public bool? HasLpGas { get; set; }
+    public bool? HasCistern { get; set; }
+    public bool? HasWell { get; set; }
 
     [MaxLength(50)] public string? LandUseZoning { get; set; }
     public int? LandUseCategoryId { get; set; }
@@ -137,6 +139,8 @@ public class ListingDto
     public string? FacadeOrientation { get; set; }
     public bool? HasNaturalGas { get; set; }
     public bool? HasLpGas { get; set; }
+    public bool? HasCistern { get; set; }
+    public bool? HasWell { get; set; }
     public string? LandUseZoning { get; set; }
     public int? LandUseCategoryId { get; set; }
     public string? LandTenure { get; set; }

@@ -148,6 +148,8 @@ public class FactSheetPdfService : IFactSheetPdfService
             if (listing.HasRoofGarden) Field(column, "Roof garden", "Sí");
             if (listing.HasNaturalGas is { } naturalGas) Field(column, "Gas natural", YesNo(naturalGas));
             if (listing.HasLpGas is { } lpGas) Field(column, "Gas estacionario", YesNo(lpGas));
+            if (listing.HasCistern is { } cistern) Field(column, "Cisterna", YesNo(cistern));
+            if (listing.HasWell is { } well) Field(column, "Pozo", YesNo(well));
             if (listing.HoaFee is { } hoa and > 0) Field(column, "Cuota de mantenimiento", $"{listing.Currency} {hoa:N0}");
             if (IsHttpUrl(listing.VideoTourUrl))
             {

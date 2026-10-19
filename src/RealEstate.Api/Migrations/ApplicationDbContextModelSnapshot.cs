@@ -1035,6 +1035,10 @@ namespace RealEstate.Api.Migrations
                         .HasColumnType("numeric")
                         .HasColumnName("garden_size_sqm");
 
+                    b.Property<bool?>("HasCistern")
+                        .HasColumnType("boolean")
+                        .HasColumnName("has_cistern");
+
                     b.Property<bool?>("HasDrainage")
                         .HasColumnType("boolean")
                         .HasColumnName("has_drainage");
@@ -1094,6 +1098,10 @@ namespace RealEstate.Api.Migrations
                     b.Property<bool?>("HasWaterDebt")
                         .HasColumnType("boolean")
                         .HasColumnName("has_water_debt");
+
+                    b.Property<bool?>("HasWell")
+                        .HasColumnType("boolean")
+                        .HasColumnName("has_well");
 
                     b.Property<bool>("HideAgentContact")
                         .HasColumnType("boolean")
