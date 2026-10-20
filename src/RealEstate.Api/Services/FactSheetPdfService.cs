@@ -160,6 +160,14 @@ public class FactSheetPdfService : IFactSheetPdfService
                 });
             }
 
+            var amenities = AmenityLabels(listing);
+            if (amenities.Count > 0)
+            {
+                column.Item().PaddingTop(12);
+                SectionTitle(column, "ESPACIOS Y AMENIDADES");
+                column.Item().PaddingTop(4).Text(string.Join("   •   ", amenities)).FontSize(9).LineHeight(1.3f);
+            }
+
             if (HasLandDetails(listing))
             {
                 column.Item().PaddingTop(12);
@@ -192,10 +200,41 @@ public class FactSheetPdfService : IFactSheetPdfService
         });
     }
 
+    // Rooms + amenities rendered as a single comma-separated line rather than one Field() row
+    // each — 14 possible booleans would otherwise dominate a one-page document that still has to
+    // fit photos, land/commercial details, and a description below.
+    private static List<string> AmenityLabels(ListingDto l)
+    {
+        var labels = new List<string>();
+        void Add(bool? value, string label) { if (value == true) labels.Add(label); }
+        Add(l.HasKitchen, "Cocina");
+        Add(l.HasLivingRoom, "Sala");
+        Add(l.HasDiningRoom, "Comedor");
+        Add(l.HasPotableWater, "Agua potable");
+        Add(l.HasDrainage, "Drenaje");
+        Add(l.HasPool, "Alberca");
+        Add(l.HasTerrace, "Terraza");
+        Add(l.HasBalcony, "Balcón");
+        Add(l.HasServiceRoom, "Cuarto de servicio");
+        Add(l.HasLaundryArea, "Área de lavado");
+        Add(l.HasStorageRoom, "Bodega");
+        Add(l.HasGym, "Gimnasio");
+        Add(l.HasSecurity, "Seguridad / vigilancia");
+        Add(l.HasElevator, "Elevador");
+        Add(l.HasBbqArea, "Área de asador");
+        return labels;
+    }
+
+    // HasPotableWater/HasDrainage deliberately excluded from this trigger — they now default to
+    // true for every house/apartment listing too (see ListingFormComponent), so including them
+    // here would pop open this land/commercial-only section for an ordinary apartment that has
+    // neither a zoning code, tenure, frontage, nor anything else land-specific set. They're still
+    // shown (Sí/No/N/D) inside this section's body below once it's triggered by something else,
+    // and surface for house/apartment listings via AmenityLabels() above instead.
     private static bool HasLandDetails(ListingDto l) =>
         !string.IsNullOrWhiteSpace(l.LandUseZoning) || !string.IsNullOrWhiteSpace(l.LandTenure) ||
         l.HasEjidalCertificate.HasValue ||
-        l.HasPotableWater.HasValue || l.HasDrainage.HasValue || l.HasElectricity.HasValue ||
+        l.HasElectricity.HasValue ||
         l.FrontageWidthMeters.HasValue || l.FrontageDepthMeters.HasValue ||
         !string.IsNullOrWhiteSpace(l.LotShape) || !string.IsNullOrWhiteSpace(l.Topography) ||
         l.CosCoefficient.HasValue || l.CusCoefficient.HasValue ||
