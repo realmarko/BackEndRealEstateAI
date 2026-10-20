@@ -139,6 +139,8 @@ public class FactSheetPdfService : IFactSheetPdfService
             if (listing.YearBuilt is { } year) Field(column, "Año de construcción", year.ToString());
             if (!string.IsNullOrWhiteSpace(listing.ConstructionCondition)) Field(column, "Estado de conservación", listing.ConstructionCondition!);
             if (listing.Floors is { } floors) Field(column, "Niveles", floors.ToString());
+            if (listing.CommercialUnitCount is { } units and > 0) Field(column, "Locales comerciales", units.ToString());
+            if (listing.HasApartmentUnit == true) Field(column, "Incluye departamento", "Sí");
             if (listing.ParkingSpaces is { } parking and > 0)
                 Field(column, "Estacionamiento", listing.ParkingIsCovered switch { true => $"{parking} (techado)", false => $"{parking} (descubierto)", null => parking.ToString() });
             if (!string.IsNullOrWhiteSpace(listing.FacadeOrientation)) Field(column, "Orientación de fachada", listing.FacadeOrientation!);
@@ -266,6 +268,7 @@ public class FactSheetPdfService : IFactSheetPdfService
         "Room" => "Cuarto",
         "CommercialStorage" => "Bodega comercial",
         "IndustrialLand" => "Terreno industrial",
+        "ShoppingPlaza" => "Plaza comercial",
         _ => propertyType
     };
 

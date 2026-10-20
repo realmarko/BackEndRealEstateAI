@@ -659,6 +659,8 @@ public class ListingsController : ControllerBase
             HasWaterDebt = dto.HasWaterDebt,
             FrontageWidthMeters = dto.FrontageWidthMeters,
             FrontageDepthMeters = dto.FrontageDepthMeters,
+            CommercialUnitCount = dto.CommercialUnitCount,
+            HasApartmentUnit = dto.HasApartmentUnit,
             HasPotableWater = dto.HasPotableWater,
             HasDrainage = dto.HasDrainage,
             HasElectricity = dto.HasElectricity,
@@ -851,6 +853,8 @@ public class ListingsController : ControllerBase
         listing.HasWaterDebt = dto.HasWaterDebt;
         listing.FrontageWidthMeters = dto.FrontageWidthMeters;
         listing.FrontageDepthMeters = dto.FrontageDepthMeters;
+        listing.CommercialUnitCount = dto.CommercialUnitCount;
+        listing.HasApartmentUnit = dto.HasApartmentUnit;
         listing.HasPotableWater = dto.HasPotableWater;
         listing.HasDrainage = dto.HasDrainage;
         listing.HasElectricity = dto.HasElectricity;

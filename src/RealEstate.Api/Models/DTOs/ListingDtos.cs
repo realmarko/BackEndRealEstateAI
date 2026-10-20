@@ -77,6 +77,8 @@ public class ListingCreateDto
     public bool? HasWaterDebt { get; set; }
     [Range(0, 10000)] public decimal? FrontageWidthMeters { get; set; }
     [Range(0, 10000)] public decimal? FrontageDepthMeters { get; set; }
+    [Range(0, 500)] public int? CommercialUnitCount { get; set; }
+    public bool? HasApartmentUnit { get; set; }
     public bool? HasPotableWater { get; set; }
     public bool? HasDrainage { get; set; }
     public bool? HasElectricity { get; set; }
@@ -189,6 +191,8 @@ public class ListingDto
     public bool? HasWaterDebt { get; set; }
     public decimal? FrontageWidthMeters { get; set; }
     public decimal? FrontageDepthMeters { get; set; }
+    public int? CommercialUnitCount { get; set; }
+    public bool? HasApartmentUnit { get; set; }
     public bool? HasPotableWater { get; set; }
     public bool? HasDrainage { get; set; }
     public bool? HasElectricity { get; set; }

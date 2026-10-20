@@ -24,7 +24,8 @@ public enum PropertyType
     Building = 13,
     Room = 14,
     CommercialStorage = 15,
-    IndustrialLand = 16
+    IndustrialLand = 16,
+    ShoppingPlaza = 17
 }
 
 public enum ListingStatus

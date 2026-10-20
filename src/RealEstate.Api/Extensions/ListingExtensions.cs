@@ -88,6 +88,8 @@ public static class ListingExtensions
         HasWaterDebt = l.HasWaterDebt,
         FrontageWidthMeters = l.FrontageWidthMeters,
         FrontageDepthMeters = l.FrontageDepthMeters,
+        CommercialUnitCount = l.CommercialUnitCount,
+        HasApartmentUnit = l.HasApartmentUnit,
         HasPotableWater = l.HasPotableWater,
         HasDrainage = l.HasDrainage,
         HasElectricity = l.HasElectricity,

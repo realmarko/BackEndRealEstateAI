@@ -131,6 +131,20 @@ public class Listing
     public decimal? FrontageWidthMeters { get; set; }
     public decimal? FrontageDepthMeters { get; set; }
 
+    // Only meaningful for PropertyType.ShoppingPlaza (frontend-gated, same convention as every
+    // other optional field above) — how many independently rentable commercial units the
+    // building has (e.g. "8 locales comerciales"), not a derived count of anything else on this
+    // model.
+    public int? CommercialUnitCount { get; set; }
+
+    // Whether a shopping plaza also includes a residential unit (common in this market — see
+    // CommercialUnitCount's reference listing) — when true, this listing's own Bedrooms/
+    // Bathrooms describe that included apartment rather than being left at their usual
+    // commercial-listing default of 0 (frontend-gated: ListingFormComponent reveals those two
+    // inputs for ShoppingPlaza only when this is checked, instead of adding a separate set of
+    // apartment-specific fields for what both patterns already represent).
+    public bool? HasApartmentUnit { get; set; }
+
     // Utilities
     public bool? HasPotableWater { get; set; }
     public bool? HasDrainage { get; set; }

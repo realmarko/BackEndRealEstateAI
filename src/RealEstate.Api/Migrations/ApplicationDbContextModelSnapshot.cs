@@ -999,6 +999,10 @@ namespace RealEstate.Api.Migrations
                         .HasColumnType("numeric")
                         .HasColumnName("cadastral_value");
 
+                    b.Property<int?>("CommercialUnitCount")
+                        .HasColumnType("integer")
+                        .HasColumnName("commercial_unit_count");
+
                     b.Property<int?>("ConstructionCondition")
                         .HasColumnType("integer")
                         .HasColumnName("construction_condition");
@@ -1051,6 +1055,10 @@ namespace RealEstate.Api.Migrations
                     b.Property<decimal?>("GardenSizeSqm")
                         .HasColumnType("numeric")
                         .HasColumnName("garden_size_sqm");
+
+                    b.Property<bool?>("HasApartmentUnit")
+                        .HasColumnType("boolean")
+                        .HasColumnName("has_apartment_unit");
 
                     b.Property<bool?>("HasBalcony")
                         .HasColumnType("boolean")
