@@ -99,6 +99,16 @@ public class ListingTransferDto
     public int AgentId { get; set; }
 }
 
+public class ListingLocationUpdateDto
+{
+    // The map's "editar ubicación" banner now accepts typed-in coordinates, not just a
+    // physically-constrained drag (which can never leave valid lat/lng ranges) — these bounds
+    // reject an obviously wrong value (e.g. a swapped lat/lng, or a stray extra digit) instead
+    // of silently saving a pin nowhere near any real map position.
+    [Range(-90, 90)] public double Latitude { get; set; }
+    [Range(-180, 180)] public double Longitude { get; set; }
+}
+
 public class ListingDto
 {
     public Guid Id { get; set; }

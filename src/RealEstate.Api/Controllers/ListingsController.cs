@@ -883,6 +883,28 @@ public class ListingsController : ControllerBase
         });
     }
 
+    // Narrow endpoint for the map's "editar ubicación" pin-drag flow (map-view.component.ts) —
+    // moving just the marker shouldn't require resubmitting the full listing form (photos,
+    // price, etc. that Update above expects). Owner-only, same as Update: no Admin override,
+    // so an admin can't reposition a listing they don't own.
+    [Authorize(Roles = "Owner")]
+    [HttpPatch("{id:guid}/location")]
+    public async Task<ActionResult<ListingDto>> UpdateLocation(Guid id, ListingLocationUpdateDto dto)
+    {
+        var listing = await _db.Listings.Include(l => l.Images).Include(l => l.Address).FirstOrDefaultAsync(l => l.Id == id);
+        if (listing is null) return NotFound();
+        if (listing.OwnerId != User.GetUserId()) return Forbid();
+
+        listing.Latitude = dto.Latitude;
+        listing.Longitude = dto.Longitude;
+        listing.UpdatedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
+
+        var updatedDto = listing.ToDto(isAuthenticated: true);
+        await AttachOwnerAgentDetailsAsync([updatedDto]);
+        return Ok(updatedDto);
+    }
+
     // Admin added alongside the existing owner path, not in place of it: an admin moderating
     // someone else's listing doesn't hold the Owner role, and Owner-role visitors must keep
     // being able to delete their own listings exactly as before.
