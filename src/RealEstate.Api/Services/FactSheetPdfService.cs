@@ -134,7 +134,7 @@ public class FactSheetPdfService : IFactSheetPdfService
         container.Column(column =>
         {
             SectionTitle(column, "DETALLES DE LA PROPIEDAD");
-            Field(column, "Tipo de propiedad", listing.PropertyType);
+            Field(column, "Tipo de propiedad", PropertyTypeLabel(listing.PropertyType));
             Field(column, "Tipo de operación", listing.ListingType == "Rent" ? "Renta" : "Venta");
             if (listing.YearBuilt is { } year) Field(column, "Año de construcción", year.ToString());
             if (!string.IsNullOrWhiteSpace(listing.ConstructionCondition)) Field(column, "Estado de conservación", listing.ConstructionCondition!);
@@ -203,6 +203,32 @@ public class FactSheetPdfService : IFactSheetPdfService
         l.HasPropertyTaxDebt.HasValue || l.HasWaterDebt.HasValue;
 
     private static string YesNo(bool? value) => value switch { true => "Sí", false => "No", null => "N/D" };
+
+    // listing.PropertyType is the raw enum name (e.g. "Land") from ListingExtensions.ToDto —
+    // translated here to match the Spanish labels the frontend shows for the same values
+    // (frontend/src/app/core/i18n/es.ts's listingForm.* keys), so this PDF doesn't surface the
+    // only English string on an otherwise fully Spanish document.
+    private static string PropertyTypeLabel(string propertyType) => propertyType switch
+    {
+        "House" => "Casa",
+        "Apartment" => "Departamento",
+        "Condo" => "Casa condominio",
+        "Townhouse" => "Casa",
+        "Land" => "Terreno",
+        "Commercial" => "Comercial",
+        "ResidentialLand" => "Terreno habitacional",
+        "Ranch" => "Rancho",
+        "Office" => "Oficina",
+        "IndustrialWarehouse" => "Nave industrial",
+        "CommercialLand" => "Terreno comercial",
+        "IndustrialStorage" => "Bodega industrial",
+        "RetailSpace" => "Local",
+        "Building" => "Edificio",
+        "Room" => "Cuarto",
+        "CommercialStorage" => "Bodega comercial",
+        "IndustrialLand" => "Terreno industrial",
+        _ => propertyType
+    };
 
     // VideoTourUrl only has a [MaxLength] constraint server-side (the frontend's own http(s)-only
     // validation is client-side, bypassable by calling the API directly) — guarded here before
