@@ -48,6 +48,19 @@ public class ListingCreateDto
     public bool? HasLpGas { get; set; }
     public bool? HasCistern { get; set; }
     public bool? HasWell { get; set; }
+    public bool? HasKitchen { get; set; }
+    public bool? HasLivingRoom { get; set; }
+    public bool? HasDiningRoom { get; set; }
+    public bool? HasPool { get; set; }
+    public bool? HasTerrace { get; set; }
+    public bool? HasBalcony { get; set; }
+    public bool? HasServiceRoom { get; set; }
+    public bool? HasLaundryArea { get; set; }
+    public bool? HasStorageRoom { get; set; }
+    public bool? HasGym { get; set; }
+    public bool? HasSecurity { get; set; }
+    public bool? HasElevator { get; set; }
+    public bool? HasBbqArea { get; set; }
 
     [MaxLength(50)] public string? LandUseZoning { get; set; }
     public int? LandUseCategoryId { get; set; }
@@ -151,6 +164,19 @@ public class ListingDto
     public bool? HasLpGas { get; set; }
     public bool? HasCistern { get; set; }
     public bool? HasWell { get; set; }
+    public bool? HasKitchen { get; set; }
+    public bool? HasLivingRoom { get; set; }
+    public bool? HasDiningRoom { get; set; }
+    public bool? HasPool { get; set; }
+    public bool? HasTerrace { get; set; }
+    public bool? HasBalcony { get; set; }
+    public bool? HasServiceRoom { get; set; }
+    public bool? HasLaundryArea { get; set; }
+    public bool? HasStorageRoom { get; set; }
+    public bool? HasGym { get; set; }
+    public bool? HasSecurity { get; set; }
+    public bool? HasElevator { get; set; }
+    public bool? HasBbqArea { get; set; }
     public string? LandUseZoning { get; set; }
     public int? LandUseCategoryId { get; set; }
     public string? LandTenure { get; set; }

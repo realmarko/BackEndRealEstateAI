@@ -84,6 +84,23 @@ public class Listing
     // the entity/DB level, same as every other optional boolean on this model.
     public bool? HasWell { get; set; }
 
+    // Room checkboxes + amenities — frontend-gated to House/CondoHouse/Apartment (see
+    // ListingFormComponent.isHouseOrApartment()), same ungated-at-the-entity-level treatment as
+    // every other optional boolean above.
+    public bool? HasKitchen { get; set; }
+    public bool? HasLivingRoom { get; set; }
+    public bool? HasDiningRoom { get; set; }
+    public bool? HasPool { get; set; }
+    public bool? HasTerrace { get; set; }
+    public bool? HasBalcony { get; set; }
+    public bool? HasServiceRoom { get; set; }
+    public bool? HasLaundryArea { get; set; }
+    public bool? HasStorageRoom { get; set; }
+    public bool? HasGym { get; set; }
+    public bool? HasSecurity { get; set; }
+    public bool? HasElevator { get; set; }
+    public bool? HasBbqArea { get; set; }
+
     // Land/commercial characteristics — only meaningful when PropertyType is Land, Commercial,
     // ResidentialLand, CommercialLand, or IndustrialLand (see ListingFormComponent's
     // propertyType-gated section). All nullable: never populated for residential/other property

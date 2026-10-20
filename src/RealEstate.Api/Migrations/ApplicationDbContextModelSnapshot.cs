@@ -1052,9 +1052,21 @@ namespace RealEstate.Api.Migrations
                         .HasColumnType("numeric")
                         .HasColumnName("garden_size_sqm");
 
+                    b.Property<bool?>("HasBalcony")
+                        .HasColumnType("boolean")
+                        .HasColumnName("has_balcony");
+
+                    b.Property<bool?>("HasBbqArea")
+                        .HasColumnType("boolean")
+                        .HasColumnName("has_bbq_area");
+
                     b.Property<bool?>("HasCistern")
                         .HasColumnType("boolean")
                         .HasColumnName("has_cistern");
+
+                    b.Property<bool?>("HasDiningRoom")
+                        .HasColumnType("boolean")
+                        .HasColumnName("has_dining_room");
 
                     b.Property<bool?>("HasDrainage")
                         .HasColumnType("boolean")
@@ -1068,9 +1080,29 @@ namespace RealEstate.Api.Migrations
                         .HasColumnType("boolean")
                         .HasColumnName("has_electricity");
 
+                    b.Property<bool?>("HasElevator")
+                        .HasColumnType("boolean")
+                        .HasColumnName("has_elevator");
+
+                    b.Property<bool?>("HasGym")
+                        .HasColumnType("boolean")
+                        .HasColumnName("has_gym");
+
                     b.Property<bool>("HasHeatingCooling")
                         .HasColumnType("boolean")
                         .HasColumnName("has_heating_cooling");
+
+                    b.Property<bool?>("HasKitchen")
+                        .HasColumnType("boolean")
+                        .HasColumnName("has_kitchen");
+
+                    b.Property<bool?>("HasLaundryArea")
+                        .HasColumnType("boolean")
+                        .HasColumnName("has_laundry_area");
+
+                    b.Property<bool?>("HasLivingRoom")
+                        .HasColumnType("boolean")
+                        .HasColumnName("has_living_room");
 
                     b.Property<bool?>("HasLpGas")
                         .HasColumnType("boolean")
@@ -1088,6 +1120,10 @@ namespace RealEstate.Api.Migrations
                         .HasColumnType("boolean")
                         .HasColumnName("has_paved_street");
 
+                    b.Property<bool?>("HasPool")
+                        .HasColumnType("boolean")
+                        .HasColumnName("has_pool");
+
                     b.Property<bool?>("HasPotableWater")
                         .HasColumnType("boolean")
                         .HasColumnName("has_potable_water");
@@ -1100,9 +1136,25 @@ namespace RealEstate.Api.Migrations
                         .HasColumnType("boolean")
                         .HasColumnName("has_roof_garden");
 
+                    b.Property<bool?>("HasSecurity")
+                        .HasColumnType("boolean")
+                        .HasColumnName("has_security");
+
+                    b.Property<bool?>("HasServiceRoom")
+                        .HasColumnType("boolean")
+                        .HasColumnName("has_service_room");
+
+                    b.Property<bool?>("HasStorageRoom")
+                        .HasColumnType("boolean")
+                        .HasColumnName("has_storage_room");
+
                     b.Property<bool?>("HasTelecomService")
                         .HasColumnType("boolean")
                         .HasColumnName("has_telecom_service");
+
+                    b.Property<bool?>("HasTerrace")
+                        .HasColumnType("boolean")
+                        .HasColumnName("has_terrace");
 
                     b.Property<bool?>("HasThreePhaseElectricity")
                         .HasColumnType("boolean")
