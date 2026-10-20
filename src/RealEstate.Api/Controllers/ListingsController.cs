@@ -71,7 +71,8 @@ public class ListingsController : ControllerBase
         PropertyType.Building,
         PropertyType.CommercialStorage,
         PropertyType.IndustrialStorage,
-        PropertyType.IndustrialWarehouse
+        PropertyType.IndustrialWarehouse,
+        PropertyType.ShoppingPlaza
     };
 
     // GET /api/listings?city=Austin&listingType=Sale&minPrice=100000&...
