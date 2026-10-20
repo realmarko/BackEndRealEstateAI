@@ -24,7 +24,11 @@ public record ViabilityLotContext(
     bool? IsFreeOfLiens,
     bool? HasPropertyTaxDebt,
     bool? HasWaterDebt,
-    VialidadType? PrimaryVialidadType);
+    VialidadType? PrimaryVialidadType,
+    // CUS (coeficiente de utilización de suelo) — only read by density-sensitive criteria (see
+    // BusinessTypeCriteria.MinCusRatio), e.g. an apartment building's buildable area is LotSizeSqm
+    // × CusCoefficient, not just whether the raw lot is big enough.
+    double? CusCoefficient);
 
 public interface IViabilityAnalysisService
 {
@@ -274,107 +278,233 @@ public class ViabilityAnalysisService : IViabilityAnalysisService
         var checks = new List<ViabilityCheckDto>();
         var hardBlockers = new List<string>();
 
-        if (lot.FrontageMeters is not null)
+        // Every criterion has a real MinFrontageMeters/MinLotSizeSqm (non-nullable), so these two
+        // always apply — unlike e.g. PrefersCornerLot, there's no "this business type doesn't
+        // care" case to distinguish from "we don't know." When the lot's own field is missing,
+        // say so explicitly (Passed = null, excluded from the score the same as any other
+        // not-yet-evaluated check) instead of just omitting the row, so a visitor can tell "not
+        // evaluated" apart from "evaluated and fine."
+        if (lot.FrontageMeters is { } frontage)
         {
-            var passed = lot.FrontageMeters.Value >= criterion.MinFrontageMeters;
+            var passed = frontage >= criterion.MinFrontageMeters;
             checks.Add(new ViabilityCheckDto
             {
                 Label = "Frente del terreno",
                 Passed = passed,
-                Detail = $"{lot.FrontageMeters:0.#} m de frente ({(passed ? "cumple" : "no cumple")} el mínimo de {criterion.MinFrontageMeters:0.#} m)."
+                Detail = $"{frontage:0.#} m de frente ({(passed ? "cumple" : "no cumple")} el mínimo de {criterion.MinFrontageMeters:0.#} m)."
+            });
+        }
+        else
+        {
+            checks.Add(new ViabilityCheckDto
+            {
+                Label = "Frente del terreno",
+                Passed = null,
+                Detail = "No se pudo evaluar: el predio no tiene registrado su frente (metros de frente a la calle)."
             });
         }
 
-        if (lot.LotSizeSqm is not null)
+        if (lot.LotSizeSqm is { } lotSize)
         {
-            var passed = lot.LotSizeSqm.Value >= criterion.MinLotSizeSqm;
+            var passed = lotSize >= criterion.MinLotSizeSqm;
             checks.Add(new ViabilityCheckDto
             {
                 Label = "Superficie del terreno",
                 Passed = passed,
-                Detail = $"{lot.LotSizeSqm:0.#} m² ({(passed ? "cumple" : "no cumple")} el mínimo de {criterion.MinLotSizeSqm:0.#} m²)."
+                Detail = $"{lotSize:0.#} m² ({(passed ? "cumple" : "no cumple")} el mínimo de {criterion.MinLotSizeSqm:0.#} m²)."
             });
         }
-
-        if (criterion.PrefersCornerLot is not null && lot.IsCornerLot is not null)
-        {
-            var passed = criterion.PrefersCornerLot.Value == lot.IsCornerLot.Value;
-            checks.Add(new ViabilityCheckDto
-            {
-                Label = "Esquina",
-                Passed = passed,
-                Detail = criterion.PrefersCornerLot.Value
-                    ? (lot.IsCornerLot.Value ? "Es esquina, como se prefiere para este giro." : "No es esquina; este giro suele preferir una ubicación en esquina.")
-                    : (lot.IsCornerLot.Value ? "Es esquina; este giro suele preferir evitarla (más tráfico/ruido)." : "No es esquina, como se prefiere para este giro.")
-            });
-        }
-
-        if (criterion.PrefersPrimaryRoadAccess && lot.HasPavedStreet is not null)
+        else
         {
             checks.Add(new ViabilityCheckDto
             {
-                Label = "Acceso vehicular",
-                Passed = lot.HasPavedStreet.Value,
-                Detail = lot.HasPavedStreet.Value ? "Calle pavimentada con acceso vehicular." : "Sin calle pavimentada — este giro depende fuertemente del acceso vehicular."
+                Label = "Superficie del terreno",
+                Passed = null,
+                Detail = "No se pudo evaluar: el predio no tiene registrada su superficie."
             });
         }
-        else if (lot.HasVehicleAccess is not null)
+
+        // Density/buildable-area — only for criteria that actually care (MinCusRatio set, e.g.
+        // "Edificio de Departamentos"); most of the catalog (a single-story storefront) has no
+        // opinion on how many floors zoning allows, so this stays entirely absent for them, same
+        // as PrefersCornerLot below — that's "not applicable," not "missing data."
+        if (criterion.MinCusRatio is { } minCus)
+        {
+            if (lot.CusCoefficient is { } cus)
+            {
+                var passed = cus >= minCus;
+                var buildableText = lot.LotSizeSqm is { } sizeForCus ? $" (~{sizeForCus * cus:N0} m² de construcción permitidos)" : "";
+                checks.Add(new ViabilityCheckDto
+                {
+                    Label = "Capacidad de construcción (CUS)",
+                    Passed = passed,
+                    Detail = $"CUS de {cus:0.##}{buildableText} ({(passed ? "cumple" : "no cumple")} el mínimo de {minCus:0.##} para este giro)."
+                });
+            }
+            else
+            {
+                checks.Add(new ViabilityCheckDto
+                {
+                    Label = "Capacidad de construcción (CUS)",
+                    Passed = null,
+                    Detail = "No se pudo evaluar: el predio no tiene registrado su CUS (coeficiente de utilización de suelo), necesario para estimar cuántos m² de construcción permite."
+                });
+            }
+        }
+
+        // Corner-lot preference is genuinely "not applicable" for criteria with PrefersCornerLot
+        // left null (no opinion either way) — that case correctly stays silent, same reasoning as
+        // the CUS check above. Only once the criterion DOES have a preference does a missing
+        // IsCornerLot value become something worth flagging as unevaluated.
+        if (criterion.PrefersCornerLot is { } prefersCorner)
+        {
+            if (lot.IsCornerLot is { } isCorner)
+            {
+                var passed = prefersCorner == isCorner;
+                checks.Add(new ViabilityCheckDto
+                {
+                    Label = "Esquina",
+                    Passed = passed,
+                    Detail = prefersCorner
+                        ? (isCorner ? "Es esquina, como se prefiere para este giro." : "No es esquina; este giro suele preferir una ubicación en esquina.")
+                        : (isCorner ? "Es esquina; este giro suele preferir evitarla (más tráfico/ruido)." : "No es esquina, como se prefiere para este giro.")
+                });
+            }
+            else
+            {
+                checks.Add(new ViabilityCheckDto
+                {
+                    Label = "Esquina",
+                    Passed = null,
+                    Detail = "No se pudo evaluar: no se reportó si el predio está en esquina."
+                });
+            }
+        }
+
+        if (criterion.PrefersPrimaryRoadAccess)
+        {
+            if (lot.HasPavedStreet is { } pavedStreet)
+            {
+                checks.Add(new ViabilityCheckDto
+                {
+                    Label = "Acceso vehicular",
+                    Passed = pavedStreet,
+                    Detail = pavedStreet ? "Calle pavimentada con acceso vehicular." : "Sin calle pavimentada — este giro depende fuertemente del acceso vehicular."
+                });
+            }
+            else if (lot.HasVehicleAccess is { } vehicleAccessFallback)
+            {
+                // HasPavedStreet specifically isn't known, but the more general HasVehicleAccess
+                // is — same fallback the pre-restructure code used (falling into its own
+                // `else if (lot.HasVehicleAccess is not null)` branch below in the old shape).
+                // Losing this would mean a lot with real, known vehicle-access data reports as
+                // merely "unevaluated" instead of using the data that's actually there.
+                checks.Add(new ViabilityCheckDto
+                {
+                    Label = "Acceso vehicular",
+                    Passed = vehicleAccessFallback,
+                    Detail = vehicleAccessFallback ? "El predio tiene acceso vehicular." : "El predio no reporta acceso vehicular."
+                });
+            }
+            else
+            {
+                checks.Add(new ViabilityCheckDto
+                {
+                    Label = "Acceso vehicular",
+                    Passed = null,
+                    Detail = "No se pudo evaluar: no se reportó si la calle está pavimentada ni si el predio tiene acceso vehicular."
+                });
+            }
+        }
+        else
         {
             // Even when this business type doesn't specifically prefer a primary road, every
             // business needs SOME vehicle access — a lot that's landlocked is a problem
             // regardless of giro, so this still gets checked, just not weighted as heavily.
-            checks.Add(new ViabilityCheckDto
+            if (lot.HasVehicleAccess is { } vehicleAccess)
             {
-                Label = "Acceso vehicular",
-                Passed = lot.HasVehicleAccess.Value,
-                Detail = lot.HasVehicleAccess.Value ? "El predio tiene acceso vehicular." : "El predio no reporta acceso vehicular."
-            });
+                checks.Add(new ViabilityCheckDto
+                {
+                    Label = "Acceso vehicular",
+                    Passed = vehicleAccess,
+                    Detail = vehicleAccess ? "El predio tiene acceso vehicular." : "El predio no reporta acceso vehicular."
+                });
+            }
+            else
+            {
+                checks.Add(new ViabilityCheckDto
+                {
+                    Label = "Acceso vehicular",
+                    Passed = null,
+                    Detail = "No se pudo evaluar: no se reportó si el predio tiene acceso vehicular."
+                });
+            }
         }
 
-        if (lot.PrimaryVialidadType is not null)
+        // Only scored pass/fail for road-dependent giros (same gate as the paved-street check
+        // above) — for a business type that doesn't particularly care about road type, a known
+        // PrimaryVialidadType is still shown as information (Passed left null), but there's
+        // nothing to flag as "missing" since it was never going to be scored either way.
+        if (criterion.PrefersPrimaryRoadAccess)
         {
-            var vialidadLabel = lot.PrimaryVialidadType.Value switch
+            if (lot.PrimaryVialidadType is { } vialidad)
             {
-                VialidadType.AvenidaPrincipal => "avenida principal",
-                VialidadType.CalleSecundaria => "calle secundaria",
-                VialidadType.Privada => "calle privada",
-                _ => "vialidad"
-            };
-            // Only scored pass/fail for road-dependent giros (same gate as the paved-street check
-            // above) — for a business type that doesn't particularly care about road type, this
-            // is shown as information, not a judgment (Passed left null).
-            var onAvenidaPrincipal = lot.PrimaryVialidadType.Value == VialidadType.AvenidaPrincipal;
-            checks.Add(new ViabilityCheckDto
+                var onAvenidaPrincipal = vialidad == VialidadType.AvenidaPrincipal;
+                checks.Add(new ViabilityCheckDto
+                {
+                    Label = "Tipo de vialidad",
+                    Passed = onAvenidaPrincipal,
+                    Detail = $"Vialidad reportada: {VialidadLabel(vialidad)} ({(onAvenidaPrincipal ? "ideal" : "este giro suele preferir una avenida principal")})."
+                });
+            }
+            else
             {
-                Label = "Tipo de vialidad",
-                Passed = criterion.PrefersPrimaryRoadAccess ? onAvenidaPrincipal : null,
-                Detail = criterion.PrefersPrimaryRoadAccess
-                    ? $"Vialidad reportada: {vialidadLabel} ({(onAvenidaPrincipal ? "ideal" : "este giro suele preferir una avenida principal")})."
-                    : $"Vialidad reportada: {vialidadLabel}."
-            });
+                checks.Add(new ViabilityCheckDto
+                {
+                    Label = "Tipo de vialidad",
+                    Passed = null,
+                    Detail = "No se pudo evaluar: no se reportó el tipo de vialidad frente al predio."
+                });
+            }
+        }
+        else if (lot.PrimaryVialidadType is { } vialidadInfo)
+        {
+            checks.Add(new ViabilityCheckDto { Label = "Tipo de vialidad", Passed = null, Detail = $"Vialidad reportada: {VialidadLabel(vialidadInfo)}." });
         }
 
-        // Uso de suelo: never "no data" when the listing has a LandUseCategory at all (unlike the
-        // DENUE/population checks, this is the listing's own field, not an external lookup) —
-        // whether a business CAN legally operate there is as fundamental as lot size.
-        if (lot.LandUseCategoryName is not null)
+        // Uso de suelo: every criterion has a real AcceptableLandUseCategories list, so (like
+        // frontage/lot size above) this always applies — whether a business CAN legally operate
+        // there is as fundamental as lot size, and an unknown land-use category is exactly the
+        // kind of gap worth surfacing, not silently skipping.
+        if (lot.LandUseCategoryName is { } landUse)
         {
             var acceptable = criterion.AcceptableLandUseCategories
                 .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-            var passed = acceptable.Contains(lot.LandUseCategoryName, StringComparer.OrdinalIgnoreCase);
+            var passed = acceptable.Contains(landUse, StringComparer.OrdinalIgnoreCase);
             checks.Add(new ViabilityCheckDto
             {
                 Label = "Uso de suelo",
                 Passed = passed,
                 Detail = passed
-                    ? $"Uso de suelo \"{lot.LandUseCategoryName}\" permite este giro."
-                    : $"Uso de suelo \"{lot.LandUseCategoryName}\" no es el típico para este giro (requiere trámite de cambio de uso de suelo)."
+                    ? $"Uso de suelo \"{landUse}\" permite este giro."
+                    : $"Uso de suelo \"{landUse}\" no es el típico para este giro (requiere trámite de cambio de uso de suelo)."
+            });
+        }
+        else
+        {
+            checks.Add(new ViabilityCheckDto
+            {
+                Label = "Uso de suelo",
+                Passed = null,
+                Detail = "No se pudo evaluar: el predio no tiene registrado su uso de suelo."
             });
         }
 
         // Utilities: any business needs these to operate, so this is one combined check (not
         // three) — a partial build-out (e.g. electricity but no drainage) still reads as
-        // "missing services," not a technicality worth 3 separate lines.
+        // "missing services," not a technicality worth 3 separate lines. Only flagged as entirely
+        // unevaluated when NONE of the three are known; a partial report (e.g. electricity known,
+        // water/drainage not) is still scored on what IS known rather than treated as a gap.
         var utilityFlags = new[] { lot.HasPotableWater, lot.HasDrainage, lot.HasElectricity };
         if (utilityFlags.Any(f => f is not null))
         {
@@ -390,15 +520,33 @@ public class ViabilityAnalysisService : IViabilityAnalysisService
                 Detail = passed ? "Cuenta con agua potable, drenaje y electricidad." : $"Falta: {string.Join(", ", missing)}."
             });
         }
-
-        if (lot.Topography is not null)
+        else
         {
-            var passed = lot.Topography.Value == TopographyType.Plana;
+            checks.Add(new ViabilityCheckDto
+            {
+                Label = "Servicios",
+                Passed = null,
+                Detail = "No se pudo evaluar: el predio no tiene registrados agua potable, drenaje ni electricidad."
+            });
+        }
+
+        if (lot.Topography is { } topography)
+        {
+            var passed = topography == TopographyType.Plana;
             checks.Add(new ViabilityCheckDto
             {
                 Label = "Topografía",
                 Passed = passed,
                 Detail = passed ? "Terreno plano." : "Terreno inclinado — puede elevar el costo de construcción para cualquier giro."
+            });
+        }
+        else
+        {
+            checks.Add(new ViabilityCheckDto
+            {
+                Label = "Topografía",
+                Passed = null,
+                Detail = "No se pudo evaluar: no se reportó la topografía del terreno."
             });
         }
 
@@ -410,6 +558,15 @@ public class ViabilityAnalysisService : IViabilityAnalysisService
         else if (lot.IsFloodRiskZone is false)
         {
             checks.Add(new ViabilityCheckDto { Label = "Riesgo de inundación", Passed = true, Detail = "Sin riesgo de inundación reportado." });
+        }
+        else
+        {
+            checks.Add(new ViabilityCheckDto
+            {
+                Label = "Riesgo de inundación",
+                Passed = null,
+                Detail = "No se pudo evaluar: no se reportó si el predio está en zona de riesgo de inundación."
+            });
         }
 
         var legalIssues = new List<string>();
@@ -424,6 +581,15 @@ public class ViabilityAnalysisService : IViabilityAnalysisService
         else if (lot.IsFreeOfLiens is not null || lot.HasPropertyTaxDebt is not null || lot.HasWaterDebt is not null)
         {
             checks.Add(new ViabilityCheckDto { Label = "Situación legal", Passed = true, Detail = "Sin gravámenes ni adeudos reportados." });
+        }
+        else
+        {
+            checks.Add(new ViabilityCheckDto
+            {
+                Label = "Situación legal",
+                Passed = null,
+                Detail = "No se pudo evaluar: no se reportaron gravámenes ni adeudos de predial/agua."
+            });
         }
 
         if (criterion.PopulationRadiusKm is not null)
@@ -503,4 +669,12 @@ public class ViabilityAnalysisService : IViabilityAnalysisService
     // deciding whether to pursue this lot can act on "Farmacias Guadalajara, 650 m" in a way they
     // can't act on "2 competitors".
     private const int MaxNamedCompetitors = 3;
+
+    private static string VialidadLabel(VialidadType vialidad) => vialidad switch
+    {
+        VialidadType.AvenidaPrincipal => "avenida principal",
+        VialidadType.CalleSecundaria => "calle secundaria",
+        VialidadType.Privada => "calle privada",
+        _ => "vialidad"
+    };
 }

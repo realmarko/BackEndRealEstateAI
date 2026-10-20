@@ -376,7 +376,8 @@ public class ListingsController : ControllerBase
         IsFreeOfLiens: listing.IsFreeOfLiens,
         HasPropertyTaxDebt: listing.HasPropertyTaxDebt,
         HasWaterDebt: listing.HasWaterDebt,
-        PrimaryVialidadType: listing.PrimaryVialidadType);
+        PrimaryVialidadType: listing.PrimaryVialidadType,
+        CusCoefficient: (double?)listing.CusCoefficient);
 
     // Mirrors the interactive viability-report page's own marker color scheme
     // (viability-report-page.component.ts's CATEGORY_MARKER_COLORS) so the PDF's static map and

@@ -145,8 +145,21 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, IdentityR
                 // by another pharmacy), and no PopulationRadiusKm for either (both CREATE the
                 // population/demand they'd serve, rather than depending on population already
                 // there).
-                new BusinessTypeCriteria { Id = 10, Key = "residential_development", DisplayName = "Desarrollo Inmobiliario Residencial", DenueSearchTerm = "fraccionadora", GooglePlacesType = null, MinFrontageMeters = 30, MinLotSizeSqm = 5000, PrefersPrimaryRoadAccess = true, AcceptableLandUseCategories = "Residencial,Urbano,Urbanizable", Notes = "Estimación; sin cifra oficial por municipio — superficie/frente mínimos típicos para un fraccionamiento residencial de escala pequeña. No evalúa densidad poblacional ni competencia directa, ya que un desarrollo genera su propia demanda en vez de depender de la existente." },
-                new BusinessTypeCriteria { Id = 11, Key = "shopping_plaza", DisplayName = "Plaza Comercial", DenueSearchTerm = "centro comercial", GooglePlacesType = "shopping_mall", MinFrontageMeters = 40, MinLotSizeSqm = 5000, PrefersCornerLot = true, PrefersPrimaryRoadAccess = true, PopulationRadiusKm = 3, MinPopulationInRadius = 20000, CompetitorExclusionRadiusMeters = 2000, AcceptableLandUseCategories = "Urbano,Comercial", Notes = "Estimación; prioriza alta visibilidad/acceso vehicular y evita otra plaza o centro comercial cercano que compita por el mismo catchment." }
+                // DisplayName renamed from the original "Desarrollo Inmobiliario Residencial" (see
+                // RenameResidentialDevelopmentToFraccionamiento migration) once "Edificio de
+                // Departamentos" below existed too — both are "residential development" in the
+                // abstract, but one is horizontal (many individual house lots) and the other
+                // vertical (density-driven, see MinCusRatio), so the generic name stopped being
+                // specific enough to tell them apart at a glance.
+                new BusinessTypeCriteria { Id = 10, Key = "residential_development", DisplayName = "Fraccionamiento Residencial", DenueSearchTerm = "fraccionadora", GooglePlacesType = null, MinFrontageMeters = 30, MinLotSizeSqm = 5000, PrefersPrimaryRoadAccess = true, AcceptableLandUseCategories = "Residencial,Urbano,Urbanizable", Notes = "Estimación; sin cifra oficial por municipio — superficie/frente mínimos típicos para un fraccionamiento residencial de escala pequeña (lotificación horizontal, no un edificio). No evalúa densidad poblacional ni competencia directa, ya que un desarrollo genera su propia demanda en vez de depender de la existente." },
+                new BusinessTypeCriteria { Id = 11, Key = "shopping_plaza", DisplayName = "Plaza Comercial", DenueSearchTerm = "centro comercial", GooglePlacesType = "shopping_mall", MinFrontageMeters = 40, MinLotSizeSqm = 5000, PrefersCornerLot = true, PrefersPrimaryRoadAccess = true, PopulationRadiusKm = 3, MinPopulationInRadius = 20000, CompetitorExclusionRadiusMeters = 2000, AcceptableLandUseCategories = "Urbano,Comercial", Notes = "Estimación; prioriza alta visibilidad/acceso vehicular y evita otra plaza o centro comercial cercano que compita por el mismo catchment." },
+                // Vertical counterpart to "Fraccionamiento Residencial" above — buildable area
+                // (LotSizeSqm × CUS) is the real constraint for a multi-story building, not just
+                // raw lot size, so this is the one criterion in the catalog with MinCusRatio set.
+                // No population/competitor checks, same reasoning as the other two development
+                // types: it creates its own resident base rather than depending on who's already
+                // nearby.
+                new BusinessTypeCriteria { Id = 12, Key = "apartment_building", DisplayName = "Edificio de Departamentos", DenueSearchTerm = "edificio de departamentos", GooglePlacesType = null, MinFrontageMeters = 15, MinLotSizeSqm = 500, PrefersPrimaryRoadAccess = true, MinCusRatio = 2.0, AcceptableLandUseCategories = "Urbano,Comercial,Residencial", Notes = "Estimación; depende fuertemente del CUS (coeficiente de utilización de suelo) registrado para el predio — sin ese dato no se puede estimar cuántos m² de construcción (y por tanto cuántas unidades) permite el terreno." }
             );
         });
 

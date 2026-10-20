@@ -394,6 +394,10 @@ namespace RealEstate.Api.Migrations
                         .HasColumnType("character varying(50)")
                         .HasColumnName("key");
 
+                    b.Property<double?>("MinCusRatio")
+                        .HasColumnType("double precision")
+                        .HasColumnName("min_cus_ratio");
+
                     b.Property<double>("MinFrontageMeters")
                         .HasColumnType("double precision")
                         .HasColumnName("min_frontage_meters");
@@ -575,11 +579,11 @@ namespace RealEstate.Api.Migrations
                             Id = 10,
                             AcceptableLandUseCategories = "Residencial,Urbano,Urbanizable",
                             DenueSearchTerm = "fraccionadora",
-                            DisplayName = "Desarrollo Inmobiliario Residencial",
+                            DisplayName = "Fraccionamiento Residencial",
                             Key = "residential_development",
                             MinFrontageMeters = 30.0,
                             MinLotSizeSqm = 5000.0,
-                            Notes = "Estimación; sin cifra oficial por municipio — superficie/frente mínimos típicos para un fraccionamiento residencial de escala pequeña. No evalúa densidad poblacional ni competencia directa, ya que un desarrollo genera su propia demanda en vez de depender de la existente.",
+                            Notes = "Estimación; sin cifra oficial por municipio — superficie/frente mínimos típicos para un fraccionamiento residencial de escala pequeña (lotificación horizontal, no un edificio). No evalúa densidad poblacional ni competencia directa, ya que un desarrollo genera su propia demanda en vez de depender de la existente.",
                             PrefersPrimaryRoadAccess = true
                         },
                         new
@@ -597,6 +601,19 @@ namespace RealEstate.Api.Migrations
                             Notes = "Estimación; prioriza alta visibilidad/acceso vehicular y evita otra plaza o centro comercial cercano que compita por el mismo catchment.",
                             PopulationRadiusKm = 3.0,
                             PrefersCornerLot = true,
+                            PrefersPrimaryRoadAccess = true
+                        },
+                        new
+                        {
+                            Id = 12,
+                            AcceptableLandUseCategories = "Urbano,Comercial,Residencial",
+                            DenueSearchTerm = "edificio de departamentos",
+                            DisplayName = "Edificio de Departamentos",
+                            Key = "apartment_building",
+                            MinCusRatio = 2.0,
+                            MinFrontageMeters = 15.0,
+                            MinLotSizeSqm = 500.0,
+                            Notes = "Estimación; depende fuertemente del CUS (coeficiente de utilización de suelo) registrado para el predio — sin ese dato no se puede estimar cuántos m² de construcción (y por tanto cuántas unidades) permite el terreno.",
                             PrefersPrimaryRoadAccess = true
                         });
                 });

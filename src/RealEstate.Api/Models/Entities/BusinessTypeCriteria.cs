@@ -35,7 +35,9 @@ public class BusinessTypeCriteria
 
     // Comma-separated LandUseCategory.Name values this business type can legally operate on
     // (e.g. "Urbano,Comercial") — checked against the listing's own LandUseCategory, not an
-    // external lookup, so (unlike the DENUE/population checks) it's never "no data available."
+    // external lookup, so (unlike the DENUE/population checks) a missing value is never a
+    // transient/external failure — it just means ScoreBusinessAsync reports this check as
+    // unevaluated instead of skipping it silently (see its own "No se pudo evaluar" messages).
     public string AcceptableLandUseCategories { get; set; } = string.Empty;
 
     // Catchment used for the population-density check — null means this business type weighs
@@ -46,6 +48,13 @@ public class BusinessTypeCriteria
     // How close an existing same-category competitor can be before it meaningfully hurts
     // viability — null means this business type isn't modeled as competitor-sensitive here.
     public int? CompetitorExclusionRadiusMeters { get; set; }
+
+    // Minimum CUS (coeficiente de utilización de suelo) this business type needs to pencil out —
+    // null means density isn't a factor for this type (most of the catalog: a single-story
+    // storefront doesn't care how many floors zoning allows). Set for density-driven types like
+    // "Edificio de Departamentos", where buildable area (LotSizeSqm × CUS) is the real constraint,
+    // not just raw lot size.
+    public double? MinCusRatio { get; set; }
 
     public string Notes { get; set; } = string.Empty;
 }
