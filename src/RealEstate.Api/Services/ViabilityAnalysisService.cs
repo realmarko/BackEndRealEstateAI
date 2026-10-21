@@ -28,7 +28,10 @@ public record ViabilityLotContext(
     // CUS (coeficiente de utilización de suelo) — only read by density-sensitive criteria (see
     // BusinessTypeCriteria.MinCusRatio), e.g. an apartment building's buildable area is LotSizeSqm
     // × CusCoefficient, not just whether the raw lot is big enough.
-    double? CusCoefficient);
+    double? CusCoefficient,
+    // How many streets the lot fronts on — a corner lot is the common case (2), but a through-lot
+    // spanning a whole block can front on more. Used for the "Frentes múltiples" bonus check.
+    int? StreetFrontageCount);
 
 public interface IViabilityAnalysisService
 {
@@ -386,6 +389,24 @@ public class ViabilityAnalysisService : IViabilityAnalysisService
                     Detail = "No se pudo evaluar: no se reportó si el predio está en esquina."
                 });
             }
+        }
+
+        // Unlike every check above, this one has no "fail" state: a single frontage is just the
+        // normal case, not a deficiency, so a listing reporting only one (or not reporting a
+        // count at all) simply doesn't get this check added — it isn't penalized for lacking a
+        // bonus. Extra street frontage (most commonly a corner lot, but a through-lot spanning a
+        // whole block can have more) is a genuine advantage for nearly any business — more
+        // visibility and more possible access points — regardless of that type's specific
+        // preferences, so this is scored the same way for every criterion rather than being
+        // gated behind a per-type "prefers multiple frontages" flag the way corner-lot is.
+        if (lot.StreetFrontageCount is { } frontageCount && frontageCount >= 2)
+        {
+            checks.Add(new ViabilityCheckDto
+            {
+                Label = "Frentes múltiples",
+                Passed = true,
+                Detail = $"{frontageCount} frentes a la calle — más visibilidad y opciones de acceso."
+            });
         }
 
         if (criterion.PrefersPrimaryRoadAccess)
