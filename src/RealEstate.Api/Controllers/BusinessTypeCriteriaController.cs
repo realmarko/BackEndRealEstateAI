@@ -51,6 +51,7 @@ public class BusinessTypeCriteriaController : ControllerBase
         criterion.MinLotSizeSqm = dto.MinLotSizeSqm;
         criterion.PrefersCornerLot = dto.PrefersCornerLot;
         criterion.PrefersPrimaryRoadAccess = dto.PrefersPrimaryRoadAccess;
+        criterion.PrefersHighTraffic = dto.PrefersHighTraffic;
         criterion.PopulationRadiusKm = dto.PopulationRadiusKm;
         criterion.MinPopulationInRadius = dto.MinPopulationInRadius;
         criterion.CompetitorExclusionRadiusMeters = dto.CompetitorExclusionRadiusMeters;
@@ -73,6 +74,7 @@ public class BusinessTypeCriteriaController : ControllerBase
         MinLotSizeSqm = c.MinLotSizeSqm,
         PrefersCornerLot = c.PrefersCornerLot,
         PrefersPrimaryRoadAccess = c.PrefersPrimaryRoadAccess,
+        PrefersHighTraffic = c.PrefersHighTraffic,
         PopulationRadiusKm = c.PopulationRadiusKm,
         MinPopulationInRadius = c.MinPopulationInRadius,
         CompetitorExclusionRadiusMeters = c.CompetitorExclusionRadiusMeters,

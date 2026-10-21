@@ -100,6 +100,10 @@ builder.Services.AddScoped<IViabilityReportPdfService, ViabilityReportPdfService
 // different key than the frontend's.
 builder.Services.Configure<GoogleMapsOptions>(builder.Configuration.GetSection("GoogleMaps"));
 builder.Services.AddHttpClient<IStaticMapService, StaticMapService>(client => client.Timeout = TimeSpan.FromSeconds(5));
+// Routes API with traffic awareness, for the viability analysis's road-congestion check — same
+// GoogleMapsOptions section (RoutesApiKey), its own HttpClient/timeout since this is a separate,
+// paid, per-request Google API.
+builder.Services.AddHttpClient<IGoogleTrafficService, GoogleTrafficService>(client => client.Timeout = TimeSpan.FromSeconds(5));
 
 // ---- In-process cache (single EB instance, no shared/distributed cache needed) — for static
 // reference data that's expensive to refetch on every request but changes rarely, if ever:

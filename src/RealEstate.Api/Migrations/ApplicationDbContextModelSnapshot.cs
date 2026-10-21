@@ -424,6 +424,10 @@ namespace RealEstate.Api.Migrations
                         .HasColumnType("boolean")
                         .HasColumnName("prefers_corner_lot");
 
+                    b.Property<bool?>("PrefersHighTraffic")
+                        .HasColumnType("boolean")
+                        .HasColumnName("prefers_high_traffic");
+
                     b.Property<bool>("PrefersPrimaryRoadAccess")
                         .HasColumnType("boolean")
                         .HasColumnName("prefers_primary_road_access");
@@ -451,6 +455,7 @@ namespace RealEstate.Api.Migrations
                             MinLotSizeSqm = 400.0,
                             Notes = "Basado en reglamentación municipal típica en México (p.ej. Zapopan): 400 m²/20 m de frente en esquina, 800 m²/30 m fuera de esquina — aquí se usa el mínimo de esquina. Verificar siempre con el reglamento del municipio específico.",
                             PrefersCornerLot = true,
+                            PrefersHighTraffic = true,
                             PrefersPrimaryRoadAccess = true
                         },
                         new
@@ -483,6 +488,7 @@ namespace RealEstate.Api.Migrations
                             MinLotSizeSqm = 180.0,
                             Notes = "Estimación. Prioriza tráfico vehicular/peatonal y visibilidad por encima de densidad poblacional.",
                             PrefersCornerLot = true,
+                            PrefersHighTraffic = true,
                             PrefersPrimaryRoadAccess = true
                         },
                         new
@@ -560,6 +566,7 @@ namespace RealEstate.Api.Migrations
                             Notes = "Estimación; a diferencia de los demás tipos, evita vialidades primarias de alto tráfico por seguridad y ruido.",
                             PopulationRadiusKm = 2.0,
                             PrefersCornerLot = false,
+                            PrefersHighTraffic = false,
                             PrefersPrimaryRoadAccess = false
                         },
                         new
@@ -584,6 +591,7 @@ namespace RealEstate.Api.Migrations
                             MinFrontageMeters = 30.0,
                             MinLotSizeSqm = 5000.0,
                             Notes = "Estimación; sin cifra oficial por municipio — superficie/frente mínimos típicos para un fraccionamiento residencial de escala pequeña (lotificación horizontal, no un edificio). No evalúa densidad poblacional ni competencia directa, ya que un desarrollo genera su propia demanda en vez de depender de la existente.",
+                            PrefersHighTraffic = false,
                             PrefersPrimaryRoadAccess = true
                         },
                         new
@@ -601,6 +609,7 @@ namespace RealEstate.Api.Migrations
                             Notes = "Estimación; prioriza alta visibilidad/acceso vehicular y evita otra plaza o centro comercial cercano que compita por el mismo catchment.",
                             PopulationRadiusKm = 3.0,
                             PrefersCornerLot = true,
+                            PrefersHighTraffic = true,
                             PrefersPrimaryRoadAccess = true
                         },
                         new
@@ -614,6 +623,7 @@ namespace RealEstate.Api.Migrations
                             MinFrontageMeters = 15.0,
                             MinLotSizeSqm = 500.0,
                             Notes = "Estimación; depende fuertemente del CUS (coeficiente de utilización de suelo) registrado para el predio — sin ese dato no se puede estimar cuántos m² de construcción (y por tanto cuántas unidades) permite el terreno.",
+                            PrefersHighTraffic = false,
                             PrefersPrimaryRoadAccess = true
                         },
                         new

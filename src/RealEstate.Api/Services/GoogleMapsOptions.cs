@@ -8,4 +8,12 @@ namespace RealEstate.Api.Services;
 public class GoogleMapsOptions
 {
     public string StaticMapsApiKey { get; set; } = "CHANGE_ME_GOOGLE_STATIC_MAPS_API_KEY";
+
+    // Separate key, restricted to the Routes API only (same referrer-vs-server-IP reasoning as
+    // StaticMapsApiKey above) — used by GoogleTrafficService for the live traffic-congestion
+    // check in the commercial-viability analysis. Routes API with traffic awareness is a paid,
+    // billed-per-request SKU (unlike Static Maps' free tier), so this key needs its own budget
+    // alert in Google Cloud once set — see GoogleTrafficService for the caching that bounds call
+    // volume.
+    public string RoutesApiKey { get; set; } = "CHANGE_ME_GOOGLE_ROUTES_API_KEY";
 }

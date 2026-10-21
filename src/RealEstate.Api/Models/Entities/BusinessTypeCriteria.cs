@@ -33,6 +33,13 @@ public class BusinessTypeCriteria
 
     public bool PrefersPrimaryRoadAccess { get; set; }
 
+    // null = no stated preference (most of the catalog); true = benefits from a busy road
+    // (more exposure/walk-in traffic, e.g. a gas station or convenience store); false = actively
+    // wants a quiet road (e.g. a school or residential development, where heavy traffic is a
+    // safety/noise problem, not an asset). Scored against the real-time congestion level Google
+    // Routes API reports for the nearest major road — see ViabilityAnalysisService's traffic check.
+    public bool? PrefersHighTraffic { get; set; }
+
     // Comma-separated LandUseCategory.Name values this business type can legally operate on
     // (e.g. "Urbano,Comercial") — checked against the listing's own LandUseCategory, not an
     // external lookup, so (unlike the DENUE/population checks) a missing value is never a

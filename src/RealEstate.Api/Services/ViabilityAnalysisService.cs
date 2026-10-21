@@ -53,6 +53,7 @@ public class ViabilityAnalysisService : IViabilityAnalysisService
     private readonly IDenueService _denueService;
     private readonly IPopulationDensityService _populationDensityService;
     private readonly IRoadNetworkService _roadNetworkService;
+    private readonly IGoogleTrafficService _googleTrafficService;
     private readonly IErrorLogService _errorLogService;
     private readonly ILogger<ViabilityAnalysisService> _logger;
 
@@ -61,6 +62,7 @@ public class ViabilityAnalysisService : IViabilityAnalysisService
         IDenueService denueService,
         IPopulationDensityService populationDensityService,
         IRoadNetworkService roadNetworkService,
+        IGoogleTrafficService googleTrafficService,
         IErrorLogService errorLogService,
         ILogger<ViabilityAnalysisService> logger)
     {
@@ -68,6 +70,7 @@ public class ViabilityAnalysisService : IViabilityAnalysisService
         _denueService = denueService;
         _populationDensityService = populationDensityService;
         _roadNetworkService = roadNetworkService;
+        _googleTrafficService = googleTrafficService;
         _errorLogService = errorLogService;
         _logger = logger;
     }
@@ -131,6 +134,28 @@ public class ViabilityAnalysisService : IViabilityAnalysisService
             await LogDataSourceFailureAsync("ViabilityAnalysis.Roads", roadsError);
         }
 
+        // Measured against the nearest major road that actually has mapped geometry (needed to
+        // pick two real points along it) rather than the listing's own lat/lng alone — a single
+        // point has no "road segment" for Routes API to compute a travel time over.
+        TrafficCondition? trafficCondition = null;
+        var trafficRoad = nearbyRoads.FirstOrDefault(r => r.Geometry.Count >= 2);
+        var trafficDataUnavailable = false;
+        if (trafficRoad is not null)
+        {
+            try
+            {
+                var origin = trafficRoad.Geometry[0];
+                var destination = trafficRoad.Geometry[^1];
+                trafficCondition = await _googleTrafficService.GetTrafficConditionAsync(origin.Lat, origin.Lng, destination.Lat, destination.Lng, cancellationToken);
+            }
+            catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or System.Text.Json.JsonException or InvalidOperationException)
+            {
+                _logger.LogWarning(ex, "Google traffic lookup failed at {Lat},{Lng}", lat, lng);
+                trafficDataUnavailable = true;
+                await LogDataSourceFailureAsync("ViabilityAnalysis.Traffic", ex);
+            }
+        }
+
         var result = new ViabilityAnalysisDto
         {
             Lat = lat,
@@ -141,12 +166,15 @@ public class ViabilityAnalysisService : IViabilityAnalysisService
             TrafficGenerators = trafficGenerators,
             NearbyRoads = nearbyRoads,
             TrafficGeneratorsDataUnavailable = trafficGeneratorsDataUnavailable,
-            RoadsDataUnavailable = roadsDataUnavailable
+            RoadsDataUnavailable = roadsDataUnavailable,
+            TrafficCongestionLevel = trafficCondition?.Level,
+            TrafficCongestionRoadName = trafficCondition is not null ? (trafficRoad!.Name ?? trafficRoad.Classification) : null,
+            TrafficDataUnavailable = trafficDataUnavailable
         };
 
         foreach (var criterion in criteria)
         {
-            result.Businesses.Add(await ScoreBusinessAsync(criterion, lat, lng, lot, population, cancellationToken));
+            result.Businesses.Add(await ScoreBusinessAsync(criterion, lat, lng, lot, population, trafficCondition?.Level, cancellationToken));
         }
 
         return result;
@@ -276,6 +304,7 @@ public class ViabilityAnalysisService : IViabilityAnalysisService
         double lng,
         ViabilityLotContext lot,
         PopulationDensityDto? population,
+        TrafficCongestionLevel? trafficCongestion,
         CancellationToken cancellationToken)
     {
         var checks = new List<ViabilityCheckDto>();
@@ -500,6 +529,38 @@ public class ViabilityAnalysisService : IViabilityAnalysisService
             informationalChecks.Add(new ViabilityCheckDto { Label = "Tipo de vialidad", Passed = null, Detail = $"Vialidad reportada: {VialidadLabel(vialidadInfo)}." });
         }
 
+        // Live congestion on the nearest major road (Google Routes API, see
+        // ViabilityAnalysisService.AnalyzeAsync) — only scored for criteria with a stated
+        // PrefersHighTraffic opinion; same "not applicable" vs. "missing data" distinction as
+        // PrefersCornerLot/CUS above. A null congestion level here means either no nearby road
+        // had mapped geometry to measure, or the lookup failed — both read as "no se pudo
+        // evaluar" since a visitor can't tell them apart anyway.
+        if (criterion.PrefersHighTraffic is { } prefersHighTraffic)
+        {
+            if (trafficCongestion is { } congestion)
+            {
+                var isHighTraffic = congestion is TrafficCongestionLevel.Moderate or TrafficCongestionLevel.High;
+                var passed = prefersHighTraffic == isHighTraffic;
+                checks.Add(new ViabilityCheckDto
+                {
+                    Label = "Tráfico vehicular",
+                    Passed = passed,
+                    Detail = prefersHighTraffic
+                        ? (isHighTraffic ? $"Tráfico {CongestionLabel(congestion)} en la vía cercana — buena exposición para este giro." : "Tráfico bajo en la vía cercana; este giro suele beneficiarse de una calle más transitada.")
+                        : (isHighTraffic ? $"Tráfico {CongestionLabel(congestion)} en la vía cercana; este giro suele preferir una ubicación más tranquila." : "Tráfico bajo en la vía cercana, como se prefiere para este giro.")
+                });
+            }
+            else
+            {
+                checks.Add(new ViabilityCheckDto
+                {
+                    Label = "Tráfico vehicular",
+                    Passed = null,
+                    Detail = "No se pudo evaluar: no hay datos de tráfico en tiempo real para una vía cercana a este predio."
+                });
+            }
+        }
+
         // Uso de suelo: every criterion has a real AcceptableLandUseCategories list, so (like
         // frontage/lot size above) this always applies — whether a business CAN legally operate
         // there is as fundamental as lot size, and an unknown land-use category is exactly the
@@ -701,6 +762,14 @@ public class ViabilityAnalysisService : IViabilityAnalysisService
     // deciding whether to pursue this lot can act on "Farmacias Guadalajara, 650 m" in a way they
     // can't act on "2 competitors".
     private const int MaxNamedCompetitors = 3;
+
+    private static string CongestionLabel(TrafficCongestionLevel level) => level switch
+    {
+        TrafficCongestionLevel.Low => "bajo",
+        TrafficCongestionLevel.Moderate => "moderado",
+        TrafficCongestionLevel.High => "alto",
+        _ => "desconocido"
+    };
 
     private static string VialidadLabel(VialidadType vialidad) => vialidad switch
     {

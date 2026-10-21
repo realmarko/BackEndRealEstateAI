@@ -9,6 +9,7 @@ public class BusinessTypeCriteriaDto
     public double MinLotSizeSqm { get; set; }
     public bool? PrefersCornerLot { get; set; }
     public bool PrefersPrimaryRoadAccess { get; set; }
+    public bool? PrefersHighTraffic { get; set; }
     public double? PopulationRadiusKm { get; set; }
     public int? MinPopulationInRadius { get; set; }
     public int? CompetitorExclusionRadiusMeters { get; set; }
@@ -26,6 +27,7 @@ public class BusinessTypeCriteriaUpdateDto
     public double MinLotSizeSqm { get; set; }
     public bool? PrefersCornerLot { get; set; }
     public bool PrefersPrimaryRoadAccess { get; set; }
+    public bool? PrefersHighTraffic { get; set; }
     public double? PopulationRadiusKm { get; set; }
     public int? MinPopulationInRadius { get; set; }
     public int? CompetitorExclusionRadiusMeters { get; set; }
@@ -96,6 +98,17 @@ public class TrafficGeneratorDto
     public double Lng { get; set; }
 }
 
+// Low/Moderate/High bucketing of the delay ratio Google Routes API reports for the nearest
+// major road (live "duration" vs. free-flow "staticDuration") — see GoogleTrafficService. This
+// is a real-time snapshot, not an average-annual-daily-traffic (AADT) count: it tells you how
+// congested the road is right now, not how many vehicles pass per day.
+public enum TrafficCongestionLevel
+{
+    Low,
+    Moderate,
+    High
+}
+
 public class ViabilityCheckDto
 {
     public string Label { get; set; } = string.Empty;
@@ -137,4 +150,10 @@ public class ViabilityAnalysisDto
     // category search or the Overpass transit search) failed, so the list may be incomplete
     // rather than exhaustive.
     public bool TrafficGeneratorsDataUnavailable { get; set; }
+    // Real-time road-congestion snapshot from Google Routes API for the nearest major road found
+    // above (NearbyRoads) — null when there's no nearby road with mapped geometry to measure, or
+    // the lookup failed/is unconfigured (see TrafficDataUnavailable to tell those apart).
+    public TrafficCongestionLevel? TrafficCongestionLevel { get; set; }
+    public string? TrafficCongestionRoadName { get; set; }
+    public bool TrafficDataUnavailable { get; set; }
 }
