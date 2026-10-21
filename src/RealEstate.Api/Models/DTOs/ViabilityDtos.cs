@@ -99,8 +99,10 @@ public class TrafficGeneratorDto
 public class ViabilityCheckDto
 {
     public string Label { get; set; } = string.Empty;
-    // true = meets the criterion, false = fails it, null = criterion not applicable/not
-    // evaluated for this business type (e.g. population check for a gas station).
+    // true = meets the criterion, false = fails it, null = the listing is missing the data
+    // needed to evaluate this one — ViabilityAnalysisService.ScoreBusinessAsync counts that
+    // against the score (a listing with little data filled in shouldn't score near 100% just
+    // because the few checks it COULD run happened to pass).
     public bool? Passed { get; set; }
     public string Detail { get; set; } = string.Empty;
 }

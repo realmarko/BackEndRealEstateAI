@@ -276,12 +276,19 @@ public class ViabilityAnalysisService : IViabilityAnalysisService
         CancellationToken cancellationToken)
     {
         var checks = new List<ViabilityCheckDto>();
+        // Checks that are shown to the visitor but never scored either way — today just the
+        // "Tipo de vialidad" line added when a criterion doesn't care about road type but the
+        // vialidad happens to be known anyway (pure FYI). Kept separate from `checks` so the
+        // scoring loop below can safely treat every entry in `checks` with Passed == null as a
+        // missing-data penalty without also penalizing this one, which was never meant to pass
+        // or fail. See its own call site for why it belongs here instead of in `checks`.
+        var informationalChecks = new List<ViabilityCheckDto>();
         var hardBlockers = new List<string>();
 
         // Every criterion has a real MinFrontageMeters/MinLotSizeSqm (non-nullable), so these two
         // always apply — unlike e.g. PrefersCornerLot, there's no "this business type doesn't
         // care" case to distinguish from "we don't know." When the lot's own field is missing,
-        // say so explicitly (Passed = null, excluded from the score the same as any other
+        // say so explicitly (Passed = null, counted against the score the same as any other
         // not-yet-evaluated check) instead of just omitting the row, so a visitor can tell "not
         // evaluated" apart from "evaluated and fine."
         if (lot.FrontageMeters is { } frontage)
@@ -469,7 +476,7 @@ public class ViabilityAnalysisService : IViabilityAnalysisService
         }
         else if (lot.PrimaryVialidadType is { } vialidadInfo)
         {
-            checks.Add(new ViabilityCheckDto { Label = "Tipo de vialidad", Passed = null, Detail = $"Vialidad reportada: {VialidadLabel(vialidadInfo)}." });
+            informationalChecks.Add(new ViabilityCheckDto { Label = "Tipo de vialidad", Passed = null, Detail = $"Vialidad reportada: {VialidadLabel(vialidadInfo)}." });
         }
 
         // Uso de suelo: every criterion has a real AcceptableLandUseCategories list, so (like
@@ -650,8 +657,12 @@ public class ViabilityAnalysisService : IViabilityAnalysisService
             }
         }
 
-        var applicable = checks.Where(c => c.Passed is not null).ToList();
-        var rawScore = applicable.Count == 0 ? 0 : (int)Math.Round(100.0 * applicable.Count(c => c.Passed!.Value) / applicable.Count);
+        // A missing value counts against the score here, same as a check that was actually
+        // evaluated and failed — a listing with almost no data filled in used to land near 100%
+        // just because the one or two checks that COULD run happened to pass, which overstated
+        // confidence for a property we mostly know nothing about. `informationalChecks` (declared
+        // above) stays out of this denominator since those were never going to pass or fail.
+        var rawScore = checks.Count == 0 ? 0 : (int)Math.Round(100.0 * checks.Count(c => c.Passed == true) / checks.Count);
         var capped = hardBlockers.Count > 0 && rawScore > HardBlockerScoreCap;
 
         return new BusinessViabilityDto
@@ -660,7 +671,7 @@ public class ViabilityAnalysisService : IViabilityAnalysisService
             DisplayName = criterion.DisplayName,
             Score = capped ? HardBlockerScoreCap : rawScore,
             ScoreCapReason = capped ? $"Limitado por: {string.Join("; ", hardBlockers)}." : null,
-            Checks = checks,
+            Checks = checks.Concat(informationalChecks).ToList(),
             NearbyCompetitors = nearbyCompetitors
         };
     }
