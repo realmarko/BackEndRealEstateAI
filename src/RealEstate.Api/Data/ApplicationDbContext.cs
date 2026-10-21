@@ -159,7 +159,13 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, IdentityR
                 // No population/competitor checks, same reasoning as the other two development
                 // types: it creates its own resident base rather than depending on who's already
                 // nearby.
-                new BusinessTypeCriteria { Id = 12, Key = "apartment_building", DisplayName = "Edificio de Departamentos", DenueSearchTerm = "edificio de departamentos", GooglePlacesType = null, MinFrontageMeters = 15, MinLotSizeSqm = 500, PrefersPrimaryRoadAccess = true, MinCusRatio = 2.0, AcceptableLandUseCategories = "Urbano,Comercial,Residencial", Notes = "Estimación; depende fuertemente del CUS (coeficiente de utilización de suelo) registrado para el predio — sin ese dato no se puede estimar cuántos m² de construcción (y por tanto cuántas unidades) permite el terreno." }
+                new BusinessTypeCriteria { Id = 12, Key = "apartment_building", DisplayName = "Edificio de Departamentos", DenueSearchTerm = "edificio de departamentos", GooglePlacesType = null, MinFrontageMeters = 15, MinLotSizeSqm = 500, PrefersPrimaryRoadAccess = true, MinCusRatio = 2.0, AcceptableLandUseCategories = "Urbano,Comercial,Residencial", Notes = "Estimación; depende fuertemente del CUS (coeficiente de utilización de suelo) registrado para el predio — sin ese dato no se puede estimar cuántos m² de construcción (y por tanto cuántas unidades) permite el terreno." },
+                // No CompetitorExclusionRadiusMeters, unlike the single-storefront retail rows
+                // above — unlike a pharmacy or gas station, a nearby office doesn't crowd out this
+                // one's catchment (office tenants don't pick a building because the next block has
+                // no other offices). MinPopulationInRadius is likewise omitted: demand comes from
+                // the regional business/professional market, not from residents living nearby.
+                new BusinessTypeCriteria { Id = 13, Key = "office", DisplayName = "Oficina", DenueSearchTerm = "oficina", GooglePlacesType = null, MinFrontageMeters = 12, MinLotSizeSqm = 300, PrefersCornerLot = false, PrefersPrimaryRoadAccess = true, PopulationRadiusKm = 2, AcceptableLandUseCategories = "Urbano,Comercial", Notes = "Estimación; prioriza accesibilidad vehicular y visibilidad desde vialidad primaria (clientes y empleados) por encima de densidad poblacional residencial cercana." }
             );
         });
 

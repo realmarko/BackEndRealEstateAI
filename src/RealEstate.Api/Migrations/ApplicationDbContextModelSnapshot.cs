@@ -615,6 +615,20 @@ namespace RealEstate.Api.Migrations
                             MinLotSizeSqm = 500.0,
                             Notes = "Estimación; depende fuertemente del CUS (coeficiente de utilización de suelo) registrado para el predio — sin ese dato no se puede estimar cuántos m² de construcción (y por tanto cuántas unidades) permite el terreno.",
                             PrefersPrimaryRoadAccess = true
+                        },
+                        new
+                        {
+                            Id = 13,
+                            AcceptableLandUseCategories = "Urbano,Comercial",
+                            DenueSearchTerm = "oficina",
+                            DisplayName = "Oficina",
+                            Key = "office",
+                            MinFrontageMeters = 12.0,
+                            MinLotSizeSqm = 300.0,
+                            Notes = "Estimación; prioriza accesibilidad vehicular y visibilidad desde vialidad primaria (clientes y empleados) por encima de densidad poblacional residencial cercana.",
+                            PopulationRadiusKm = 2.0,
+                            PrefersCornerLot = false,
+                            PrefersPrimaryRoadAccess = true
                         });
                 });
 
