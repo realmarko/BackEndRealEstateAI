@@ -105,6 +105,13 @@ builder.Services.AddHttpClient<IStaticMapService, StaticMapService>(client => cl
 // paid, per-request Google API.
 builder.Services.AddHttpClient<IGoogleTrafficService, GoogleTrafficService>(client => client.Timeout = TimeSpan.FromSeconds(5));
 
+// ---- Anthropic (Claude) — parses a pasted classified-ad text into structured listing fields
+// for /listings/new's autofill, see ListingDraftParsingService. 20s timeout: an LLM call is
+// slower than this app's other external lookups (Overpass/DENUE/Google), and this one blocks an
+// interactive "autofill" button click rather than a background best-effort fetch.
+builder.Services.Configure<AnthropicOptions>(builder.Configuration.GetSection("Anthropic"));
+builder.Services.AddHttpClient<IListingDraftParsingService, ListingDraftParsingService>(client => client.Timeout = TimeSpan.FromSeconds(20));
+
 // ---- In-process cache (single EB instance, no shared/distributed cache needed) — for static
 // reference data that's expensive to refetch on every request but changes rarely, if ever:
 // land-use categories, states, municipalities (see those controllers for cache keys/TTLs).
@@ -314,6 +321,17 @@ builder.Services.AddRateLimiter(options =>
     // single "geomarketing" request, so it gets its own, tighter budget rather than sharing that
     // one and silently eating a visitor's whole DENUE allowance in one listing-detail page view.
     options.AddPolicy("viability", httpContext => RateLimitPartition.GetFixedWindowLimiter(
+        partitionKey: httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+        factory: _ => new FixedWindowRateLimiterOptions
+        {
+            PermitLimit = 10,
+            Window = TimeSpan.FromMinutes(1),
+            QueueLimit = 0
+        }));
+    // Per-IP: each call is a paid, per-request Anthropic API call (see ListingDraftParsingService)
+    // — same budget-conscious reasoning as "fact-sheet"/"viability" above, not that this is
+    // abuse-prone (it's Owner-only), just that a buggy client retry loop shouldn't run up a bill.
+    options.AddPolicy("listing-draft-parse", httpContext => RateLimitPartition.GetFixedWindowLimiter(
         partitionKey: httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
         factory: _ => new FixedWindowRateLimiterOptions
         {

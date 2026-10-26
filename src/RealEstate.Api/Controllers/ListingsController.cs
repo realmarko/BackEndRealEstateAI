@@ -29,6 +29,7 @@ public class ListingsController : ControllerBase
     private readonly IViabilityAnalysisService _viabilityAnalysis;
     private readonly IViabilityReportPdfService _viabilityReportPdf;
     private readonly IStaticMapService _staticMap;
+    private readonly IListingDraftParsingService _listingDraftParsing;
     private readonly ILogger<ListingsController> _logger;
 
     public ListingsController(
@@ -41,6 +42,7 @@ public class ListingsController : ControllerBase
         IViabilityAnalysisService viabilityAnalysis,
         IViabilityReportPdfService viabilityReportPdf,
         IStaticMapService staticMap,
+        IListingDraftParsingService listingDraftParsing,
         ILogger<ListingsController> logger)
     {
         _db = db;
@@ -52,6 +54,7 @@ public class ListingsController : ControllerBase
         _viabilityAnalysis = viabilityAnalysis;
         _viabilityReportPdf = viabilityReportPdf;
         _staticMap = staticMap;
+        _listingDraftParsing = listingDraftParsing;
         _logger = logger;
     }
 
@@ -570,6 +573,27 @@ public class ListingsController : ControllerBase
             Remaining = Math.Max(0, MaxListingsPerMonth - used),
             ResetsAt = startOfMonth.AddMonths(1)
         });
+    }
+
+    // Best-effort autofill for /listings/new: extracts structured fields from a pasted
+    // classified-ad text (Claude Haiku, see ListingDraftParsingService) so the owner starts from
+    // a pre-filled form instead of a blank one. Never creates or touches a listing itself — the
+    // owner still reviews every field and clicks the normal Create button, same as always.
+    [Authorize(Roles = "Owner")]
+    [EnableRateLimiting("listing-draft-parse")]
+    [HttpPost("parse-draft")]
+    public async Task<ActionResult<ListingDraftParseResultDto>> ParseDraft(ListingDraftParseRequestDto dto)
+    {
+        try
+        {
+            var result = await _listingDraftParsing.ParseAsync(dto.Text);
+            return Ok(result);
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or System.Text.Json.JsonException or InvalidOperationException)
+        {
+            _logger.LogWarning(ex, "Listing draft parsing failed");
+            return StatusCode(StatusCodes.Status502BadGateway, new { message = "No pudimos autocompletar el formulario en este momento. Llena los campos manualmente." });
+        }
     }
 
     [Authorize(Roles = "Owner")]
