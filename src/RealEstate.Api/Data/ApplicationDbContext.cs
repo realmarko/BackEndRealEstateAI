@@ -165,7 +165,25 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, IdentityR
                 // one's catchment (office tenants don't pick a building because the next block has
                 // no other offices). MinPopulationInRadius is likewise omitted: demand comes from
                 // the regional business/professional market, not from residents living nearby.
-                new BusinessTypeCriteria { Id = 13, Key = "office", DisplayName = "Oficina", DenueSearchTerm = "oficina", GooglePlacesType = null, MinFrontageMeters = 12, MinLotSizeSqm = 300, PrefersCornerLot = false, PrefersPrimaryRoadAccess = true, PopulationRadiusKm = 2, AcceptableLandUseCategories = "Urbano,Comercial", Notes = "Estimación; prioriza accesibilidad vehicular y visibilidad desde vialidad primaria (clientes y empleados) por encima de densidad poblacional residencial cercana." }
+                new BusinessTypeCriteria { Id = 13, Key = "office", DisplayName = "Oficina", DenueSearchTerm = "oficina", GooglePlacesType = null, MinFrontageMeters = 12, MinLotSizeSqm = 300, PrefersCornerLot = false, PrefersPrimaryRoadAccess = true, PopulationRadiusKm = 2, AcceptableLandUseCategories = "Urbano,Comercial", Notes = "Estimación; prioriza accesibilidad vehicular y visibilidad desde vialidad primaria (clientes y empleados) por encima de densidad poblacional residencial cercana." },
+                // A single small lot for ONE house, unlike "Fraccionamiento Residencial" above
+                // (a much larger parcel meant to be subdivided into many lots) — this evaluates
+                // whether the listed lot itself is viable to build one vivienda de interés social
+                // on, the way an individual buyer or small developer would ask. No official
+                // federal CONAVI minimum lot size/frontage exists (confirmed via research,
+                // 2026-10-26) — Mexico's Código de Edificación de Vivienda and INFONAVIT/CONAVI
+                // classify "interés social" by price/income thresholds, not lot dimensions, and
+                // actual lot sizes vary by municipality/developer (commonly cited range ~67-120
+                // m², frontage ~5-7 m for real existing developments). 90 m²/6 m here sit near the
+                // low-to-typical end of that range, not an official figure — verify against the
+                // specific municipality's reglamento de construcción. PopulationRadiusKm/
+                // MinPopulationInRadius approximate CONAVI's "Perímetros de Contención Urbana"
+                // policy (since ~2013, subsidized interés social housing is restricted to lots
+                // within/near the existing urban footprint — close to jobs/schools/transit —
+                // specifically to avoid repeating the 2000s pattern of housing built far from
+                // everything) — a loose proxy, not the real PCU boundary data, which this app
+                // doesn't have.
+                new BusinessTypeCriteria { Id = 14, Key = "social_interest_house", DisplayName = "Casa de Interés Social", DenueSearchTerm = "fraccionadora", GooglePlacesType = null, MinFrontageMeters = 6, MinLotSizeSqm = 50, PrefersPrimaryRoadAccess = true, PrefersHighTraffic = false, PopulationRadiusKm = 1.5, MinPopulationInRadius = 5000, AcceptableLandUseCategories = "Residencial,Urbano,Urbanizable", Notes = "Estimación; no hay mínimo federal oficial de m² de terreno/frente (CONAVI clasifica \"interés social\" por precio/ingreso, no por dimensiones) — 50 m²/6 m de frente, ajustado por el usuario hacia el extremo compacto del rango observado (~67-120 m² es lo típico). Verificar contra el reglamento municipal. El radio de población aproxima la política de Perímetros de Contención Urbana (vivienda cerca de empleo/transporte), no es el polígono oficial." }
             );
         });
 

@@ -639,6 +639,21 @@ namespace RealEstate.Api.Migrations
                             PopulationRadiusKm = 2.0,
                             PrefersCornerLot = false,
                             PrefersPrimaryRoadAccess = true
+                        },
+                        new
+                        {
+                            Id = 14,
+                            AcceptableLandUseCategories = "Residencial,Urbano,Urbanizable",
+                            DenueSearchTerm = "fraccionadora",
+                            DisplayName = "Casa de Interés Social",
+                            Key = "social_interest_house",
+                            MinFrontageMeters = 6.0,
+                            MinLotSizeSqm = 50.0,
+                            MinPopulationInRadius = 5000,
+                            Notes = "Estimación; no hay mínimo federal oficial de m² de terreno/frente (CONAVI clasifica \"interés social\" por precio/ingreso, no por dimensiones) — 50 m²/6 m de frente, ajustado por el usuario hacia el extremo compacto del rango observado (~67-120 m² es lo típico). Verificar contra el reglamento municipal. El radio de población aproxima la política de Perímetros de Contención Urbana (vivienda cerca de empleo/transporte), no es el polígono oficial.",
+                            PopulationRadiusKm = 1.5,
+                            PrefersHighTraffic = false,
+                            PrefersPrimaryRoadAccess = true
                         });
                 });
 
