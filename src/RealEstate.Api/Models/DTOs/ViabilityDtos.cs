@@ -14,6 +14,7 @@ public class BusinessTypeCriteriaDto
     public int? MinPopulationInRadius { get; set; }
     public int? CompetitorExclusionRadiusMeters { get; set; }
     public double? MinCusRatio { get; set; }
+    public bool BenefitsFromNearbyResidentialGrowth { get; set; }
     public string AcceptableLandUseCategories { get; set; } = string.Empty;
     public string Notes { get; set; } = string.Empty;
 }
@@ -32,6 +33,7 @@ public class BusinessTypeCriteriaUpdateDto
     public int? MinPopulationInRadius { get; set; }
     public int? CompetitorExclusionRadiusMeters { get; set; }
     public double? MinCusRatio { get; set; }
+    public bool BenefitsFromNearbyResidentialGrowth { get; set; }
     public string AcceptableLandUseCategories { get; set; } = string.Empty;
     public string Notes { get; set; } = string.Empty;
 }

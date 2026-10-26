@@ -155,6 +155,9 @@ public class FraccionamientosController : ControllerBase
             Description = entity.Description,
             AmenitiesJson = entity.AmenitiesJson,
             MasterPlanImageUrl = entity.MasterPlanImageUrl,
+            Address = entity.Address,
+            GoogleRating = entity.GoogleRating,
+            WebsiteUrl = entity.WebsiteUrl,
             ContactPhone = entity.ContactPhone,
             ContactEmail = entity.ContactEmail,
             FirstDetectedAt = entity.FirstDetectedAt,
@@ -170,10 +173,19 @@ public class FraccionamientosController : ControllerBase
     // Candidate/UnderReview/Rejected/MergedInto record even by mistake. Newest-published first.
     [HttpGet("published")]
     public async Task<ActionResult<PagedResult<FraccionamientoPublicListItemDto>>> ListPublished(
+        [FromQuery] string? state,
+        [FromQuery] string? city,
         [FromQuery] int page = 1,
         [FromQuery] int pageSize = 20)
     {
         var query = _db.Fraccionamientos.AsNoTracking().Where(f => f.Status == FraccionamientoStatus.Published);
+        // Case-insensitive exact match, not a substring search — the filter options come from
+        // GetPublishedLocations below, which only ever returns values that already exist verbatim
+        // (modulo case) on a Published record, so this never needs fuzzy matching.
+        if (!string.IsNullOrWhiteSpace(state))
+            query = query.Where(f => f.State.ToLower() == state.ToLower());
+        if (!string.IsNullOrWhiteSpace(city))
+            query = query.Where(f => f.City.ToLower() == city.ToLower());
 
         var safePage = Math.Max(page, 1);
         var safePageSize = Math.Clamp(pageSize, 1, 100);
@@ -194,11 +206,33 @@ public class FraccionamientosController : ControllerBase
                 MasterPlanImageUrl = f.MasterPlanImageUrl,
                 PublishedAt = f.PublishedAt,
                 Latitude = f.Latitude,
-                Longitude = f.Longitude
+                Longitude = f.Longitude,
+                Address = f.Address,
+                GoogleRating = f.GoogleRating,
+                WebsiteUrl = f.WebsiteUrl,
+                ContactPhone = f.ContactPhone,
+                Description = f.Description
             })
             .ToListAsync();
 
         return Ok(new PagedResult<FraccionamientoPublicListItemDto> { Items = items, Page = safePage, PageSize = safePageSize, TotalCount = totalCount });
+    }
+
+    // GET /api/fraccionamientos/published/locations — every distinct (State, City) pair among
+    // Published records, for the public list's state/city filter dropdowns. A dedicated endpoint
+    // rather than deriving this from ListPublished's own paged response: the filter options must
+    // cover every published record, not just whichever page is currently on screen.
+    [HttpGet("published/locations")]
+    public async Task<ActionResult<List<FraccionamientoLocationDto>>> GetPublishedLocations()
+    {
+        var locations = await _db.Fraccionamientos.AsNoTracking()
+            .Where(f => f.Status == FraccionamientoStatus.Published)
+            .Select(f => new { f.State, f.City })
+            .Distinct()
+            .OrderBy(l => l.State).ThenBy(l => l.City)
+            .ToListAsync();
+
+        return Ok(locations.Select(l => new FraccionamientoLocationDto { State = l.State, City = l.City }).ToList());
     }
 
     // GET /api/fraccionamientos/published/{id} — public detail page: amenities, master plan, and
@@ -232,6 +266,9 @@ public class FraccionamientosController : ControllerBase
             Description = entity.Description,
             AmenitiesJson = entity.AmenitiesJson,
             MasterPlanImageUrl = entity.MasterPlanImageUrl,
+            Address = entity.Address,
+            GoogleRating = entity.GoogleRating,
+            WebsiteUrl = entity.WebsiteUrl,
             ContactPhone = entity.ContactPhone,
             ContactEmail = entity.ContactEmail,
             PublishedAt = entity.PublishedAt,
@@ -296,6 +333,9 @@ public class FraccionamientosController : ControllerBase
         entity.Description = dto.Description;
         entity.AmenitiesJson = dto.AmenitiesJson;
         entity.MasterPlanImageUrl = dto.MasterPlanImageUrl;
+        entity.Address = dto.Address;
+        entity.GoogleRating = dto.GoogleRating;
+        entity.WebsiteUrl = dto.WebsiteUrl;
         entity.ContactPhone = dto.ContactPhone;
         entity.ContactEmail = dto.ContactEmail;
         // Only stamp PublishedAt on the transition into Published — re-approving an already-

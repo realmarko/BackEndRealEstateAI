@@ -113,7 +113,9 @@ public class ViabilityAnalysisService : IViabilityAnalysisService
 
         var trafficGeneratorsTask = FindTrafficGeneratorsAsync(lat, lng, cancellationToken);
         var nearbyRoadsTask = FindNearbyRoadsAsync(lat, lng, cancellationToken);
-        await Task.WhenAll(trafficGeneratorsTask, nearbyRoadsTask);
+        var nearbyFraccionamientosTask = FindNearbyFraccionamientosAsync(lat, lng, cancellationToken);
+        await Task.WhenAll(trafficGeneratorsTask, nearbyRoadsTask, nearbyFraccionamientosTask);
+        var nearbyFraccionamientos = nearbyFraccionamientosTask.Result;
 
         var (trafficGenerators, trafficGeneratorsDataUnavailable, trafficGeneratorFailures) = trafficGeneratorsTask.Result;
         var (nearbyRoads, roadsDataUnavailable, roadsFailure) = nearbyRoadsTask.Result;
@@ -174,7 +176,7 @@ public class ViabilityAnalysisService : IViabilityAnalysisService
 
         foreach (var criterion in criteria)
         {
-            result.Businesses.Add(await ScoreBusinessAsync(criterion, lat, lng, lot, population, trafficCondition?.Level, cancellationToken));
+            result.Businesses.Add(await ScoreBusinessAsync(criterion, lat, lng, lot, population, trafficCondition?.Level, nearbyFraccionamientos, cancellationToken));
         }
 
         return result;
@@ -298,6 +300,34 @@ public class ViabilityAnalysisService : IViabilityAnalysisService
         }
     }
 
+    // Radius a new housing development's demand realistically reaches a nearby storefront within
+    // — a resident walks or takes a short drive to their neighborhood pharmacy/cafetería, not
+    // across town. Shares the same bounding-box-prefilter-then-exact-distance approach as
+    // FraccionamientoIngestionService.FindMatchAsync (no PostGIS geography column on
+    // Fraccionamiento to do this in one query).
+    private const double NearbyFraccionamientoRadiusMeters = 2000;
+
+    private record NearbyFraccionamiento(string Name, string? Stage, int DistanceMeters);
+
+    private async Task<List<NearbyFraccionamiento>> FindNearbyFraccionamientosAsync(double lat, double lng, CancellationToken cancellationToken)
+    {
+        var latDelta = NearbyFraccionamientoRadiusMeters / 111_000.0;
+        var lngDelta = NearbyFraccionamientoRadiusMeters / (111_000.0 * Math.Cos(lat * Math.PI / 180));
+
+        var candidates = await _db.Fraccionamientos.AsNoTracking()
+            .Where(f => f.Status == FraccionamientoStatus.Published)
+            .Where(f => f.Latitude >= lat - latDelta && f.Latitude <= lat + latDelta)
+            .Where(f => f.Longitude >= lng - lngDelta && f.Longitude <= lng + lngDelta)
+            .Select(f => new { f.Name, f.Stage, f.Latitude, f.Longitude })
+            .ToListAsync(cancellationToken);
+
+        return candidates
+            .Select(f => new NearbyFraccionamiento(f.Name, f.Stage, (int)Math.Round(GeoFactory.DistanceMeters(lat, lng, f.Latitude, f.Longitude))))
+            .Where(f => f.DistanceMeters <= NearbyFraccionamientoRadiusMeters)
+            .OrderBy(f => f.DistanceMeters)
+            .ToList();
+    }
+
     private async Task<BusinessViabilityDto> ScoreBusinessAsync(
         BusinessTypeCriteria criterion,
         double lat,
@@ -305,6 +335,7 @@ public class ViabilityAnalysisService : IViabilityAnalysisService
         ViabilityLotContext lot,
         PopulationDensityDto? population,
         TrafficCongestionLevel? trafficCongestion,
+        List<NearbyFraccionamiento> nearbyFraccionamientos,
         CancellationToken cancellationToken)
     {
         var checks = new List<ViabilityCheckDto>();
@@ -747,6 +778,27 @@ public class ViabilityAnalysisService : IViabilityAnalysisService
                     Detail = "No se pudo consultar el directorio de negocios en este momento."
                 });
             }
+        }
+
+        // Bonus-only: a nearby new housing development is a leading demand signal for this
+        // business type (see BusinessTypeCriteria.BenefitsFromNearbyResidentialGrowth), but its
+        // absence says nothing bad — plenty of viable spots simply aren't next to a development
+        // that happens to be in our catalog yet. So this check is only ever ADDED when it's true;
+        // skipping it when there's nothing nearby (rather than adding a Passed = false row) keeps
+        // it from ever pulling the applicable-count ratio down, which is exactly what "aumenta
+        // pero no perjudica" (raise the score, never hurt it) requires from this signal.
+        if (criterion.BenefitsFromNearbyResidentialGrowth && nearbyFraccionamientos.Count > 0)
+        {
+            var closest = nearbyFraccionamientos[0];
+            var stageNote = string.IsNullOrWhiteSpace(closest.Stage) ? "" : $" ({closest.Stage})";
+            checks.Add(new ViabilityCheckDto
+            {
+                Label = "Nuevo desarrollo residencial cercano",
+                Passed = true,
+                Detail = nearbyFraccionamientos.Count == 1
+                    ? $"\"{closest.Name}\"{stageNote} a {closest.DistanceMeters:N0} m — nueva demanda residencial en la zona."
+                    : $"{nearbyFraccionamientos.Count} desarrollos nuevos dentro de {NearbyFraccionamientoRadiusMeters:N0} m, el más cercano \"{closest.Name}\"{stageNote} a {closest.DistanceMeters:N0} m — nueva demanda residencial en la zona."
+            });
         }
 
         // A missing value (Passed == null) is excluded from both sides of the ratio — a listing

@@ -104,6 +104,9 @@ public class FraccionamientoDetailDto
     public string? Description { get; set; }
     public string? AmenitiesJson { get; set; }
     public string? MasterPlanImageUrl { get; set; }
+    public string? Address { get; set; }
+    public decimal? GoogleRating { get; set; }
+    public string? WebsiteUrl { get; set; }
     public string? ContactPhone { get; set; }
     public string? ContactEmail { get; set; }
     public DateTime FirstDetectedAt { get; set; }
@@ -128,6 +131,9 @@ public class ApproveFraccionamientoDto
     [MaxLength(5000)] public string? Description { get; set; }
     [MaxLength(4000)] public string? AmenitiesJson { get; set; }
     [MaxLength(2048)] public string? MasterPlanImageUrl { get; set; }
+    [MaxLength(300)] public string? Address { get; set; }
+    [Range(0, 5)] public decimal? GoogleRating { get; set; }
+    [Url, MaxLength(2048)] public string? WebsiteUrl { get; set; }
     [MaxLength(30)] public string? ContactPhone { get; set; }
     [EmailAddress, MaxLength(200)] public string? ContactEmail { get; set; }
 }
@@ -155,6 +161,17 @@ public class FraccionamientoPublicListItemDto
     // development as a marker without an extra round-trip per pin.
     public double Latitude { get; set; }
     public double Longitude { get; set; }
+    public string? Address { get; set; }
+    public decimal? GoogleRating { get; set; }
+    public string? WebsiteUrl { get; set; }
+    public string? ContactPhone { get; set; }
+    public string? Description { get; set; }
+}
+
+public class FraccionamientoLocationDto
+{
+    public string State { get; set; } = string.Empty;
+    public string City { get; set; } = string.Empty;
 }
 
 public class FraccionamientoPublicDetailDto
@@ -170,6 +187,9 @@ public class FraccionamientoPublicDetailDto
     public string? Description { get; set; }
     public string? AmenitiesJson { get; set; }
     public string? MasterPlanImageUrl { get; set; }
+    public string? Address { get; set; }
+    public decimal? GoogleRating { get; set; }
+    public string? WebsiteUrl { get; set; }
     public string? ContactPhone { get; set; }
     public string? ContactEmail { get; set; }
     public DateTime? PublishedAt { get; set; }

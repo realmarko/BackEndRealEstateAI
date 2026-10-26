@@ -31,6 +31,14 @@ public class Fraccionamiento
     public double Latitude { get; set; }
     public double Longitude { get; set; }
 
+    // Street address, shown on the public card/detail alongside City/State — those two stay
+    // separate (used for filtering/grouping elsewhere) rather than folded into this field.
+    public string? Address { get; set; }
+    // Google Maps rating (0-5), entered by an admin from the business's real Google listing —
+    // never computed or guessed by this app. Null until an admin sets it.
+    public decimal? GoogleRating { get; set; }
+    public string? WebsiteUrl { get; set; }
+
     // Free text on purpose (e.g. "Preventa", "En construcción", "Entrega inmediata") — not an
     // enum yet, since the real vocabulary each source uses hasn't been observed at scale. Revisit
     // once Fase 1-3 sources are actually producing data.

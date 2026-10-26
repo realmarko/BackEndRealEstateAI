@@ -63,5 +63,17 @@ public class BusinessTypeCriteria
     // not just raw lot size.
     public double? MinCusRatio { get; set; }
 
+    // True for a business type whose own customers are the people living nearby (retail, food,
+    // personal-care, healthcare, education, banking) — a new housing development going up close
+    // by is a leading signal of exactly the resident base this type depends on, so
+    // ViabilityAnalysisService adds a bonus check when one's found nearby (see its own "Nuevo
+    // desarrollo residencial cercano" check). False for a housing-supply type itself
+    // (Fraccionamiento Residencial, Casa Unifamiliar, Casa de Interés Social, Edificio de
+    // Departamentos — a nearby development is a competing supply, not a demand signal for
+    // building another one) and for types this catalog already models as traffic/corridor-driven
+    // rather than resident-driven (Gasolinera, Bodega/nave industrial, Oficina — see each row's
+    // own Notes for why).
+    public bool BenefitsFromNearbyResidentialGrowth { get; set; }
+
     public string Notes { get; set; } = string.Empty;
 }

@@ -56,6 +56,7 @@ public class BusinessTypeCriteriaController : ControllerBase
         criterion.MinPopulationInRadius = dto.MinPopulationInRadius;
         criterion.CompetitorExclusionRadiusMeters = dto.CompetitorExclusionRadiusMeters;
         criterion.MinCusRatio = dto.MinCusRatio;
+        criterion.BenefitsFromNearbyResidentialGrowth = dto.BenefitsFromNearbyResidentialGrowth;
         criterion.AcceptableLandUseCategories = dto.AcceptableLandUseCategories;
         criterion.Notes = dto.Notes;
 
@@ -79,6 +80,7 @@ public class BusinessTypeCriteriaController : ControllerBase
         MinPopulationInRadius = c.MinPopulationInRadius,
         CompetitorExclusionRadiusMeters = c.CompetitorExclusionRadiusMeters,
         MinCusRatio = c.MinCusRatio,
+        BenefitsFromNearbyResidentialGrowth = c.BenefitsFromNearbyResidentialGrowth,
         AcceptableLandUseCategories = c.AcceptableLandUseCategories,
         Notes = c.Notes
     };

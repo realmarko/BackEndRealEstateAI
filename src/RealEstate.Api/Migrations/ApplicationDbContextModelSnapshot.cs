@@ -367,6 +367,10 @@ namespace RealEstate.Api.Migrations
                         .HasColumnType("character varying(200)")
                         .HasColumnName("acceptable_land_use_categories");
 
+                    b.Property<bool>("BenefitsFromNearbyResidentialGrowth")
+                        .HasColumnType("boolean")
+                        .HasColumnName("benefits_from_nearby_residential_growth");
+
                     b.Property<int?>("CompetitorExclusionRadiusMeters")
                         .HasColumnType("integer")
                         .HasColumnName("competitor_exclusion_radius_meters");
@@ -446,6 +450,7 @@ namespace RealEstate.Api.Migrations
                         {
                             Id = 1,
                             AcceptableLandUseCategories = "Urbano,Comercial",
+                            BenefitsFromNearbyResidentialGrowth = false,
                             CompetitorExclusionRadiusMeters = 1500,
                             DenueSearchTerm = "gasolinera",
                             DisplayName = "Gasolinera",
@@ -462,6 +467,7 @@ namespace RealEstate.Api.Migrations
                         {
                             Id = 2,
                             AcceptableLandUseCategories = "Urbano,Comercial",
+                            BenefitsFromNearbyResidentialGrowth = true,
                             CompetitorExclusionRadiusMeters = 400,
                             DenueSearchTerm = "farmacia",
                             DisplayName = "Farmacia",
@@ -479,6 +485,7 @@ namespace RealEstate.Api.Migrations
                         {
                             Id = 3,
                             AcceptableLandUseCategories = "Urbano,Comercial",
+                            BenefitsFromNearbyResidentialGrowth = true,
                             CompetitorExclusionRadiusMeters = 300,
                             DenueSearchTerm = "tienda de conveniencia",
                             DisplayName = "Tienda de conveniencia",
@@ -495,6 +502,7 @@ namespace RealEstate.Api.Migrations
                         {
                             Id = 4,
                             AcceptableLandUseCategories = "Urbano,Comercial",
+                            BenefitsFromNearbyResidentialGrowth = true,
                             CompetitorExclusionRadiusMeters = 800,
                             DenueSearchTerm = "gimnasio",
                             DisplayName = "Gimnasio",
@@ -511,6 +519,7 @@ namespace RealEstate.Api.Migrations
                         {
                             Id = 5,
                             AcceptableLandUseCategories = "Urbano,Comercial",
+                            BenefitsFromNearbyResidentialGrowth = true,
                             DenueSearchTerm = "restaurante",
                             DisplayName = "Restaurante",
                             GooglePlacesType = "restaurant",
@@ -526,6 +535,7 @@ namespace RealEstate.Api.Migrations
                         {
                             Id = 6,
                             AcceptableLandUseCategories = "Urbano,Comercial",
+                            BenefitsFromNearbyResidentialGrowth = true,
                             CompetitorExclusionRadiusMeters = 1500,
                             DenueSearchTerm = "supermercado",
                             DisplayName = "Supermercado",
@@ -542,6 +552,7 @@ namespace RealEstate.Api.Migrations
                         {
                             Id = 7,
                             AcceptableLandUseCategories = "Urbano,Comercial",
+                            BenefitsFromNearbyResidentialGrowth = true,
                             DenueSearchTerm = "banco",
                             DisplayName = "Sucursal bancaria",
                             GooglePlacesType = "bank",
@@ -557,6 +568,7 @@ namespace RealEstate.Api.Migrations
                         {
                             Id = 8,
                             AcceptableLandUseCategories = "Urbano,Comercial,Residencial",
+                            BenefitsFromNearbyResidentialGrowth = true,
                             DenueSearchTerm = "colegio",
                             DisplayName = "Escuela privada",
                             GooglePlacesType = "school",
@@ -573,6 +585,7 @@ namespace RealEstate.Api.Migrations
                         {
                             Id = 9,
                             AcceptableLandUseCategories = "Industrial,Urbano",
+                            BenefitsFromNearbyResidentialGrowth = false,
                             DenueSearchTerm = "bodega",
                             DisplayName = "Bodega / nave industrial",
                             Key = "warehouse",
@@ -585,6 +598,7 @@ namespace RealEstate.Api.Migrations
                         {
                             Id = 10,
                             AcceptableLandUseCategories = "Residencial,Urbano,Urbanizable",
+                            BenefitsFromNearbyResidentialGrowth = false,
                             DenueSearchTerm = "fraccionadora",
                             DisplayName = "Fraccionamiento Residencial",
                             Key = "residential_development",
@@ -598,6 +612,7 @@ namespace RealEstate.Api.Migrations
                         {
                             Id = 11,
                             AcceptableLandUseCategories = "Urbano,Comercial",
+                            BenefitsFromNearbyResidentialGrowth = true,
                             CompetitorExclusionRadiusMeters = 2000,
                             DenueSearchTerm = "centro comercial",
                             DisplayName = "Plaza Comercial",
@@ -616,6 +631,7 @@ namespace RealEstate.Api.Migrations
                         {
                             Id = 12,
                             AcceptableLandUseCategories = "Urbano,Comercial,Residencial",
+                            BenefitsFromNearbyResidentialGrowth = false,
                             DenueSearchTerm = "edificio de departamentos",
                             DisplayName = "Edificio de Departamentos",
                             Key = "apartment_building",
@@ -630,6 +646,7 @@ namespace RealEstate.Api.Migrations
                         {
                             Id = 13,
                             AcceptableLandUseCategories = "Urbano,Comercial",
+                            BenefitsFromNearbyResidentialGrowth = false,
                             DenueSearchTerm = "oficina",
                             DisplayName = "Oficina",
                             Key = "office",
@@ -644,6 +661,7 @@ namespace RealEstate.Api.Migrations
                         {
                             Id = 14,
                             AcceptableLandUseCategories = "Residencial,Urbano,Urbanizable",
+                            BenefitsFromNearbyResidentialGrowth = false,
                             DenueSearchTerm = "fraccionadora",
                             DisplayName = "Casa de Interés Social",
                             Key = "social_interest_house",
@@ -659,6 +677,7 @@ namespace RealEstate.Api.Migrations
                         {
                             Id = 15,
                             AcceptableLandUseCategories = "Residencial,Urbano,Urbanizable",
+                            BenefitsFromNearbyResidentialGrowth = false,
                             DenueSearchTerm = "fraccionadora",
                             DisplayName = "Casa Unifamiliar",
                             Key = "single_family_house",
@@ -672,6 +691,7 @@ namespace RealEstate.Api.Migrations
                         {
                             Id = 16,
                             AcceptableLandUseCategories = "Urbano,Comercial",
+                            BenefitsFromNearbyResidentialGrowth = true,
                             DenueSearchTerm = "local comercial",
                             DisplayName = "Local Comercial",
                             GooglePlacesType = "store",
@@ -686,6 +706,7 @@ namespace RealEstate.Api.Migrations
                         {
                             Id = 17,
                             AcceptableLandUseCategories = "Urbano,Comercial",
+                            BenefitsFromNearbyResidentialGrowth = true,
                             CompetitorExclusionRadiusMeters = 250,
                             DenueSearchTerm = "cafetería",
                             DisplayName = "Cafetería",
@@ -703,6 +724,7 @@ namespace RealEstate.Api.Migrations
                         {
                             Id = 18,
                             AcceptableLandUseCategories = "Urbano,Comercial",
+                            BenefitsFromNearbyResidentialGrowth = true,
                             DenueSearchTerm = "consultorio médico",
                             DisplayName = "Consultorio",
                             GooglePlacesType = "doctor",
@@ -719,6 +741,7 @@ namespace RealEstate.Api.Migrations
                         {
                             Id = 19,
                             AcceptableLandUseCategories = "Urbano,Comercial",
+                            BenefitsFromNearbyResidentialGrowth = true,
                             CompetitorExclusionRadiusMeters = 250,
                             DenueSearchTerm = "salón de belleza",
                             DisplayName = "Estética",
@@ -736,6 +759,7 @@ namespace RealEstate.Api.Migrations
                         {
                             Id = 20,
                             AcceptableLandUseCategories = "Urbano,Comercial",
+                            BenefitsFromNearbyResidentialGrowth = true,
                             CompetitorExclusionRadiusMeters = 500,
                             DenueSearchTerm = "spa",
                             DisplayName = "Spa",
@@ -753,6 +777,7 @@ namespace RealEstate.Api.Migrations
                         {
                             Id = 21,
                             AcceptableLandUseCategories = "Urbano,Comercial",
+                            BenefitsFromNearbyResidentialGrowth = true,
                             CompetitorExclusionRadiusMeters = 200,
                             DenueSearchTerm = "tienda de conveniencia",
                             DisplayName = "Tienda de Conveniencia Pequeña",
@@ -769,6 +794,7 @@ namespace RealEstate.Api.Migrations
                         {
                             Id = 22,
                             AcceptableLandUseCategories = "Urbano,Comercial",
+                            BenefitsFromNearbyResidentialGrowth = true,
                             CompetitorExclusionRadiusMeters = 200,
                             DenueSearchTerm = "boutique",
                             DisplayName = "Boutique",
@@ -893,6 +919,10 @@ namespace RealEstate.Api.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
+                    b.Property<string>("Address")
+                        .HasColumnType("text")
+                        .HasColumnName("address");
+
                     b.Property<string>("AmenitiesJson")
                         .HasColumnType("text")
                         .HasColumnName("amenities_json");
@@ -921,6 +951,10 @@ namespace RealEstate.Api.Migrations
                     b.Property<DateTime>("FirstDetectedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("first_detected_at");
+
+                    b.Property<decimal?>("GoogleRating")
+                        .HasColumnType("numeric(2,1)")
+                        .HasColumnName("google_rating");
 
                     b.Property<double>("Latitude")
                         .HasColumnType("double precision")
@@ -963,6 +997,10 @@ namespace RealEstate.Api.Migrations
                     b.Property<int>("Status")
                         .HasColumnType("integer")
                         .HasColumnName("status");
+
+                    b.Property<string>("WebsiteUrl")
+                        .HasColumnType("text")
+                        .HasColumnName("website_url");
 
                     b.HasKey("Id")
                         .HasName("pk_fraccionamientos");
