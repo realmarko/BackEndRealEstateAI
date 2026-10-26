@@ -654,6 +654,131 @@ namespace RealEstate.Api.Migrations
                             PopulationRadiusKm = 1.5,
                             PrefersHighTraffic = false,
                             PrefersPrimaryRoadAccess = true
+                        },
+                        new
+                        {
+                            Id = 15,
+                            AcceptableLandUseCategories = "Residencial,Urbano,Urbanizable",
+                            DenueSearchTerm = "fraccionadora",
+                            DisplayName = "Casa Unifamiliar",
+                            Key = "single_family_house",
+                            MinFrontageMeters = 7.0,
+                            MinLotSizeSqm = 120.0,
+                            Notes = "Estimación; dimensiones de mercado típicas para una casa unifamiliar de clase media, sin restricción de precio/ingreso (a diferencia de \"Casa de Interés Social\"). Verificar contra el reglamento municipal específico.",
+                            PrefersHighTraffic = false,
+                            PrefersPrimaryRoadAccess = true
+                        },
+                        new
+                        {
+                            Id = 16,
+                            AcceptableLandUseCategories = "Urbano,Comercial",
+                            DenueSearchTerm = "local comercial",
+                            DisplayName = "Local Comercial",
+                            GooglePlacesType = "store",
+                            Key = "local_comercial",
+                            MinFrontageMeters = 5.0,
+                            MinLotSizeSqm = 60.0,
+                            Notes = "Estimación; categoría genérica para un local comercial pequeño sin giro específico (60 m²/5 m de frente, por indicación directa del usuario) — para un giro particular, usa la fila específica del catálogo (farmacia, cafetería, etc.) si existe.",
+                            PrefersHighTraffic = true,
+                            PrefersPrimaryRoadAccess = true
+                        },
+                        new
+                        {
+                            Id = 17,
+                            AcceptableLandUseCategories = "Urbano,Comercial",
+                            CompetitorExclusionRadiusMeters = 250,
+                            DenueSearchTerm = "cafetería",
+                            DisplayName = "Cafetería",
+                            GooglePlacesType = "cafe",
+                            Key = "cafeteria",
+                            MinFrontageMeters = 6.0,
+                            MinLotSizeSqm = 80.0,
+                            MinPopulationInRadius = 5000,
+                            Notes = "Estimación; depende de tráfico peatonal/vehicular y visibilidad, similar a una tienda de conveniencia.",
+                            PopulationRadiusKm = 1.0,
+                            PrefersHighTraffic = true,
+                            PrefersPrimaryRoadAccess = true
+                        },
+                        new
+                        {
+                            Id = 18,
+                            AcceptableLandUseCategories = "Urbano,Comercial",
+                            DenueSearchTerm = "consultorio médico",
+                            DisplayName = "Consultorio",
+                            GooglePlacesType = "doctor",
+                            Key = "consultorio",
+                            MinFrontageMeters = 5.0,
+                            MinLotSizeSqm = 70.0,
+                            MinPopulationInRadius = 6000,
+                            Notes = "Estimación; sin radio de exclusión de competencia — la especialidad médica varía demasiado para que un conteo genérico de \"consultorios\" cercanos sea significativo.",
+                            PopulationRadiusKm = 1.5,
+                            PrefersHighTraffic = false,
+                            PrefersPrimaryRoadAccess = true
+                        },
+                        new
+                        {
+                            Id = 19,
+                            AcceptableLandUseCategories = "Urbano,Comercial",
+                            CompetitorExclusionRadiusMeters = 250,
+                            DenueSearchTerm = "salón de belleza",
+                            DisplayName = "Estética",
+                            GooglePlacesType = "beauty_salon",
+                            Key = "estetica",
+                            MinFrontageMeters = 6.0,
+                            MinLotSizeSqm = 70.0,
+                            MinPopulationInRadius = 4000,
+                            Notes = "Estimación; depende de clientela de paso/visibilidad, similar a una boutique.",
+                            PopulationRadiusKm = 1.0,
+                            PrefersHighTraffic = true,
+                            PrefersPrimaryRoadAccess = true
+                        },
+                        new
+                        {
+                            Id = 20,
+                            AcceptableLandUseCategories = "Urbano,Comercial",
+                            CompetitorExclusionRadiusMeters = 500,
+                            DenueSearchTerm = "spa",
+                            DisplayName = "Spa",
+                            GooglePlacesType = "spa",
+                            Key = "spa",
+                            MinFrontageMeters = 7.0,
+                            MinLotSizeSqm = 100.0,
+                            MinPopulationInRadius = 8000,
+                            Notes = "Estimación; cliente llega por cita, prioriza ambiente tranquilo sobre tráfico/visibilidad de escaparate.",
+                            PopulationRadiusKm = 2.0,
+                            PrefersHighTraffic = false,
+                            PrefersPrimaryRoadAccess = true
+                        },
+                        new
+                        {
+                            Id = 21,
+                            AcceptableLandUseCategories = "Urbano,Comercial",
+                            CompetitorExclusionRadiusMeters = 200,
+                            DenueSearchTerm = "tienda de conveniencia",
+                            DisplayName = "Tienda de Conveniencia Pequeña",
+                            GooglePlacesType = "convenience_store",
+                            Key = "small_convenience_store",
+                            MinFrontageMeters = 5.0,
+                            MinLotSizeSqm = 60.0,
+                            Notes = "Estimación; formato compacto distinto de \"Tienda de conveniencia\" (más grande) ya en el catálogo — radio de exclusión más chico porque este formato tolera mayor densidad.",
+                            PrefersCornerLot = true,
+                            PrefersHighTraffic = true,
+                            PrefersPrimaryRoadAccess = true
+                        },
+                        new
+                        {
+                            Id = 22,
+                            AcceptableLandUseCategories = "Urbano,Comercial",
+                            CompetitorExclusionRadiusMeters = 200,
+                            DenueSearchTerm = "boutique",
+                            DisplayName = "Boutique",
+                            GooglePlacesType = "clothing_store",
+                            Key = "boutique",
+                            MinFrontageMeters = 5.0,
+                            MinLotSizeSqm = 60.0,
+                            Notes = "Estimación; depende de tráfico peatonal/visibilidad, típicamente en plaza comercial o corredor comercial.",
+                            PrefersHighTraffic = true,
+                            PrefersPrimaryRoadAccess = true
                         });
                 });
 

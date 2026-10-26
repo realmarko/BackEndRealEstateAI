@@ -174,16 +174,37 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, IdentityR
                 // 2026-10-26) — Mexico's Código de Edificación de Vivienda and INFONAVIT/CONAVI
                 // classify "interés social" by price/income thresholds, not lot dimensions, and
                 // actual lot sizes vary by municipality/developer (commonly cited range ~67-120
-                // m², frontage ~5-7 m for real existing developments). 90 m²/6 m here sit near the
-                // low-to-typical end of that range, not an official figure — verify against the
-                // specific municipality's reglamento de construcción. PopulationRadiusKm/
-                // MinPopulationInRadius approximate CONAVI's "Perímetros de Contención Urbana"
-                // policy (since ~2013, subsidized interés social housing is restricted to lots
-                // within/near the existing urban footprint — close to jobs/schools/transit —
-                // specifically to avoid repeating the 2000s pattern of housing built far from
-                // everything) — a loose proxy, not the real PCU boundary data, which this app
-                // doesn't have.
-                new BusinessTypeCriteria { Id = 14, Key = "social_interest_house", DisplayName = "Casa de Interés Social", DenueSearchTerm = "fraccionadora", GooglePlacesType = null, MinFrontageMeters = 6, MinLotSizeSqm = 50, PrefersPrimaryRoadAccess = true, PrefersHighTraffic = false, PopulationRadiusKm = 1.5, MinPopulationInRadius = 5000, AcceptableLandUseCategories = "Residencial,Urbano,Urbanizable", Notes = "Estimación; no hay mínimo federal oficial de m² de terreno/frente (CONAVI clasifica \"interés social\" por precio/ingreso, no por dimensiones) — 50 m²/6 m de frente, ajustado por el usuario hacia el extremo compacto del rango observado (~67-120 m² es lo típico). Verificar contra el reglamento municipal. El radio de población aproxima la política de Perímetros de Contención Urbana (vivienda cerca de empleo/transporte), no es el polígono oficial." }
+                // m², frontage ~5-7 m for real existing developments) — 50 m²/6 m here (set per
+                // explicit user direction) sit at the compact end of that range, not an official
+                // figure — verify against the specific municipality's reglamento de construcción.
+                // PopulationRadiusKm/MinPopulationInRadius approximate CONAVI's "Perímetros de
+                // Contención Urbana" policy (since ~2013, subsidized interés social housing is
+                // restricted to lots within/near the existing urban footprint — close to
+                // jobs/schools/transit — specifically to avoid repeating the 2000s pattern of
+                // housing built far from everything) — a loose proxy, not the real PCU boundary
+                // data, which this app doesn't have.
+                new BusinessTypeCriteria { Id = 14, Key = "social_interest_house", DisplayName = "Casa de Interés Social", DenueSearchTerm = "fraccionadora", GooglePlacesType = null, MinFrontageMeters = 6, MinLotSizeSqm = 50, PrefersPrimaryRoadAccess = true, PrefersHighTraffic = false, PopulationRadiusKm = 1.5, MinPopulationInRadius = 5000, AcceptableLandUseCategories = "Residencial,Urbano,Urbanizable", Notes = "Estimación; no hay mínimo federal oficial de m² de terreno/frente (CONAVI clasifica \"interés social\" por precio/ingreso, no por dimensiones) — 50 m²/6 m de frente, ajustado por el usuario hacia el extremo compacto del rango observado (~67-120 m² es lo típico). Verificar contra el reglamento municipal. El radio de población aproxima la política de Perímetros de Contención Urbana (vivienda cerca de empleo/transporte), no es el polígono oficial." },
+                // Regular single-family house (not income/price-restricted like the row above) —
+                // same "one lot, one house" evaluation, just with typical market-rate dimensions
+                // instead of the compact interés social range.
+                new BusinessTypeCriteria { Id = 15, Key = "single_family_house", DisplayName = "Casa Unifamiliar", DenueSearchTerm = "fraccionadora", GooglePlacesType = null, MinFrontageMeters = 7, MinLotSizeSqm = 120, PrefersPrimaryRoadAccess = true, PrefersHighTraffic = false, AcceptableLandUseCategories = "Residencial,Urbano,Urbanizable", Notes = "Estimación; dimensiones de mercado típicas para una casa unifamiliar de clase media, sin restricción de precio/ingreso (a diferencia de \"Casa de Interés Social\"). Verificar contra el reglamento municipal específico." },
+                // Deliberately generic — unlike the specialized retail rows elsewhere in this
+                // catalog (pharmacy, gas station, etc.), this is "any small commercial storefront"
+                // with no assumed giro, so no DENUE competitor check (there's no single search
+                // term that would mean anything) or population catchment.
+                new BusinessTypeCriteria { Id = 16, Key = "local_comercial", DisplayName = "Local Comercial", DenueSearchTerm = "local comercial", GooglePlacesType = "store", MinFrontageMeters = 5, MinLotSizeSqm = 60, PrefersPrimaryRoadAccess = true, PrefersHighTraffic = true, AcceptableLandUseCategories = "Urbano,Comercial", Notes = "Estimación; categoría genérica para un local comercial pequeño sin giro específico (60 m²/5 m de frente, por indicación directa del usuario) — para un giro particular, usa la fila específica del catálogo (farmacia, cafetería, etc.) si existe." },
+                new BusinessTypeCriteria { Id = 17, Key = "cafeteria", DisplayName = "Cafetería", DenueSearchTerm = "cafetería", GooglePlacesType = "cafe", MinFrontageMeters = 6, MinLotSizeSqm = 80, PrefersPrimaryRoadAccess = true, PrefersHighTraffic = true, PopulationRadiusKm = 1, MinPopulationInRadius = 5000, CompetitorExclusionRadiusMeters = 250, AcceptableLandUseCategories = "Urbano,Comercial", Notes = "Estimación; depende de tráfico peatonal/vehicular y visibilidad, similar a una tienda de conveniencia." },
+                // Prioriza accesibilidad y discreción sobre tráfico peatonal — los pacientes llegan
+                // por cita, no por visibilidad de escaparate (a diferencia de cafetería/estética).
+                new BusinessTypeCriteria { Id = 18, Key = "consultorio", DisplayName = "Consultorio", DenueSearchTerm = "consultorio médico", GooglePlacesType = "doctor", MinFrontageMeters = 5, MinLotSizeSqm = 70, PrefersPrimaryRoadAccess = true, PrefersHighTraffic = false, PopulationRadiusKm = 1.5, MinPopulationInRadius = 6000, AcceptableLandUseCategories = "Urbano,Comercial", Notes = "Estimación; sin radio de exclusión de competencia — la especialidad médica varía demasiado para que un conteo genérico de \"consultorios\" cercanos sea significativo." },
+                new BusinessTypeCriteria { Id = 19, Key = "estetica", DisplayName = "Estética", DenueSearchTerm = "salón de belleza", GooglePlacesType = "beauty_salon", MinFrontageMeters = 6, MinLotSizeSqm = 70, PrefersPrimaryRoadAccess = true, PrefersHighTraffic = true, PopulationRadiusKm = 1, MinPopulationInRadius = 4000, CompetitorExclusionRadiusMeters = 250, AcceptableLandUseCategories = "Urbano,Comercial", Notes = "Estimación; depende de clientela de paso/visibilidad, similar a una boutique." },
+                // A diferencia de estética (visibilidad/tráfico peatonal), un spa prioriza
+                // ambiente tranquilo — clientela por cita, no por escaparate.
+                new BusinessTypeCriteria { Id = 20, Key = "spa", DisplayName = "Spa", DenueSearchTerm = "spa", GooglePlacesType = "spa", MinFrontageMeters = 7, MinLotSizeSqm = 100, PrefersPrimaryRoadAccess = true, PrefersHighTraffic = false, PopulationRadiusKm = 2, MinPopulationInRadius = 8000, CompetitorExclusionRadiusMeters = 500, AcceptableLandUseCategories = "Urbano,Comercial", Notes = "Estimación; cliente llega por cita, prioriza ambiente tranquilo sobre tráfico/visibilidad de escaparate." },
+                // Formato más compacto que "Tienda de conveniencia" (Id 3, 180 m²/8 m) — un
+                // mini-OXXO/mini-super de esquina, no el formato de tienda más grande.
+                new BusinessTypeCriteria { Id = 21, Key = "small_convenience_store", DisplayName = "Tienda de Conveniencia Pequeña", DenueSearchTerm = "tienda de conveniencia", GooglePlacesType = "convenience_store", MinFrontageMeters = 5, MinLotSizeSqm = 60, PrefersCornerLot = true, PrefersPrimaryRoadAccess = true, PrefersHighTraffic = true, CompetitorExclusionRadiusMeters = 200, AcceptableLandUseCategories = "Urbano,Comercial", Notes = "Estimación; formato compacto distinto de \"Tienda de conveniencia\" (más grande) ya en el catálogo — radio de exclusión más chico porque este formato tolera mayor densidad." },
+                new BusinessTypeCriteria { Id = 22, Key = "boutique", DisplayName = "Boutique", DenueSearchTerm = "boutique", GooglePlacesType = "clothing_store", MinFrontageMeters = 5, MinLotSizeSqm = 60, PrefersPrimaryRoadAccess = true, PrefersHighTraffic = true, CompetitorExclusionRadiusMeters = 200, AcceptableLandUseCategories = "Urbano,Comercial", Notes = "Estimación; depende de tráfico peatonal/visibilidad, típicamente en plaza comercial o corredor comercial." }
             );
         });
 
