@@ -1023,6 +1023,10 @@ namespace RealEstate.Api.Migrations
                         .HasColumnType("numeric")
                         .HasColumnName("cadastral_value");
 
+                    b.Property<decimal?>("CisternCapacityLiters")
+                        .HasColumnType("numeric")
+                        .HasColumnName("cistern_capacity_liters");
+
                     b.Property<int?>("CommercialUnitCount")
                         .HasColumnType("integer")
                         .HasColumnName("commercial_unit_count");

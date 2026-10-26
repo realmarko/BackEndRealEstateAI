@@ -47,6 +47,7 @@ public class ListingCreateDto
     public bool? HasNaturalGas { get; set; }
     public bool? HasLpGas { get; set; }
     public bool? HasCistern { get; set; }
+    [Range(0, double.MaxValue)] public decimal? CisternCapacityLiters { get; set; }
     public bool? HasWell { get; set; }
     public bool? HasKitchen { get; set; }
     public bool? HasLivingRoom { get; set; }
@@ -165,6 +166,7 @@ public class ListingDto
     public bool? HasNaturalGas { get; set; }
     public bool? HasLpGas { get; set; }
     public bool? HasCistern { get; set; }
+    public decimal? CisternCapacityLiters { get; set; }
     public bool? HasWell { get; set; }
     public bool? HasKitchen { get; set; }
     public bool? HasLivingRoom { get; set; }

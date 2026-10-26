@@ -62,6 +62,7 @@ public static class ListingExtensions
         HasNaturalGas = l.HasNaturalGas,
         HasLpGas = l.HasLpGas,
         HasCistern = l.HasCistern,
+        CisternCapacityLiters = l.CisternCapacityLiters,
         HasWell = l.HasWell,
         HasKitchen = l.HasKitchen,
         HasLivingRoom = l.HasLivingRoom,

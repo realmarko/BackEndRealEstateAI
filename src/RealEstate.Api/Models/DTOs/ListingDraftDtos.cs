@@ -46,6 +46,7 @@ public class ListingDraftParseResultDto
     public bool? HasTerrace { get; set; }
     public bool? HasLaundryArea { get; set; }
     public bool? HasCistern { get; set; }
+    public decimal? CisternCapacityLiters { get; set; }
     public bool? HasNaturalGas { get; set; }
     public bool? HasLpGas { get; set; }
     public bool? HasSecurity { get; set; }

@@ -79,6 +79,11 @@ public class Listing
     // given irregular municipal water pressure/schedules, so (unlike HasWell below) this applies
     // to any property type.
     public bool? HasCistern { get; set; }
+    // Only meaningful when HasCistern is true — frontend only shows/submits this when the
+    // cistern checkbox is checked, but left nullable/unconstrained here at the entity level,
+    // same as every other optional detail field on this model (nothing stops a stale value from
+    // sitting here if HasCistern later gets unchecked; not worth a DB constraint for that).
+    public decimal? CisternCapacityLiters { get; set; }
     // An on-site well — frontend-gated to hide/disable this for PropertyType.Apartment (not
     // something a single apartment unit would have its own well for), but left ungated here at
     // the entity/DB level, same as every other optional boolean on this model.

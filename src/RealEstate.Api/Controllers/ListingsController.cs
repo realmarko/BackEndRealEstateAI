@@ -671,6 +671,7 @@ public class ListingsController : ControllerBase
             HasNaturalGas = dto.HasNaturalGas,
             HasLpGas = dto.HasLpGas,
             HasCistern = dto.HasCistern,
+            CisternCapacityLiters = dto.CisternCapacityLiters,
             HasWell = dto.HasWell,
             HasKitchen = dto.HasKitchen,
             HasLivingRoom = dto.HasLivingRoom,
@@ -865,6 +866,7 @@ public class ListingsController : ControllerBase
         listing.HasNaturalGas = dto.HasNaturalGas;
         listing.HasLpGas = dto.HasLpGas;
         listing.HasCistern = dto.HasCistern;
+        listing.CisternCapacityLiters = dto.CisternCapacityLiters;
         listing.HasWell = dto.HasWell;
         listing.HasKitchen = dto.HasKitchen;
         listing.HasLivingRoom = dto.HasLivingRoom;
