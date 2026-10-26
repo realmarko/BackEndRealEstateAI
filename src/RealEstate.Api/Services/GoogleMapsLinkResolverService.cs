@@ -1,31 +1,66 @@
 using System.Net.Http;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.Extensions.Options;
 
 namespace RealEstate.Api.Services;
 
 public record GeoCoordinates(double Lat, double Lng);
 
+// Coordinates is set only on success; LinkFound distinguishes "no Maps link was in the text at
+// all" (LinkFound: false — nothing to report to the visitor) from "a link was there but couldn't
+// be turned into coordinates" (LinkFound: true, Coordinates: null — ListingsController surfaces
+// this as ListingDraftParseResultDto.MapsLinkResolutionFailed so the frontend can warn instead of
+// silently leaving the location unset).
+public record MapsLinkResolution(GeoCoordinates? Coordinates, bool LinkFound);
+
 public interface IGoogleMapsLinkResolverService
 {
     // Best-effort: looks for a Google Maps link anywhere in the pasted ad text (short
-    // maps.app.goo.gl share links, or a full google.com/maps URL) and tries to turn it into real
-    // coordinates. Never throws — any failure (no link found, redirect failed, no coordinates
-    // resolvable) just returns null, same convention as every other external lookup in this
-    // codebase, so a bad/unsupported link never fails the rest of the draft parse.
-    Task<GeoCoordinates?> TryResolveAsync(string text, CancellationToken cancellationToken = default);
+    // maps.app.goo.gl share links, a full google.com/maps URL, or either wrapped in a Facebook
+    // "l.facebook.com/l.php?u=..." redirect) and tries to turn it into real coordinates. Never
+    // throws — any failure still returns a result (never an exception), same convention as every
+    // other external lookup in this codebase, so a bad/unsupported link never fails the rest of
+    // the draft parse.
+    Task<MapsLinkResolution> TryResolveAsync(string text, CancellationToken cancellationToken = default);
 }
 
 public class GoogleMapsLinkResolverService : IGoogleMapsLinkResolverService
 {
     private const string GeocodeUrl = "https://maps.googleapis.com/maps/api/geocode/json";
 
-    // Matches any Google Maps link, short or long — share links from the mobile app always use
-    // maps.app.goo.gl; older/desktop shares use goo.gl/maps or g.co/maps; a pasted full URL
-    // (copied straight from the address bar) uses google.com/maps or maps.google.com.
+    // Matches a Google Maps link, short or long, anywhere in free text — share links from the
+    // mobile app always use maps.app.goo.gl; older/desktop shares use goo.gl/maps or g.co/maps; a
+    // pasted full URL (copied straight from the address bar) uses google.com/maps or
+    // maps.google.com.
     private static readonly Regex MapsUrlPattern = new(
-        @"https?://(?:maps\.app\.goo\.gl|goo\.gl/maps|g\.co/maps|(?:www\.)?google\.[a-z.]+/maps|maps\.google\.[a-z.]+)/\S+",
+        @"https?://(?:maps\.app\.goo\.gl|goo\.gl/maps|g\.co/maps|(?:www\.)?google\.[a-z.]+/maps|maps\.google\.[a-z.]+)\S*",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    // Same hosts as above, but anchored to the start of the string — used to validate a URL
+    // that's already been isolated (e.g. unwrapped from a Facebook redirect), where there's no
+    // surrounding text left to search through.
+    private static readonly Regex MapsHostPattern = new(
+        @"^https?://(?:maps\.app\.goo\.gl|goo\.gl/maps|g\.co/maps|(?:www\.)?google\.[a-z.]+/maps|maps\.google\.[a-z.]+)",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    // Facebook rewrites every outbound link a user posts into one of these "leaving Facebook"
+    // redirect wrappers, with the real destination URL-encoded in its own "u" query parameter —
+    // this is what a Maps link looks like after being shared/pasted from a Facebook post or
+    // Messenger chat, rather than copied directly from the Maps app.
+    private static readonly Regex FacebookWrapperPattern = new(
+        @"https?://l(?:m)?\.facebook\.com/l\.php\?\S+",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    // The maps.app.goo.gl short code is alphanumeric only — isolating just host+shortcode drops
+    // anything Facebook (or whatever client built the original message) glued onto the end of
+    // the URL without a proper separator. Confirmed live: a real share link's "u" param decoded
+    // to ".../2DWHtjKh5y3cQWqJ6📲?fbclid=..." — an emoji pasted immediately after the shortcode,
+    // with no "?" before it, which 404s as-is but resolves fine once trimmed back to the
+    // shortcode itself.
+    private static readonly Regex ShortLinkPattern = new(
+        @"https?://(?:maps\.app\.goo\.gl|goo\.gl/maps|g\.co/maps)/[A-Za-z0-9_-]+",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     // A share link that already drops a bare pin (no named place attached) embeds the
@@ -57,33 +92,80 @@ public class GoogleMapsLinkResolverService : IGoogleMapsLinkResolverService
         _logger = logger;
     }
 
-    public async Task<GeoCoordinates?> TryResolveAsync(string text, CancellationToken cancellationToken = default)
+    public async Task<MapsLinkResolution> TryResolveAsync(string text, CancellationToken cancellationToken = default)
     {
-        var match = MapsUrlPattern.Match(text);
-        if (!match.Success) return null;
+        var candidateUrl = ExtractCandidateUrl(text);
+        if (candidateUrl is null) return new MapsLinkResolution(null, false);
 
         try
         {
             // Checked on the URL exactly as pasted, before paying for any network call — a full
             // (not shortened) Maps URL copied straight from the address bar already has this, so
             // a redirect-follow just to re-fetch the identical URL would be wasted work.
-            if (TryExtractDirectCoordinates(match.Value) is { } directFromPastedUrl) return directFromPastedUrl;
+            if (TryExtractDirectCoordinates(candidateUrl) is { } directFromPastedUrl)
+            {
+                return new MapsLinkResolution(directFromPastedUrl, true);
+            }
 
-            var resolvedUrl = await ResolveRedirectAsync(match.Value, cancellationToken);
+            var resolvedUrl = await ResolveRedirectAsync(candidateUrl, cancellationToken);
 
-            if (TryExtractDirectCoordinates(resolvedUrl) is { } direct) return direct;
+            if (TryExtractDirectCoordinates(resolvedUrl) is { } direct) return new MapsLinkResolution(direct, true);
 
             var placeMatch = PlaceNamePattern.Match(resolvedUrl);
-            if (!placeMatch.Success) return null;
+            if (!placeMatch.Success) return new MapsLinkResolution(null, true);
 
             var placeName = Uri.UnescapeDataString(placeMatch.Groups[1].Value.Replace('+', ' '));
-            return await GeocodeAsync(placeName, cancellationToken);
+            var geocoded = await GeocodeAsync(placeName, cancellationToken);
+            return new MapsLinkResolution(geocoded, true);
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException or InvalidOperationException)
         {
-            _logger.LogWarning(ex, "Google Maps link resolution failed for {Url}", match.Value);
-            return null;
+            _logger.LogWarning(ex, "Google Maps link resolution failed for {Url}", candidateUrl);
+            return new MapsLinkResolution(null, true);
         }
+    }
+
+    // Finds the actual Maps URL to resolve, unwrapping a Facebook redirect first when present —
+    // Facebook link-shares are checked first since the "u" param they carry is itself a full URL
+    // that would otherwise also satisfy MapsUrlPattern's own generic \S* tail and get picked up
+    // mangled, with l.facebook.com as the (wrong) host to resolve.
+    private static string? ExtractCandidateUrl(string text)
+    {
+        var facebookMatch = FacebookWrapperPattern.Match(text);
+        if (facebookMatch.Success)
+        {
+            var unwrapped = UnwrapFacebookLink(facebookMatch.Value);
+            if (unwrapped is not null && MapsHostPattern.IsMatch(unwrapped))
+            {
+                return CleanGoogleMapsUrl(unwrapped);
+            }
+            // Facebook wrapped some other, non-Maps link — fall through in case the text also has
+            // a bare Maps URL elsewhere (e.g. restated outside the Facebook share).
+        }
+
+        var directMatch = MapsUrlPattern.Match(text);
+        return directMatch.Success ? CleanGoogleMapsUrl(directMatch.Value) : null;
+    }
+
+    private static string? UnwrapFacebookLink(string facebookUrl)
+    {
+        // TryCreate, not `new Uri(...)`: this runs inside ExtractCandidateUrl, which is called
+        // BEFORE TryResolveAsync's own try/catch starts — a malformed link throwing here would
+        // propagate uncaught out of a method documented as "never throws", through the awaited
+        // task in ListingsController.ParseDraft, as an exception type its catch filter doesn't
+        // list, crashing the whole draft-parse request instead of just leaving coordinates unset.
+        if (!Uri.TryCreate(facebookUrl, UriKind.Absolute, out var uri)) return null;
+        var query = QueryHelpers.ParseQuery(uri.Query);
+        return query.TryGetValue("u", out var target) ? target.ToString() : null;
+    }
+
+    // No-op for anything that isn't a maps.app.goo.gl/goo.gl/g.co short link — only those are
+    // known to get corrupted this way in practice; a full google.com/maps URL's coordinates are
+    // self-contained further down the string regardless of what's appended after it.
+    private static string CleanGoogleMapsUrl(string url)
+    {
+        var shortMatch = ShortLinkPattern.Match(url);
+        return shortMatch.Success ? shortMatch.Value : url;
     }
 
     // Lets HttpClient follow every redirect automatically (its default behavior) — the short

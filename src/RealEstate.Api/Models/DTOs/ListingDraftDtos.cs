@@ -62,4 +62,9 @@ public class ListingDraftParseResultDto
     // needs an actual HTTP/geocoding call, not text understanding.
     public double? Lat { get; set; }
     public double? Lng { get; set; }
+    // True when the text had a Google Maps link but it couldn't be turned into coordinates
+    // (broken/mangled link, an unrecognized share format, a failed redirect/geocode) — distinct
+    // from Lat/Lng simply being null because no link was there at all, so the frontend can warn
+    // the owner instead of silently leaving the location unset.
+    public bool MapsLinkResolutionFailed { get; set; }
 }

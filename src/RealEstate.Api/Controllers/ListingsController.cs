@@ -591,13 +591,14 @@ public class ListingsController : ControllerBase
         // call, the other's an HTTP redirect-follow + Geocoding API call), so there's no reason
         // to pay their latency serially. TryResolveAsync never throws (see its own doc comment),
         // so awaiting it can't turn a successful text parse into an unrelated 502.
-        var coordinatesTask = _mapsLinkResolver.TryResolveAsync(dto.Text, cancellationToken);
+        var mapsResolutionTask = _mapsLinkResolver.TryResolveAsync(dto.Text, cancellationToken);
         try
         {
             var result = await _listingDraftParsing.ParseAsync(dto.Text, cancellationToken);
-            var coordinates = await coordinatesTask;
-            result.Lat = coordinates?.Lat;
-            result.Lng = coordinates?.Lng;
+            var mapsResolution = await mapsResolutionTask;
+            result.Lat = mapsResolution.Coordinates?.Lat;
+            result.Lng = mapsResolution.Coordinates?.Lng;
+            result.MapsLinkResolutionFailed = mapsResolution is { LinkFound: true, Coordinates: null };
             return Ok(result);
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or System.Text.Json.JsonException or InvalidOperationException)
