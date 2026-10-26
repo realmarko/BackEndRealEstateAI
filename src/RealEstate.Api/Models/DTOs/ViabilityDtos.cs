@@ -44,9 +44,10 @@ public class BusinessViabilityDto
     public string DisplayName { get; set; } = string.Empty;
     // 0-100. See ViabilityAnalysisService for the weighting.
     public int Score { get; set; }
-    // Set when a hard-blocker check (flood risk, unresolved liens/debts) caps the score below
-    // what the passed/applicable ratio alone would give — explains the gap between "most checks
-    // passed" and a low score, instead of leaving it looking inconsistent.
+    // Set when either a hard-blocker check (flood risk, unresolved liens/debts) caps the score,
+    // or the lot's known frontage/size falls below this business type's minimum and zeroes it
+    // out entirely — explains the gap between "most checks passed" and a low/zero score, instead
+    // of leaving it looking inconsistent with the passed/applicable ratio alone.
     public string? ScoreCapReason { get; set; }
     public List<ViabilityCheckDto> Checks { get; set; } = new();
     // Named establishments behind the "Competencia directa" check's count — nearest first,

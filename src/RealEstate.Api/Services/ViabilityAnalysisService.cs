@@ -316,13 +316,21 @@ public class ViabilityAnalysisService : IViabilityAnalysisService
         // or fail. See its own call site for why it belongs here instead of in `checks`.
         var informationalChecks = new List<ViabilityCheckDto>();
         var hardBlockers = new List<string>();
+        // Unlike hardBlockers above (which caps the score at HardBlockerScoreCap — a serious
+        // problem, but one that might still leave some viability), failing the lot's own minimum
+        // frontage/size is disqualifying on its own: a business type simply doesn't fit on a lot
+        // smaller than its stated minimum, so the score is forced to exactly 0 regardless of how
+        // well every other check did. Only set when the value is actually KNOWN and fails — a
+        // missing value is a "no se pudo evaluar" row (see below), not a failure.
+        var sizeDisqualifiers = new List<string>();
 
         // Every criterion has a real MinFrontageMeters/MinLotSizeSqm (non-nullable), so these two
         // always apply — unlike e.g. PrefersCornerLot, there's no "this business type doesn't
-        // care" case to distinguish from "we don't know." When the lot's own field is missing,
-        // say so explicitly (Passed = null, counted against the score the same as any other
-        // not-yet-evaluated check) instead of just omitting the row, so a visitor can tell "not
-        // evaluated" apart from "evaluated and fine."
+        // care" case to distinguish from "we don't know." A missing value is reported as
+        // unevaluated (Passed = null) rather than omitted, so a visitor can tell "not evaluated"
+        // apart from "evaluated and fine" — but (unlike every other null check) it does NOT count
+        // against the score; only a lot we positively know is too small does that, via
+        // sizeDisqualifiers above.
         if (lot.FrontageMeters is { } frontage)
         {
             var passed = frontage >= criterion.MinFrontageMeters;
@@ -332,6 +340,7 @@ public class ViabilityAnalysisService : IViabilityAnalysisService
                 Passed = passed,
                 Detail = $"{frontage:0.#} m de frente ({(passed ? "cumple" : "no cumple")} el mínimo de {criterion.MinFrontageMeters:0.#} m)."
             });
+            if (!passed) sizeDisqualifiers.Add($"frente de {frontage:0.#} m por debajo del mínimo de {criterion.MinFrontageMeters:0.#} m");
         }
         else
         {
@@ -352,6 +361,7 @@ public class ViabilityAnalysisService : IViabilityAnalysisService
                 Passed = passed,
                 Detail = $"{lotSize:0.#} m² ({(passed ? "cumple" : "no cumple")} el mínimo de {criterion.MinLotSizeSqm:0.#} m²)."
             });
+            if (!passed) sizeDisqualifiers.Add($"superficie de {lotSize:0.#} m² por debajo del mínimo de {criterion.MinLotSizeSqm:0.#} m²");
         }
         else
         {
@@ -739,20 +749,23 @@ public class ViabilityAnalysisService : IViabilityAnalysisService
             }
         }
 
-        // A missing value counts against the score here, same as a check that was actually
-        // evaluated and failed — a listing with almost no data filled in used to land near 100%
-        // just because the one or two checks that COULD run happened to pass, which overstated
-        // confidence for a property we mostly know nothing about. `informationalChecks` (declared
-        // above) stays out of this denominator since those were never going to pass or fail.
-        var rawScore = checks.Count == 0 ? 0 : (int)Math.Round(100.0 * checks.Count(c => c.Passed == true) / checks.Count);
+        // A missing value (Passed == null) is excluded from both sides of the ratio — a listing
+        // we mostly don't have data for shows a score based only on what IS known, rather than
+        // that gap counting as a failure. `informationalChecks` (declared above) was already
+        // out of `checks` entirely, so it's excluded the same way automatically.
+        var applicable = checks.Where(c => c.Passed is not null).ToList();
+        var rawScore = applicable.Count == 0 ? 0 : (int)Math.Round(100.0 * applicable.Count(c => c.Passed!.Value) / applicable.Count);
         var capped = hardBlockers.Count > 0 && rawScore > HardBlockerScoreCap;
+        var disqualified = sizeDisqualifiers.Count > 0;
 
         return new BusinessViabilityDto
         {
             Key = criterion.Key,
             DisplayName = criterion.DisplayName,
-            Score = capped ? HardBlockerScoreCap : rawScore,
-            ScoreCapReason = capped ? $"Limitado por: {string.Join("; ", hardBlockers)}." : null,
+            Score = disqualified ? 0 : (capped ? HardBlockerScoreCap : rawScore),
+            ScoreCapReason = disqualified
+                ? $"No cumple el mínimo requerido: {string.Join("; ", sizeDisqualifiers)}."
+                : (capped ? $"Limitado por: {string.Join("; ", hardBlockers)}." : null),
             Checks = checks.Concat(informationalChecks).ToList(),
             NearbyCompetitors = nearbyCompetitors
         };
