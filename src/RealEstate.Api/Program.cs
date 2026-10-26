@@ -272,6 +272,17 @@ builder.Services.AddRateLimiter(options =>
             Window = TimeSpan.FromMinutes(1),
             QueueLimit = 0
         }));
+    // Per-IP: fires on EVERY site navigation (the frontend's App root component, not just
+    // listing/agent detail pages — see PageViewsController.Record), so a real visitor browsing
+    // normally gets closer to this budget than "view-count" above; sized higher accordingly.
+    options.AddPolicy("page-view", httpContext => RateLimitPartition.GetFixedWindowLimiter(
+        partitionKey: httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+        factory: _ => new FixedWindowRateLimiterOptions
+        {
+            PermitLimit = 60,
+            Window = TimeSpan.FromMinutes(1),
+            QueueLimit = 0
+        }));
     // Covers both verify-email (bounds code-guessing against one account) and
     // resend-verification-code (bounds email volume) — same per-IP shape as forgot-password, just
     // a slightly higher budget since a visitor legitimately mistyping a 6-digit code a couple of

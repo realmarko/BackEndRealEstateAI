@@ -1694,6 +1694,39 @@ namespace RealEstate.Api.Migrations
                     b.ToTable("municipal_boundaries", (string)null);
                 });
 
+            modelBuilder.Entity("RealEstate.Api.Models.Entities.PageView", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("Path")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("path");
+
+                    b.Property<string>("PathPattern")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("path_pattern");
+
+                    b.Property<DateTime>("ViewedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("viewed_at");
+
+                    b.HasKey("Id")
+                        .HasName("pk_page_views");
+
+                    b.HasIndex("ViewedAt")
+                        .HasDatabaseName("ix_page_views_viewed_at");
+
+                    b.HasIndex("PathPattern", "ViewedAt")
+                        .HasDatabaseName("ix_page_views_path_pattern_viewed_at");
+
+                    b.ToTable("page_views", (string)null);
+                });
+
             modelBuilder.Entity("RealEstate.Api.Models.Entities.PipelineStage", b =>
                 {
                     b.Property<int>("Id")

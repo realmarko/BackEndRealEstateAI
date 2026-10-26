@@ -20,6 +20,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, IdentityR
     public DbSet<MunicipalBoundary> MunicipalBoundaries => Set<MunicipalBoundary>();
     public DbSet<MexicanState> MexicanStates => Set<MexicanState>();
     public DbSet<ErrorLog> ErrorLogs => Set<ErrorLog>();
+    public DbSet<PageView> PageViews => Set<PageView>();
     public DbSet<Fraccionamiento> Fraccionamientos => Set<Fraccionamiento>();
     public DbSet<FraccionamientoSource> FraccionamientoSources => Set<FraccionamientoSource>();
     public DbSet<LandUseCategory> LandUseCategories => Set<LandUseCategory>();
@@ -315,6 +316,15 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, IdentityR
             // of rows in practice, and Postgres filters the rest by Message with a plain scan over
             // that narrowed set instead of needing it in the index too.
             entity.HasIndex(e => new { e.Source, e.Severity, e.Section });
+        });
+
+        builder.Entity<PageView>(entity =>
+        {
+            // Backs PageViewsController.Stats' "WHERE viewed_at >= cutoff" filter (the last N
+            // weeks) before grouping, and the GROUP BY date_trunc('week', viewed_at), PathPattern
+            // that follows it.
+            entity.HasIndex(e => e.ViewedAt);
+            entity.HasIndex(e => new { e.PathPattern, e.ViewedAt });
         });
 
         builder.Entity<Fraccionamiento>(entity =>
