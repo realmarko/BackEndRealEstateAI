@@ -81,6 +81,14 @@ public class GoogleMapsLinkResolverService : IGoogleMapsLinkResolverService
     // geocoded below when no direct coordinates are present.
     private static readonly Regex PlaceNamePattern = new(@"/maps/place/([^/]+)/", RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
+    // Some share links resolve to the older "search by address" shape instead
+    // (maps.google.com?q=<address text>&ftid=...), with no /maps/place/ path at all — confirmed
+    // live: "https://maps.google.com?q=Alcancias+Fel,+Carr.+Federal+M%C3%A9xico-Puebla+710,...".
+    // Only a fallback for when DirectCoordinatePatterns' own "q=" pattern didn't match (i.e. this
+    // q isn't a bare "lat,lng" pair), checked via IsCoordinatePair below.
+    private static readonly Regex QueryAddressPattern = new(@"[?&]q=([^&]+)", RegexOptions.Compiled);
+    private static readonly Regex CoordinatePairPattern = new(@"^-?\d+\.\d+,\s*-?\d+\.\d+$", RegexOptions.Compiled);
+
     private readonly HttpClient _http;
     private readonly GoogleMapsOptions _options;
     private readonly ILogger<GoogleMapsLinkResolverService> _logger;
@@ -111,10 +119,9 @@ public class GoogleMapsLinkResolverService : IGoogleMapsLinkResolverService
 
             if (TryExtractDirectCoordinates(resolvedUrl) is { } direct) return new MapsLinkResolution(direct, true);
 
-            var placeMatch = PlaceNamePattern.Match(resolvedUrl);
-            if (!placeMatch.Success) return new MapsLinkResolution(null, true);
+            var placeName = ExtractPlaceName(resolvedUrl);
+            if (placeName is null) return new MapsLinkResolution(null, true);
 
-            var placeName = Uri.UnescapeDataString(placeMatch.Groups[1].Value.Replace('+', ' '));
             var geocoded = await GeocodeAsync(placeName, cancellationToken);
             return new MapsLinkResolution(geocoded, true);
         }
@@ -181,6 +188,24 @@ public class GoogleMapsLinkResolverService : IGoogleMapsLinkResolverService
 
         using var response = await _http.SendAsync(request, cancellationToken);
         return response.RequestMessage?.RequestUri?.ToString() ?? shortUrl;
+    }
+
+    // Tries the /maps/place/<name>/ path shape first, falling back to a "q=<address>" query
+    // param when the URL instead uses the older "search by address" shape (no /place/ path at
+    // all). Skips a q= value that's actually a bare "lat,lng" pair — TryExtractDirectCoordinates
+    // already handles that case above; reaching here with one unmatched would mean something
+    // about its number format didn't fit DirectCoordinatePatterns, and geocoding raw coordinates
+    // as address text isn't reliable, so there's nothing useful to do with it either way.
+    private static string? ExtractPlaceName(string url)
+    {
+        var placeMatch = PlaceNamePattern.Match(url);
+        if (placeMatch.Success) return Uri.UnescapeDataString(placeMatch.Groups[1].Value.Replace('+', ' '));
+
+        var queryMatch = QueryAddressPattern.Match(url);
+        if (!queryMatch.Success) return null;
+
+        var decoded = Uri.UnescapeDataString(queryMatch.Groups[1].Value.Replace('+', ' '));
+        return CoordinatePairPattern.IsMatch(decoded) ? null : decoded;
     }
 
     private static GeoCoordinates? TryExtractDirectCoordinates(string url)
