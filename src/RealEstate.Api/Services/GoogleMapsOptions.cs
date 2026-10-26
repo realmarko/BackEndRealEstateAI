@@ -16,4 +16,11 @@ public class GoogleMapsOptions
     // alert in Google Cloud once set — see GoogleTrafficService for the caching that bounds call
     // volume.
     public string RoutesApiKey { get; set; } = "CHANGE_ME_GOOGLE_ROUTES_API_KEY";
+
+    // Separate key, restricted to the Geocoding API only (same reasoning as the two keys above)
+    // — used by GoogleMapsLinkResolverService to turn the human-readable place name a shared
+    // Google Maps link resolves to (e.g. "Residencial Tlatelcos, 24 ote #1227...") into real
+    // lat/lng when the link itself doesn't already embed coordinates (most "place" share links
+    // from the Maps app resolve to a CID reference, not a @lat,lng URL).
+    public string GeocodingApiKey { get; set; } = "CHANGE_ME_GOOGLE_GEOCODING_API_KEY";
 }

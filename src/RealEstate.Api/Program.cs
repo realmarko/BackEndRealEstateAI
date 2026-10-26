@@ -111,6 +111,10 @@ builder.Services.AddHttpClient<IGoogleTrafficService, GoogleTrafficService>(clie
 // interactive "autofill" button click rather than a background best-effort fetch.
 builder.Services.Configure<AnthropicOptions>(builder.Configuration.GetSection("Anthropic"));
 builder.Services.AddHttpClient<IListingDraftParsingService, ListingDraftParsingService>(client => client.Timeout = TimeSpan.FromSeconds(20));
+// Resolves a Google Maps link pasted in the same ad text into real coordinates (redirect
+// follow + Geocoding API fallback) — same GoogleMapsOptions section (GeocodingApiKey), runs
+// alongside the Anthropic call above in ListingsController.ParseDraft.
+builder.Services.AddHttpClient<IGoogleMapsLinkResolverService, GoogleMapsLinkResolverService>(client => client.Timeout = TimeSpan.FromSeconds(10));
 
 // ---- In-process cache (single EB instance, no shared/distributed cache needed) — for static
 // reference data that's expensive to refetch on every request but changes rarely, if ever:

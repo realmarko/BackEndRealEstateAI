@@ -30,6 +30,7 @@ public class ListingsController : ControllerBase
     private readonly IViabilityReportPdfService _viabilityReportPdf;
     private readonly IStaticMapService _staticMap;
     private readonly IListingDraftParsingService _listingDraftParsing;
+    private readonly IGoogleMapsLinkResolverService _mapsLinkResolver;
     private readonly ILogger<ListingsController> _logger;
 
     public ListingsController(
@@ -43,6 +44,7 @@ public class ListingsController : ControllerBase
         IViabilityReportPdfService viabilityReportPdf,
         IStaticMapService staticMap,
         IListingDraftParsingService listingDraftParsing,
+        IGoogleMapsLinkResolverService mapsLinkResolver,
         ILogger<ListingsController> logger)
     {
         _db = db;
@@ -55,6 +57,7 @@ public class ListingsController : ControllerBase
         _viabilityReportPdf = viabilityReportPdf;
         _staticMap = staticMap;
         _listingDraftParsing = listingDraftParsing;
+        _mapsLinkResolver = mapsLinkResolver;
         _logger = logger;
     }
 
@@ -582,11 +585,19 @@ public class ListingsController : ControllerBase
     [Authorize(Roles = "Owner")]
     [EnableRateLimiting("listing-draft-parse")]
     [HttpPost("parse-draft")]
-    public async Task<ActionResult<ListingDraftParseResultDto>> ParseDraft(ListingDraftParseRequestDto dto)
+    public async Task<ActionResult<ListingDraftParseResultDto>> ParseDraft(ListingDraftParseRequestDto dto, CancellationToken cancellationToken)
     {
+        // Kicked off alongside the AI call, not after it — independent work (one's an Anthropic
+        // call, the other's an HTTP redirect-follow + Geocoding API call), so there's no reason
+        // to pay their latency serially. TryResolveAsync never throws (see its own doc comment),
+        // so awaiting it can't turn a successful text parse into an unrelated 502.
+        var coordinatesTask = _mapsLinkResolver.TryResolveAsync(dto.Text, cancellationToken);
         try
         {
-            var result = await _listingDraftParsing.ParseAsync(dto.Text);
+            var result = await _listingDraftParsing.ParseAsync(dto.Text, cancellationToken);
+            var coordinates = await coordinatesTask;
+            result.Lat = coordinates?.Lat;
+            result.Lng = coordinates?.Lng;
             return Ok(result);
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or System.Text.Json.JsonException or InvalidOperationException)

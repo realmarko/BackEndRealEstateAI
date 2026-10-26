@@ -55,4 +55,11 @@ public class ListingDraftParseResultDto
     public bool? HasServiceRoom { get; set; }
     public bool? HasStorageRoom { get; set; }
     public bool? HasPropertyTaxDebt { get; set; }
+
+    // Resolved separately from everything else above (see GoogleMapsLinkResolverService) when
+    // the pasted text includes a Google Maps link — not something the AI extraction itself can
+    // determine, since turning a link (or the place name it resolves to) into real coordinates
+    // needs an actual HTTP/geocoding call, not text understanding.
+    public double? Lat { get; set; }
+    public double? Lng { get; set; }
 }
