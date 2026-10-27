@@ -46,7 +46,7 @@ public class ViabilityReportPdfService : IViabilityReportPdfService
                 page.Margin(24);
                 page.DefaultTextStyle(x => x.FontFamily(FontFamily).FontSize(10).FontColor(Colors.Grey.Darken3));
 
-                page.Header().Element(c => ComposeHeader(c, listing));
+                page.Header().Element(c => ComposeHeader(c, listing, analysis));
 
                 var topBusiness = analysis.Businesses.OrderByDescending(b => b.Score).FirstOrDefault();
 
@@ -85,7 +85,7 @@ public class ViabilityReportPdfService : IViabilityReportPdfService
         return document.GeneratePdf();
     }
 
-    private static void ComposeHeader(IContainer container, ListingDto listing)
+    private static void ComposeHeader(IContainer container, ListingDto listing, ViabilityAnalysisDto analysis)
     {
         container.Background(Navy).Padding(16).Row(row =>
         {
@@ -94,6 +94,10 @@ public class ViabilityReportPdfService : IViabilityReportPdfService
                 col.Item().Text("Reporte de Viabilidad Comercial").FontSize(16).Bold().FontColor(Colors.White);
                 col.Item().Text(listing.Title).FontSize(11).FontColor(Gold);
                 col.Item().Text($"{listing.Street}, {listing.Colonia}, {listing.City}, {listing.State}").FontSize(9).FontColor(Colors.White);
+                // The exact point every check in this report was computed against — distinct from
+                // the street address above, which is self-reported and can be imprecise/missing;
+                // lets whoever reads the PDF drop these straight into Google Maps to verify.
+                col.Item().Text($"{analysis.Lat:0.00000}, {analysis.Lng:0.00000}").FontSize(8).FontColor(Colors.Grey.Lighten2);
             });
         });
     }
