@@ -47,6 +47,20 @@ public class AgebCompetitorDensityDto
     public int? CompetitorCount { get; set; }
 }
 
+public class AppreciationPotentialDto
+{
+    public string Cvegeo { get; set; } = string.Empty;
+    public JsonElement Boundary { get; set; }
+
+    // Null means no signal had enough data for this AGEB — distinct from a genuine low score of 0,
+    // which would wrongly read as "bad potential" instead of "unknown".
+    public double? Score { get; set; }
+
+    // One human-readable line per signal that contributed to Score, so the number is never a
+    // black box — mirrors ViabilityCheckDto.Detail's role in ViabilityAnalysisService.
+    public List<string> Explanations { get; set; } = new();
+}
+
 public class PopulationDensityDto
 {
     public int Population { get; set; }

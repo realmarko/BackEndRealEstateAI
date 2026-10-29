@@ -60,5 +60,20 @@ public static class GeoFactory
         return EarthRadiusMeters * c;
     }
 
+    // Approximate lat/lng half-width of a radiusMeters-wide box centered at lat — the same
+    // "111,000 m per degree of latitude, scaled by cos(lat) for longitude" approximation that was
+    // independently copy-pasted in ViabilityAnalysisService.FindNearbyFraccionamientosAsync,
+    // FraccionamientoIngestionService.FindMatchAsync, and (twice) AppreciationPotentialService —
+    // centralized here so a future correction to the approximation (or a switch to a true PostGIS
+    // radius query) only needs to happen in one place. Meant as a cheap bounding-box PREFILTER,
+    // always paired with an exact DistanceMeters cut on the candidates it returns.
+    public static (double LatDelta, double LngDelta) ApproxDegreeDelta(double lat, double radiusMeters)
+    {
+        const double metersPerDegreeLat = 111_000.0;
+        var latDelta = radiusMeters / metersPerDegreeLat;
+        var lngDelta = radiusMeters / (metersPerDegreeLat * Math.Cos(DegreesToRadians(lat)));
+        return (latDelta, lngDelta);
+    }
+
     private static double DegreesToRadians(double degrees) => degrees * Math.PI / 180.0;
 }

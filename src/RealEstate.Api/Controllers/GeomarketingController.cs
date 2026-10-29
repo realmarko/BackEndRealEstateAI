@@ -9,6 +9,7 @@ using Npgsql;
 using RealEstate.Api.Data;
 using RealEstate.Api.Extensions;
 using RealEstate.Api.Models.DTOs;
+using RealEstate.Api.Models.Entities;
 using RealEstate.Api.Services;
 
 namespace RealEstate.Api.Controllers;
@@ -38,6 +39,7 @@ public class GeomarketingController : ControllerBase
 
     private readonly IDenueService _denueService;
     private readonly IPopulationDensityService _populationDensityService;
+    private readonly IAppreciationPotentialService _appreciationPotentialService;
     private readonly ApplicationDbContext _db;
     private readonly IMemoryCache _cache;
     private readonly ILogger<GeomarketingController> _logger;
@@ -45,12 +47,14 @@ public class GeomarketingController : ControllerBase
     public GeomarketingController(
         IDenueService denueService,
         IPopulationDensityService populationDensityService,
+        IAppreciationPotentialService appreciationPotentialService,
         ApplicationDbContext db,
         IMemoryCache cache,
         ILogger<GeomarketingController> logger)
     {
         _denueService = denueService;
         _populationDensityService = populationDensityService;
+        _appreciationPotentialService = appreciationPotentialService;
         _db = db;
         _cache = cache;
         _logger = logger;
@@ -355,6 +359,87 @@ public class GeomarketingController : ControllerBase
         {
             _logger.LogError(ex, "Failed to compute competitor density in bounds {SwLat},{SwLng} - {NeLat},{NeLng}", swLat, swLng, neLat, neLng);
             return StatusCode(StatusCodes.Status500InternalServerError, new { message = "Could not load competitor density right now." });
+        }
+    }
+
+    // Own cap, not shared with MaxCompetitorDensityAgebs — this layer's per-AGEB cost (up to 2
+    // live Overpass calls) is a different driver than that one's (1 DENUE call), so the two
+    // should be tunable independently even though they start at similar values.
+    private const int MaxAppreciationPotentialAgebs = 24;
+
+    // GET /api/geomarketing/appreciation-potential?swLat=&swLng=&neLat=&neLng= — same AGEBs as
+    // /agebs, each scored for 2-year appreciation potential by AppreciationPotentialService (new
+    // developments, socioeconomic convergence, connectivity, own listing price momentum). Shares
+    // "geomarketing"'s rate-limit budget like competitor-density: each AGEB can trigger a live
+    // Overpass call internally, so it is not the cheap own-Postgres-only shape that earns the
+    // "population-density" policy.
+    [HttpGet("appreciation-potential")]
+    [EnableRateLimiting("geomarketing")]
+    public async Task<ActionResult<List<AppreciationPotentialDto>>> GetAppreciationPotential(
+        [FromQuery] double swLat,
+        [FromQuery] double swLng,
+        [FromQuery] double neLat,
+        [FromQuery] double neLng,
+        CancellationToken cancellationToken)
+    {
+        if (!GeoValidation.IsValidLat(swLat)) return BadRequest(new { message = "swLat must be a finite number between -90 and 90." });
+        if (!GeoValidation.IsValidLat(neLat)) return BadRequest(new { message = "neLat must be a finite number between -90 and 90." });
+        if (!GeoValidation.IsValidLng(swLng)) return BadRequest(new { message = "swLng must be a finite number between -180 and 180." });
+        if (!GeoValidation.IsValidLng(neLng)) return BadRequest(new { message = "neLng must be a finite number between -180 and 180." });
+        if (swLat >= neLat) return BadRequest(new { message = "swLat must be less than neLat." });
+        if (swLng >= neLng) return BadRequest(new { message = "swLng must be less than neLng." });
+        if (neLat - swLat > MaxAgebBoundsSpanDegrees || neLng - swLng > MaxAgebBoundsSpanDegrees)
+            return BadRequest(new { message = $"Bounding box must not exceed {MaxAgebBoundsSpanDegrees} degrees in either dimension." });
+
+        var bbox = GeoFactory.CreateBoundingBox(swLat, swLng, neLat, neLng);
+
+        try
+        {
+            var agebs = await _db.AgebPopulations.AsNoTracking()
+                .Where(a => a.Boundary.Intersects(bbox))
+                .ToListAsync(cancellationToken);
+
+            if (agebs.Count > MaxAppreciationPotentialAgebs)
+                return BadRequest(new { message = $"Too many census zones in view ({agebs.Count}) — zoom in further to use the appreciation-potential layer (max {MaxAppreciationPotentialAgebs})." });
+
+            // Parallel, like competitor-density's DENUE calls below — safe here because
+            // AppreciationPotentialService opens its own short-lived DbContext per AGEB via
+            // IDbContextFactory instead of sharing this controller's request-scoped one (actual
+            // concurrency is further capped inside the service — see its ConcurrencyGate). Each
+            // AGEB is scored through ScoreAgebSafelyAsync, not the service directly: a single
+            // malformed AGEB boundary tripping PostGIS would otherwise fault the whole
+            // Task.WhenAll and 500 the entire viewport instead of degrading just that one AGEB,
+            // same reasoning as the per-AGEB try/catch in GetCompetitorDensity below.
+            var scoreTasks = agebs.Select(a => ScoreAgebSafelyAsync(a, cancellationToken));
+            var scores = await Task.WhenAll(scoreTasks);
+
+            var result = agebs.Select((a, i) => new AppreciationPotentialDto
+            {
+                Cvegeo = a.Cvegeo,
+                Boundary = ToGeoJsonElement(a.Boundary),
+                Score = scores[i].Score,
+                Explanations = scores[i].Explanations
+            }).ToList();
+
+            return Ok(result);
+        }
+        catch (Exception ex) when (ex is NpgsqlException or InvalidOperationException)
+        {
+            _logger.LogError(ex, "Failed to compute appreciation potential in bounds {SwLat},{SwLng} - {NeLat},{NeLng}", swLat, swLng, neLat, neLng);
+            return StatusCode(StatusCodes.Status500InternalServerError, new { message = "Could not load appreciation potential right now." });
+        }
+    }
+
+    private async Task<AppreciationPotentialDto> ScoreAgebSafelyAsync(AgebPopulation ageb, CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await _appreciationPotentialService.ScoreAgebAsync(ageb, cancellationToken);
+        }
+        catch (Exception ex) when (ex is NpgsqlException or InvalidOperationException or HttpRequestException)
+        {
+            _logger.LogWarning(ex, "Appreciation-potential scoring failed for AGEB {Cvegeo}", ageb.Cvegeo);
+            return new AppreciationPotentialDto { Cvegeo = ageb.Cvegeo, Score = null, Explanations = new List<string>() };
         }
     }
 }

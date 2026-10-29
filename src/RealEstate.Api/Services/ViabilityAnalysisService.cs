@@ -302,31 +302,12 @@ public class ViabilityAnalysisService : IViabilityAnalysisService
 
     // Radius a new housing development's demand realistically reaches a nearby storefront within
     // — a resident walks or takes a short drive to their neighborhood pharmacy/cafetería, not
-    // across town. Shares the same bounding-box-prefilter-then-exact-distance approach as
-    // FraccionamientoIngestionService.FindMatchAsync (no PostGIS geography column on
-    // Fraccionamiento to do this in one query).
+    // across town. Also used by AppreciationPotentialService's new-development signal, via the
+    // shared FraccionamientoProximity.FindNearbyAsync helper below.
     private const double NearbyFraccionamientoRadiusMeters = 2000;
 
-    private record NearbyFraccionamiento(string Name, string? Stage, int DistanceMeters);
-
-    private async Task<List<NearbyFraccionamiento>> FindNearbyFraccionamientosAsync(double lat, double lng, CancellationToken cancellationToken)
-    {
-        var latDelta = NearbyFraccionamientoRadiusMeters / 111_000.0;
-        var lngDelta = NearbyFraccionamientoRadiusMeters / (111_000.0 * Math.Cos(lat * Math.PI / 180));
-
-        var candidates = await _db.Fraccionamientos.AsNoTracking()
-            .Where(f => f.Status == FraccionamientoStatus.Published)
-            .Where(f => f.Latitude >= lat - latDelta && f.Latitude <= lat + latDelta)
-            .Where(f => f.Longitude >= lng - lngDelta && f.Longitude <= lng + lngDelta)
-            .Select(f => new { f.Name, f.Stage, f.Latitude, f.Longitude })
-            .ToListAsync(cancellationToken);
-
-        return candidates
-            .Select(f => new NearbyFraccionamiento(f.Name, f.Stage, (int)Math.Round(GeoFactory.DistanceMeters(lat, lng, f.Latitude, f.Longitude))))
-            .Where(f => f.DistanceMeters <= NearbyFraccionamientoRadiusMeters)
-            .OrderBy(f => f.DistanceMeters)
-            .ToList();
-    }
+    private Task<List<NearbyFraccionamiento>> FindNearbyFraccionamientosAsync(double lat, double lng, CancellationToken cancellationToken) =>
+        FraccionamientoProximity.FindNearbyAsync(_db, lat, lng, NearbyFraccionamientoRadiusMeters, cancellationToken);
 
     private async Task<BusinessViabilityDto> ScoreBusinessAsync(
         BusinessTypeCriteria criterion,

@@ -93,6 +93,8 @@ builder.Services.AddScoped<IPopulationDensityService, PopulationDensityService>(
 // rápida/avenida principal) near a point, for the viability report's "nearby roads" check.
 builder.Services.AddHttpClient<IRoadNetworkService, OverpassRoadNetworkService>(client => client.Timeout = TimeSpan.FromSeconds(10));
 builder.Services.AddScoped<IViabilityAnalysisService, ViabilityAnalysisService>();
+// /map's "potencial de plusvalía" layer — reuses IRoadNetworkService above, no extra HttpClient.
+builder.Services.AddScoped<IAppreciationPotentialService, AppreciationPotentialService>();
 builder.Services.AddScoped<IViabilityReportPdfService, ViabilityReportPdfService>();
 
 // A server-side Google Maps key (separate from the browser-exposed one) just for embedding a
@@ -161,7 +163,12 @@ if (!isLoopbackHost)
 var npgsqlDataSourceBuilder = new NpgsqlDataSourceBuilder(connectionStringBuilder.ConnectionString);
 npgsqlDataSourceBuilder.UseNetTopologySuite();
 builder.Services.AddSingleton(npgsqlDataSourceBuilder.Build());
-builder.Services.AddDbContext<ApplicationDbContext>((sp, options) =>
+// A factory (not just AddDbContext) because AppreciationPotentialService scores AGEBs in
+// parallel (Task.WhenAll in GeomarketingController) and each needs its own short-lived context —
+// EF Core's DbContext isn't safe for concurrent use from one instance. AddDbContextFactory also
+// registers the plain scoped ApplicationDbContext every other consumer already injects, so this
+// is additive, not a breaking change for them.
+builder.Services.AddDbContextFactory<ApplicationDbContext>((sp, options) =>
     options.UseNpgsql(sp.GetRequiredService<NpgsqlDataSource>(), npgsql => npgsql.UseNetTopologySuite()).UseSnakeCaseNamingConvention());
 builder.Services.AddDbContext<RealEstateDbContext>((sp, options) =>
     options.UseNpgsql(sp.GetRequiredService<NpgsqlDataSource>()).UseSnakeCaseNamingConvention());
