@@ -28,6 +28,17 @@ public class AppreciationPotentialService : IAppreciationPotentialService
 
     private const double ConnectivityRadiusMeters = 1000;
 
+    // IRoadNetworkService retries across 3 Overpass mirrors on failure, each with its own 10s
+    // HttpClient timeout (see RoadNetworkService.cs) — worst case ~30s for ONE of roads/transit if
+    // every mirror is slow that day. Both api-dev and api sit behind CloudFront with a 30-60s
+    // OriginReadTimeout, and GeomarketingController scores up to MaxAppreciationPotentialAgebs
+    // AGEBs through an 8-wide semaphore, so several AGEBs each eating a ~30s worst case would blow
+    // well past that budget. This bounds the WHOLE connectivity signal (both roads and transit
+    // together, already run in parallel) to a hard ceiling, independent of RoadNetworkService's
+    // own per-mirror retry budget — past this, the signal is simply excluded (see the catch below),
+    // same as any other signal with insufficient data.
+    private static readonly TimeSpan ConnectivitySignalTimeout = TimeSpan.FromSeconds(6);
+
     // Below this many Active listings inside the AGEB's own boundary in the trailing 12 months,
     // a price/sqft trend is noise, not a signal — excluded (not scored as 0) same as every other
     // signal here when its underlying data is too thin to mean anything.
@@ -197,10 +208,13 @@ public class AppreciationPotentialService : IAppreciationPotentialService
     // only a genuinely new area pays the live Overpass cost.
     private async Task AddConnectivitySignalAsync(double lat, double lng, List<(double Score, double Weight, string Explanation)> signals, CancellationToken cancellationToken)
     {
+        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeoutCts.CancelAfter(ConnectivitySignalTimeout);
+
         try
         {
-            var roadsTask = _roadNetworkService.FindMajorRoadsNearbyAsync(lat, lng, (int)ConnectivityRadiusMeters, cancellationToken);
-            var transitTask = _roadNetworkService.FindTransitNearbyAsync(lat, lng, (int)ConnectivityRadiusMeters, cancellationToken);
+            var roadsTask = _roadNetworkService.FindMajorRoadsNearbyAsync(lat, lng, (int)ConnectivityRadiusMeters, timeoutCts.Token);
+            var transitTask = _roadNetworkService.FindTransitNearbyAsync(lat, lng, (int)ConnectivityRadiusMeters, timeoutCts.Token);
             await Task.WhenAll(roadsTask, transitTask);
 
             var hasRoad = roadsTask.Result.Count > 0;
@@ -225,12 +239,13 @@ public class AppreciationPotentialService : IAppreciationPotentialService
         catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException or System.Text.Json.JsonException or InvalidOperationException)
         {
             // Overpass's free mirrors are occasionally all unavailable at once (see
-            // RoadNetworkService's own comments) — excluded like any other signal with no data,
-            // not scored as 0 (which would wrongly read as "no connectivity"). Catches
+            // RoadNetworkService's own comments), or ConnectivitySignalTimeout above cut this off
+            // before they answered — either way, excluded like any other signal with no data, not
+            // scored as 0 (which would wrongly read as "no connectivity"). Catches
             // OperationCanceledException rather than just its TaskCanceledException subclass,
-            // since the underlying stream read can surface either depending on exactly where a
-            // client-abort/timeout is observed.
-            _logger.LogWarning(ex, "Connectivity signal unavailable at {Lat},{Lng}", lat, lng);
+            // since both our own timeoutCts and the underlying stream read can surface either
+            // depending on exactly where the cancellation is observed.
+            _logger.LogWarning(ex, "Connectivity signal unavailable or timed out at {Lat},{Lng}", lat, lng);
         }
     }
 

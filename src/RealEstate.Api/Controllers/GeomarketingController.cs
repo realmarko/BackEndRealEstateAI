@@ -364,8 +364,14 @@ public class GeomarketingController : ControllerBase
 
     // Own cap, not shared with MaxCompetitorDensityAgebs — this layer's per-AGEB cost (up to 2
     // live Overpass calls) is a different driver than that one's (1 DENUE call), so the two
-    // should be tunable independently even though they start at similar values.
-    private const int MaxAppreciationPotentialAgebs = 24;
+    // should be tunable independently even though they start at similar values. Deliberately
+    // tighter than that one: with AppreciationPotentialService's 8-wide concurrency gate, this
+    // many AGEBs take at most ceil(16/8)=2 "waves", each bounded to
+    // AppreciationPotentialService.ConnectivitySignalTimeout (6s) worst case — keeps the whole
+    // request comfortably under both api-dev/api's CloudFront OriginReadTimeout (30-60s) and
+    // dev's single-instance nginx, instead of letting a slow Overpass day push a 3+-wave batch
+    // past either.
+    private const int MaxAppreciationPotentialAgebs = 16;
 
     // GET /api/geomarketing/appreciation-potential?swLat=&swLng=&neLat=&neLng= — same AGEBs as
     // /agebs, each scored for 2-year appreciation potential by AppreciationPotentialService (new
