@@ -1,8 +1,10 @@
-// Reads INEGI's 21mun.shp (municipal boundaries, Puebla), reprojects every ring from the source
-// Lambert Conformal Conic (ITRF2008 / GRS80) to WGS84 (EPSG:4326), and writes import.sql —
+// Reads INEGI's <prefix>mun.shp (municipal boundaries, one state), reprojects every ring from the
+// source Lambert Conformal Conic (ITRF2008 / GRS80) to WGS84 (EPSG:4326), and writes import.sql —
 // matching this project's existing data-imports convention (see
-// ../ageb-socioeconomic/import.sql). See README.md for where to get 21mun.shp/.dbf/.prj and how
-// to run this.
+// ../ageb-socioeconomic/import.sql). See README.md for where to get <prefix>mun.shp/.dbf/.prj and
+// how to run this.
+// Usage: node convert.js [statePrefix] [stateName]  (e.g. `node convert.js 29 Tlaxcala`; defaults
+// to 21/Puebla).
 const shapefile = require("shapefile");
 const proj4 = require("proj4");
 const fs = require("fs");
@@ -44,8 +46,10 @@ function sqlString(value) {
 }
 
 async function main() {
-  const shpPath = path.join(__dirname, "21mun.shp");
-  const dbfPath = path.join(__dirname, "21mun.dbf");
+  const statePrefix = process.argv[2] || "21";
+  const stateName = process.argv[3] || "Puebla";
+  const shpPath = path.join(__dirname, `${statePrefix}mun.shp`);
+  const dbfPath = path.join(__dirname, `${statePrefix}mun.dbf`);
   const source = await shapefile.open(shpPath, dbfPath, { encoding: "latin1" });
 
   const rows = [];
@@ -58,7 +62,7 @@ async function main() {
 
   console.log(`Read ${rows.length} municipality polygons.`);
 
-  const outPath = path.join(__dirname, "import.sql");
+  const outPath = path.join(__dirname, statePrefix === "21" ? "import.sql" : `import.${statePrefix}.sql`);
   const lines = [];
   lines.push("BEGIN;");
   lines.push("CREATE TEMP TABLE staging_municipal_boundaries (");
@@ -78,7 +82,7 @@ async function main() {
     const name = p.NOMGEO ?? p.NOM_MUN ?? p.NOMBRE;
     lines.push(
       `INSERT INTO staging_municipal_boundaries (cvegeo, name, state_name, boundary) VALUES (` +
-        `${sqlString(cvegeo)}, ${sqlString(name)}, ${sqlString("Puebla")}, ` +
+        `${sqlString(cvegeo)}, ${sqlString(name)}, ${sqlString(stateName)}, ` +
         `ST_SetSRID(ST_GeomFromText(${sqlString(row.wkt)}), 4326));`
     );
   }

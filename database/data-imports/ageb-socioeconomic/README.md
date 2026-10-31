@@ -28,11 +28,38 @@ already populated by the original population import), and computed:
 | `avg_occupants_per_home` | `PROM_OCUP` | already an average; higher = more crowding |
 
 INEGI masks small-count cells for privacy (`*`, `N/D`); those become empty (NULL), not zero —
-~10% of Puebla's 2503 AGEB rows have at least one masked field.
+~10% of Puebla's 2503 AGEB rows have at least one masked field (Tlaxcala, added later: 58 of 668,
+~8.7%, a similar rate).
 
-To reproduce this step from a fresh INEGI download for another state, see the `awk` extraction
-logic used originally (filter on `NOM_LOC`, build `cvegeo`, guard non-numeric cells) — it isn't
-checked in as a standalone script since it was a one-off text transform, not a repeatable tool.
+The `awk` command actually used (Tlaxcala, state code `29` — adjust the column-index lookups'
+input file and the `2900...` prefix isn't hardcoded, it reads `ENTIDAD` from the file itself):
+
+```bash
+awk -F',' '
+function numOrEmpty(v) { if (v ~ /^-?[0-9]+(\.[0-9]+)?$/) return v+0; return "" }
+NR==1 { for (i=1;i<=NF;i++) { col=$i; gsub(/^\xef\xbb\xbf/,"",col); h[col]=i }; next }
+$h["NOM_LOC"] == "Total AGEB urbana" {
+  cvegeo = $h["ENTIDAD"] $h["MUN"] $h["LOC"] $h["AGEB"]
+  schooling = numOrEmpty($h["GRAPROES"]); occ = numOrEmpty($h["PROM_OCUP"])
+  tvivhab = $h["TVIVHAB"]; internet = ""; car = ""; computer = ""
+  if (tvivhab ~ /^[0-9]+$/ && tvivhab+0 > 0) {
+    vi = numOrEmpty($h["VPH_INTER"]); if (vi != "") internet = sprintf("%.2f", vi/tvivhab*100)
+    va = numOrEmpty($h["VPH_AUTOM"]); if (va != "") car = sprintf("%.2f", va/tvivhab*100)
+    vp = numOrEmpty($h["VPH_PC"]); if (vp != "") computer = sprintf("%.2f", vp/tvivhab*100)
+  }
+  print cvegeo "," schooling "," internet "," car "," computer "," occ
+}' RESAGEBURB_29CSV20.csv >> ageb_socioeconomic.csv
+```
+
+**Line-ending gotcha**: the checked-in `ageb_socioeconomic.csv` uses CRLF throughout (its original
+source produced it that way). `awk print` on this project's toolchain emits LF-only. Appending
+LF-only rows straight onto a CRLF file produces a file PostgreSQL's `COPY ... CSV` silently
+mis-parses once it locks onto CRLF as the row terminator from the first rows — it doesn't error
+until well into the mismatched block ("unquoted newline found in data"), which makes the real
+cause (two different states' blocks using different line endings) easy to miss. Normalize new rows
+to match before appending, e.g. `sed 's/$/\r/' new_rows.csv >> ageb_socioeconomic.csv` — or, if
+unsure what the existing file uses, check first: `tr -cd '\r' < ageb_socioeconomic.csv | wc -c`
+should equal its line count.
 
 ## Running the import
 
