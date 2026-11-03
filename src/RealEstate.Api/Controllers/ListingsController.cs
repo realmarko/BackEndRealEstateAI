@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
 using NetTopologySuite.Geometries;
 using RealEstate.Api.Data;
 using RealEstate.Api.Extensions;
@@ -31,7 +32,19 @@ public class ListingsController : ControllerBase
     private readonly IStaticMapService _staticMap;
     private readonly IListingDraftParsingService _listingDraftParsing;
     private readonly IGoogleMapsLinkResolverService _mapsLinkResolver;
+    private readonly IMemoryCache _cache;
     private readonly ILogger<ListingsController> _logger;
+
+    // The analysis itself recomputes every call, but its two priciest inputs (DENUE, Overpass road
+    // network) are already cached 24h server-side by their own services — this just avoids redoing
+    // the DB-side work (AGEB/population lookup, nearby fraccionamientos/listings, score composition)
+    // on every repeat page load of the same listing. Shorter than that 24h so an edit shortly after
+    // a cache hit eventually self-corrects even if TryInvalidateViabilityPreviewCache's own
+    // invalidation below were ever bypassed (e.g. a direct DB edit) — not the primary guard, just a
+    // ceiling on how stale this can get.
+    private static readonly TimeSpan ViabilityPreviewCacheDuration = TimeSpan.FromHours(6);
+
+    private static string ViabilityPreviewCacheKey(Guid listingId) => $"viability-preview:{listingId}";
 
     public ListingsController(
         ApplicationDbContext db,
@@ -45,6 +58,7 @@ public class ListingsController : ControllerBase
         IStaticMapService staticMap,
         IListingDraftParsingService listingDraftParsing,
         IGoogleMapsLinkResolverService mapsLinkResolver,
+        IMemoryCache cache,
         ILogger<ListingsController> logger)
     {
         _db = db;
@@ -58,6 +72,7 @@ public class ListingsController : ControllerBase
         _staticMap = staticMap;
         _listingDraftParsing = listingDraftParsing;
         _mapsLinkResolver = mapsLinkResolver;
+        _cache = cache;
         _logger = logger;
     }
 
@@ -363,7 +378,11 @@ public class ListingsController : ControllerBase
         if (listing is null) return NotFound();
         if (!ViabilityEligiblePropertyTypes.Contains(listing.PropertyType)) return NotFound();
 
-        var analysis = await _viabilityAnalysis.AnalyzeAsync(listing.Latitude, listing.Longitude, BuildLotContext(listing), cancellationToken);
+        var analysis = await _cache.GetOrCreateAsync(ViabilityPreviewCacheKey(id), async entry =>
+        {
+            entry.AbsoluteExpirationRelativeToNow = ViabilityPreviewCacheDuration;
+            return await _viabilityAnalysis.AnalyzeAsync(listing.Latitude, listing.Longitude, BuildLotContext(listing), cancellationToken);
+        });
 
         return Ok(analysis);
     }
@@ -929,6 +948,10 @@ public class ListingsController : ControllerBase
         }
 
         await _db.SaveChangesAsync();
+        // The lot-context fields this edit may have just changed (frontage, utilities, land use,
+        // etc.) all feed BuildLotContext/AnalyzeAsync above — a stale cached score would otherwise
+        // outlive the edit for up to ViabilityPreviewCacheDuration.
+        _cache.Remove(ViabilityPreviewCacheKey(id));
 
         var updatedDto = listing.ToDto(isAuthenticated: true);
         // Same reason as Create: ListingService.update() splices this response into the
@@ -969,6 +992,9 @@ public class ListingsController : ControllerBase
         listing.Longitude = dto.Longitude;
         listing.UpdatedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync();
+        // Lat/lng feed AnalyzeAsync directly — moving the pin anywhere invalidates every signal
+        // the cached analysis computed from the old position.
+        _cache.Remove(ViabilityPreviewCacheKey(id));
 
         var updatedDto = listing.ToDto(isAuthenticated: true);
         await AttachOwnerAgentDetailsAsync([updatedDto]);
