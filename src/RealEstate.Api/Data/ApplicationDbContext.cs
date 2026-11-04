@@ -23,6 +23,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, IdentityR
     public DbSet<PageView> PageViews => Set<PageView>();
     public DbSet<Fraccionamiento> Fraccionamientos => Set<Fraccionamiento>();
     public DbSet<FraccionamientoSource> FraccionamientoSources => Set<FraccionamientoSource>();
+    public DbSet<InfrastructureProject> InfrastructureProjects => Set<InfrastructureProject>();
     public DbSet<LandUseCategory> LandUseCategories => Set<LandUseCategory>();
     public DbSet<BusinessTypeCriteria> BusinessTypeCriteria => Set<BusinessTypeCriteria>();
     public DbSet<PipelineStage> PipelineStages => Set<PipelineStage>();
@@ -339,6 +340,13 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, IdentityR
                   .WithOne(s => s.Fraccionamiento)
                   .HasForeignKey(s => s.FraccionamientoId)
                   .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        builder.Entity<InfrastructureProject>(entity =>
+        {
+            // Backs InfrastructureProjectProximity's bbox prefilter — same shape as
+            // Fraccionamiento's own lat/lng index above.
+            entity.HasIndex(p => new { p.Latitude, p.Longitude });
         });
 
         builder.Entity<PipelineStage>(entity =>

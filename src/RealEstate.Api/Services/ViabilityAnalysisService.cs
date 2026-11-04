@@ -117,6 +117,13 @@ public class ViabilityAnalysisService : IViabilityAnalysisService
         await Task.WhenAll(trafficGeneratorsTask, nearbyRoadsTask, nearbyFraccionamientosTask);
         var nearbyFraccionamientos = nearbyFraccionamientosTask.Result;
 
+        // Not run inside the Task.WhenAll above: FindNearbyFraccionamientosAsync already uses
+        // this same _db instance concurrently with it there would throw ("a second operation was
+        // started on this context instance before a previous operation completed") — DbContext
+        // isn't thread-safe. Sequential here, after the other _db-using task has finished, is the
+        // only safe way to add a second _db-backed lookup alongside it.
+        var nearbyInfrastructureProjects = await InfrastructureProjectProximity.FindNearbyAsync(_db, lat, lng, InfrastructureProjectProximity.DefaultRadiusMeters, cancellationToken);
+
         var (trafficGenerators, trafficGeneratorsDataUnavailable, trafficGeneratorFailures) = trafficGeneratorsTask.Result;
         var (nearbyRoads, roadsDataUnavailable, roadsFailure) = nearbyRoadsTask.Result;
 
@@ -171,7 +178,18 @@ public class ViabilityAnalysisService : IViabilityAnalysisService
             RoadsDataUnavailable = roadsDataUnavailable,
             TrafficCongestionLevel = trafficCondition?.Level,
             TrafficCongestionRoadName = trafficCondition is not null ? (trafficRoad!.Name ?? trafficRoad.Classification) : null,
-            TrafficDataUnavailable = trafficDataUnavailable
+            TrafficDataUnavailable = trafficDataUnavailable,
+            NearbyInfrastructureProjects = nearbyInfrastructureProjects.Select(p => new NearbyInfrastructureProjectDto
+            {
+                Name = p.Name,
+                Description = p.Description,
+                Type = p.Type.ToString(),
+                Status = p.Status.ToString(),
+                DistanceMeters = p.DistanceMeters,
+                AnnouncedDate = p.AnnouncedDate,
+                ExpectedCompletionDate = p.ExpectedCompletionDate,
+                SourceUrl = p.SourceUrl
+            }).ToList()
         };
 
         foreach (var criterion in criteria)

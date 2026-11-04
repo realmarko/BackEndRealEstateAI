@@ -1050,6 +1050,75 @@ namespace RealEstate.Api.Migrations
                     b.ToTable("fraccionamiento_sources", (string)null);
                 });
 
+            modelBuilder.Entity("RealEstate.Api.Models.Entities.InfrastructureProject", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<double>("AffectedRadiusMeters")
+                        .HasColumnType("double precision")
+                        .HasColumnName("affected_radius_meters");
+
+                    b.Property<DateTime>("AnnouncedDate")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("announced_date");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("CreatedByUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by_user_id");
+
+                    b.Property<string>("Description")
+                        .HasColumnType("text")
+                        .HasColumnName("description");
+
+                    b.Property<DateTime?>("ExpectedCompletionDate")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("expected_completion_date");
+
+                    b.Property<double>("Latitude")
+                        .HasColumnType("double precision")
+                        .HasColumnName("latitude");
+
+                    b.Property<double>("Longitude")
+                        .HasColumnType("double precision")
+                        .HasColumnName("longitude");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("name");
+
+                    b.Property<string>("SourceUrl")
+                        .HasColumnType("text")
+                        .HasColumnName("source_url");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("integer")
+                        .HasColumnName("status");
+
+                    b.Property<int>("Type")
+                        .HasColumnType("integer")
+                        .HasColumnName("type");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id")
+                        .HasName("pk_infrastructure_projects");
+
+                    b.HasIndex("Latitude", "Longitude")
+                        .HasDatabaseName("ix_infrastructure_projects_latitude_longitude");
+
+                    b.ToTable("infrastructure_projects", (string)null);
+                });
+
             modelBuilder.Entity("RealEstate.Api.Models.Entities.Inquiry", b =>
                 {
                     b.Property<Guid>("Id")

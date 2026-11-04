@@ -28,6 +28,12 @@ public class AppreciationPotentialService : IAppreciationPotentialService
 
     private const double ConnectivityRadiusMeters = 1000;
 
+    // How many "effective" nearby infrastructure projects (Completed ones count for less, see
+    // AddInfrastructureSignalAsync) saturate this signal at a full 100 score — 2 distinct
+    // announced/in-progress projects nearby is treated as maximal confidence, not a number tuned
+    // further than that judgment call.
+    private const double InfrastructureSignalSaturationCount = 2.0;
+
     // IRoadNetworkService retries across 3 Overpass mirrors on failure, each with its own 10s
     // HttpClient timeout (see RoadNetworkService.cs) — worst case ~30s for ONE of roads/transit if
     // every mirror is slow that day. Both api-dev and api sit behind CloudFront with a 30-60s
@@ -115,6 +121,7 @@ public class AppreciationPotentialService : IAppreciationPotentialService
         await AddSocioeconomicConvergenceSignal(db, ageb, lat, lng, signals, cancellationToken);
         await AddConnectivitySignalAsync(lat, lng, signals, cancellationToken);
         await AddMarketMomentumSignalAsync(db, ageb, signals, cancellationToken);
+        await AddInfrastructureSignalAsync(db, lat, lng, signals, cancellationToken);
 
         double? finalScore = null;
         if (signals.Count > 0)
@@ -278,5 +285,30 @@ public class AppreciationPotentialService : IAppreciationPotentialService
         var score = Math.Clamp(50 + pctChange * 200, 0, 100);
 
         signals.Add((score, 25, $"Precio/sqft {(pctChange >= 0 ? "subió" : "bajó")} {Math.Abs(pctChange):P0} en los últimos 6 meses vs. los 6 anteriores ({older.Count + recent.Count} publicaciones)."));
+    }
+
+    // Weight 15: a nearby announced highway expansion, new industrial park, transit line, etc.
+    // is a leading indicator this app has no other way to capture — there's no structured feed
+    // for government infrastructure announcements, so this is admin-entered data (see
+    // InfrastructureProject's own doc comment). Excluded (not scored as 0) when nothing's been
+    // captured near this AGEB, same as every other signal here.
+    private async Task AddInfrastructureSignalAsync(ApplicationDbContext db, double lat, double lng, List<(double Score, double Weight, string Explanation)> signals, CancellationToken cancellationToken)
+    {
+        var nearby = await InfrastructureProjectProximity.FindNearbyAsync(db, lat, lng, InfrastructureProjectProximity.DefaultRadiusMeters, cancellationToken);
+        if (nearby.Count == 0) return;
+
+        // Announced/in-progress work represents a change that hasn't fully landed in prices yet —
+        // a Completed project's effect is already baked into the other signals (market momentum,
+        // socioeconomic level), so it counts for less here rather than double-counting it.
+        var effectiveCount = nearby.Sum(p => p.Status == InfrastructureProjectStatus.Completed ? 0.3 : 1.0);
+
+        var score = Math.Clamp(effectiveCount / InfrastructureSignalSaturationCount * 100, 0, 100);
+        var closest = nearby[0];
+
+        var explanation = nearby.Count == 1
+            ? $"1 proyecto de infraestructura anunciado cercano: \"{closest.Name}\" a {closest.DistanceMeters:N0} m."
+            : $"{nearby.Count} proyectos de infraestructura dentro de {InfrastructureProjectProximity.DefaultRadiusMeters:N0} m, el más cercano \"{closest.Name}\" a {closest.DistanceMeters:N0} m.";
+
+        signals.Add((score, 15, explanation));
     }
 }

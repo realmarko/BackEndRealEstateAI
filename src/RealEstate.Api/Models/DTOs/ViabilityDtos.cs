@@ -101,6 +101,21 @@ public class TrafficGeneratorDto
     public double Lng { get; set; }
 }
 
+// An admin-captured announced infrastructure project (see InfrastructureProject) close enough to
+// move the appeal of this point — a highway expansion or new industrial park is the kind of
+// thing an investor weighs heavily but that has no other representation in this report.
+public class NearbyInfrastructureProjectDto
+{
+    public string Name { get; set; } = string.Empty;
+    public string? Description { get; set; }
+    public string Type { get; set; } = string.Empty;
+    public string Status { get; set; } = string.Empty;
+    public int DistanceMeters { get; set; }
+    public DateTime AnnouncedDate { get; set; }
+    public DateTime? ExpectedCompletionDate { get; set; }
+    public string? SourceUrl { get; set; }
+}
+
 // Low/Moderate/High bucketing of the delay ratio Google Routes API reports for the nearest
 // major road (live "duration" vs. free-flow "staticDuration") — see GoogleTrafficService. This
 // is a real-time snapshot, not an average-annual-daily-traffic (AADT) count: it tells you how
@@ -145,6 +160,11 @@ public class ViabilityAnalysisDto
     // Real mapped highways/avenues near the point (OpenStreetMap), not just the listing's own
     // self-reported PrimaryVialidadType — see ViabilityAnalysisService.FindNearbyRoadsAsync.
     public List<NearbyRoadDto> NearbyRoads { get; set; } = new();
+    // Admin-captured announced projects (highway expansions, new industrial parks, etc.) within
+    // reach of this point — see InfrastructureProjectProximity. Empty is a real "none nearby",
+    // not a data-source failure (there's no external source to fail; it's admin-entered), so
+    // there's no *DataUnavailable companion flag for this one.
+    public List<NearbyInfrastructureProjectDto> NearbyInfrastructureProjects { get; set; } = new();
     // True when the OSM/Overpass road lookup itself failed (both mirrors down/erroring) rather
     // than genuinely finding nothing — an empty NearbyRoads otherwise reads identically to "no
     // major roads nearby", which is what a 2026-10-18 Overpass outage was mistaken for a bug.
