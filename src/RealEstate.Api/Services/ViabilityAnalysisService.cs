@@ -123,6 +123,7 @@ public class ViabilityAnalysisService : IViabilityAnalysisService
         // isn't thread-safe. Sequential here, after the other _db-using task has finished, is the
         // only safe way to add a second _db-backed lookup alongside it.
         var nearbyInfrastructureProjects = await InfrastructureProjectProximity.FindNearbyAsync(_db, lat, lng, InfrastructureProjectProximity.DefaultRadiusMeters, cancellationToken);
+        var nearbyTrafficCountStation = await TrafficCountStationProximity.FindNearestAsync(_db, lat, lng, TrafficCountStationProximity.DefaultRadiusMeters, cancellationToken);
 
         var (trafficGenerators, trafficGeneratorsDataUnavailable, trafficGeneratorFailures) = trafficGeneratorsTask.Result;
         var (nearbyRoads, roadsDataUnavailable, roadsFailure) = nearbyRoadsTask.Result;
@@ -189,7 +190,16 @@ public class ViabilityAnalysisService : IViabilityAnalysisService
                 AnnouncedDate = p.AnnouncedDate,
                 ExpectedCompletionDate = p.ExpectedCompletionDate,
                 SourceUrl = p.SourceUrl
-            }).ToList()
+            }).ToList(),
+            NearbyTrafficCountStation = nearbyTrafficCountStation is { } station ? new NearbyTrafficCountStationDto
+            {
+                RouteName = station.RouteName,
+                RouteKey = station.RouteKey,
+                State = station.State,
+                Tdpa = station.Tdpa,
+                Period = station.Period,
+                DistanceMeters = station.DistanceMeters
+            } : null
         };
 
         foreach (var criterion in criteria)

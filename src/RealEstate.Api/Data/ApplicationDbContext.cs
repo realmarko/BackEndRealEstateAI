@@ -24,6 +24,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, IdentityR
     public DbSet<Fraccionamiento> Fraccionamientos => Set<Fraccionamiento>();
     public DbSet<FraccionamientoSource> FraccionamientoSources => Set<FraccionamientoSource>();
     public DbSet<InfrastructureProject> InfrastructureProjects => Set<InfrastructureProject>();
+    public DbSet<TrafficCountStation> TrafficCountStations => Set<TrafficCountStation>();
     public DbSet<LandUseCategory> LandUseCategories => Set<LandUseCategory>();
     public DbSet<BusinessTypeCriteria> BusinessTypeCriteria => Set<BusinessTypeCriteria>();
     public DbSet<PipelineStage> PipelineStages => Set<PipelineStage>();
@@ -347,6 +348,13 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, IdentityR
             // Backs InfrastructureProjectProximity's bbox prefilter — same shape as
             // Fraccionamiento's own lat/lng index above.
             entity.HasIndex(p => new { p.Latitude, p.Longitude });
+        });
+
+        builder.Entity<TrafficCountStation>(entity =>
+        {
+            // Backs TrafficCountStationProximity's bbox prefilter — same shape as
+            // InfrastructureProject's own lat/lng index above.
+            entity.HasIndex(s => new { s.Latitude, s.Longitude });
         });
 
         builder.Entity<PipelineStage>(entity =>

@@ -2368,6 +2368,55 @@ namespace RealEstate.Api.Migrations
                     b.ToTable("saved_searches", (string)null);
                 });
 
+            modelBuilder.Entity("RealEstate.Api.Models.Entities.TrafficCountStation", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<double>("Latitude")
+                        .HasColumnType("double precision")
+                        .HasColumnName("latitude");
+
+                    b.Property<double>("Longitude")
+                        .HasColumnType("double precision")
+                        .HasColumnName("longitude");
+
+                    b.Property<string>("Period")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("period");
+
+                    b.Property<string>("RouteKey")
+                        .HasColumnType("text")
+                        .HasColumnName("route_key");
+
+                    b.Property<string>("RouteName")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("route_name");
+
+                    b.Property<string>("State")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("state");
+
+                    b.Property<int>("Tdpa")
+                        .HasColumnType("integer")
+                        .HasColumnName("tdpa");
+
+                    b.HasKey("Id")
+                        .HasName("pk_traffic_count_stations");
+
+                    b.HasIndex("Latitude", "Longitude")
+                        .HasDatabaseName("ix_traffic_count_stations_latitude_longitude");
+
+                    b.ToTable("traffic_count_stations", (string)null);
+                });
+
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityRoleClaim<System.Guid>", b =>
                 {
                     b.HasOne("Microsoft.AspNetCore.Identity.IdentityRole<System.Guid>", null)

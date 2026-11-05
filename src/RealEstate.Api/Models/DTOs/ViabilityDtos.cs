@@ -116,6 +116,20 @@ public class NearbyInfrastructureProjectDto
     public string? SourceUrl { get; set; }
 }
 
+// The nearest SICT federal-highway traffic-count station (see TrafficCountStation /
+// TrafficCountStationProximity) — real measured TDPA, shown as informational context only. Not a
+// pass/fail criterion: there's no sourced per-business-type minimum TDPA, and inventing one would
+// repeat the unverified-threshold mistake corrected across business_type_criteria 2026-11-04/05.
+public class NearbyTrafficCountStationDto
+{
+    public string RouteName { get; set; } = string.Empty;
+    public string? RouteKey { get; set; }
+    public string State { get; set; } = string.Empty;
+    public int Tdpa { get; set; }
+    public string Period { get; set; } = string.Empty;
+    public int DistanceMeters { get; set; }
+}
+
 // Low/Moderate/High bucketing of the delay ratio Google Routes API reports for the nearest
 // major road (live "duration" vs. free-flow "staticDuration") — see GoogleTrafficService. This
 // is a real-time snapshot, not an average-annual-daily-traffic (AADT) count: it tells you how
@@ -165,6 +179,10 @@ public class ViabilityAnalysisDto
     // not a data-source failure (there's no external source to fail; it's admin-entered), so
     // there's no *DataUnavailable companion flag for this one.
     public List<NearbyInfrastructureProjectDto> NearbyInfrastructureProjects { get; set; } = new();
+    // The nearest federal-highway TDPA reading within reach, or null when none is — like
+    // NearbyInfrastructureProjects, a real "none nearby" (most listings aren't near a federal
+    // highway counting station), not a data-source failure, so no *DataUnavailable companion flag.
+    public NearbyTrafficCountStationDto? NearbyTrafficCountStation { get; set; }
     // True when the OSM/Overpass road lookup itself failed (both mirrors down/erroring) rather
     // than genuinely finding nothing — an empty NearbyRoads otherwise reads identically to "no
     // major roads nearby", which is what a 2026-10-18 Overpass outage was mistaken for a bug.
