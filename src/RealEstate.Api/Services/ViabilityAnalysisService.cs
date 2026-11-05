@@ -204,7 +204,7 @@ public class ViabilityAnalysisService : IViabilityAnalysisService
 
         foreach (var criterion in criteria)
         {
-            result.Businesses.Add(await ScoreBusinessAsync(criterion, lat, lng, lot, population, trafficCondition?.Level, nearbyFraccionamientos, cancellationToken));
+            result.Businesses.Add(await ScoreBusinessAsync(criterion, lat, lng, lot, population, trafficCondition?.Level, nearbyTrafficCountStation is not null, nearbyFraccionamientos, cancellationToken));
         }
 
         return result;
@@ -344,6 +344,7 @@ public class ViabilityAnalysisService : IViabilityAnalysisService
         ViabilityLotContext lot,
         PopulationDensityDto? population,
         TrafficCongestionLevel? trafficCongestion,
+        bool hasNearbyTrafficCountStation,
         List<NearbyFraccionamiento> nearbyFraccionamientos,
         CancellationToken cancellationToken)
     {
@@ -585,9 +586,28 @@ public class ViabilityAnalysisService : IViabilityAnalysisService
         // PrefersCornerLot/CUS above. A null congestion level here means either no nearby road
         // had mapped geometry to measure, or the lookup failed — both read as "no se pudo
         // evaluar" since a visitor can't tell them apart anyway.
+        //
+        // Dropped to informational (never scored) when a real nearby TDPA reading exists
+        // (NearbyTrafficCountStation, shown in its own report section): congestion measures how
+        // jammed a road is right now, not how many vehicles use it, so a busy-but-free-flowing
+        // federal highway can legitimately show "low congestion" right next to a high TDPA figure
+        // — confirmed on a real dev listing 2026-11-05. That's not a data error, but scoring this
+        // giro against the weaker live proxy once a real volume measurement is available would
+        // contradict it for no good reason, and inventing a per-giro minimum-TDPA threshold to
+        // score against instead would repeat the unverified-threshold mistake corrected across
+        // business_type_criteria the same day — so once real data exists, this becomes FYI only.
         if (criterion.PrefersHighTraffic is { } prefersHighTraffic)
         {
-            if (trafficCongestion is { } congestion)
+            if (hasNearbyTrafficCountStation)
+            {
+                checks.Add(new ViabilityCheckDto
+                {
+                    Label = "Tráfico vehicular",
+                    Passed = null,
+                    Detail = "No se pondera contra el nivel de congestión en tiempo real: hay un dato real de aforo vehicular (TDPA) cerca de este predio — ver la sección \"Tráfico vehicular medido\" más abajo."
+                });
+            }
+            else if (trafficCongestion is { } congestion)
             {
                 var isHighTraffic = congestion is TrafficCongestionLevel.Moderate or TrafficCongestionLevel.High;
                 var passed = prefersHighTraffic == isHighTraffic;
