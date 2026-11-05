@@ -52,7 +52,14 @@ CREATE TEMP TABLE staging_traffic (
 TRUNCATE traffic_count_stations;
 
 INSERT INTO traffic_count_stations (route_name, route_key, state, tdpa, period, latitude, longitude)
-SELECT
+-- SICT repeats each physical counting point once per state its ROUTE (not necessarily that exact
+-- point) touches — a route crossing three states shows the same lat/lng up to three times, with
+-- only the `estado` column differing (2,915 of 10,326 rows, ≈28%, are this kind of duplicate).
+-- The TDPA figure itself is identical across the copies (it's genuinely the same measurement),
+-- so this only matters for which state label gets shown — DISTINCT ON picks one deterministically
+-- (alphabetically first) rather than leaving it to arbitrary row order, which would otherwise show
+-- a neighboring state's name for a point that's actually in e.g. Tlaxcala.
+SELECT DISTINCT ON (carretera, ruta, latitud, longitud)
   carretera,
   ruta,
   estado,
@@ -68,6 +75,7 @@ FROM staging_traffic
 -- on the table (every row we keep has to have a real figure to show), so those are skipped too
 -- rather than silently inserted as 0, which would read as "zero traffic" instead of "not measured".
 WHERE latitud IS NOT NULL AND longitud IS NOT NULL AND latitud <> 0 AND longitud <> 0
-  AND tdpa IS NOT NULL;
+  AND tdpa IS NOT NULL
+ORDER BY carretera, ruta, latitud, longitud, estado;
 
 COMMIT;

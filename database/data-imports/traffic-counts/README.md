@@ -34,6 +34,20 @@ metadata) — only these are imported, since nothing else is needed for the curr
 | `route_name` | `carretera` | e.g. "Acceso a Pabellon de Arteaga" |
 | `route_key` | `ruta` | short route code, e.g. "MEX-045" |
 | `state` | `estado` | Mexican state name, as published (not normalized to our `MexicanState` catalog) |
+
+**Known source-data quirk:** SICT repeats each physical counting point once per state its route
+touches overall, not just the state that point is actually in — e.g. a point physically in
+Tlaxcala can appear three times with identical lat/lng, labeled Tlaxcala/Puebla/Estado de México
+(2,915 of 10,326 rows, ≈28%, are this kind of duplicate). The TDPA figure is identical across the
+copies — it's genuinely the same measurement, so deduplication doesn't lose any real data — but
+`state` itself can't be trusted to be the point's actual state. `import.sql` deduplicates by
+`(carretera, ruta, latitud, longitud)`, keeping the alphabetically-first `estado` label
+deterministically (rather than arbitrary row order) — this is a tie-break for determinism, **not**
+a claim that the kept label is the geographically correct one. `state` is currently not shown
+anywhere in the viability report UI (only route name, TDPA, period, distance are), so this is a
+latent data-quality issue, not a visible bug — but don't start trusting/displaying `state` without
+first resolving it properly (e.g. `ST_Contains` against our own imported `municipal_boundaries`
+polygons for points inside Puebla/Tlaxcala, falling back to the CSV label elsewhere).
 | `tdpa` | `tdpa` | Tránsito Diario Promedio Anual — the actual AADT figure |
 | `period` | `periodo` | e.g. "Enero-diciembre 2024" |
 | `latitude` / `longitude` | `latitud` / `longitud` | station location |
