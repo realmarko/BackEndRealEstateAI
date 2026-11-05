@@ -387,6 +387,60 @@ public class ListingsController : ControllerBase
         return Ok(analysis);
     }
 
+    // GET /api/listings/5/viability-report-pdf — the ungated half of the lead magnet: same PDF as
+    // RequestViabilityReport below, but anonymous, no name/email, no Inquiry row. Exists alongside
+    // that POST endpoint (left untouched) because the viability-report-page's "Descargar Reporte
+    // PDF" button is an explicit no-lead-capture download, by product decision.
+    [EnableRateLimiting("fact-sheet")]
+    [HttpGet("{id:guid}/viability-report-pdf")]
+    public async Task<IActionResult> GetViabilityReportPdf(Guid id, CancellationToken cancellationToken)
+    {
+        var listing = await LoadViabilityEligibleListingAsync(id, cancellationToken);
+        if (listing is null) return NotFound();
+
+        // isAuthenticated: false — no lead was captured for this download, so ListingExtensions.ToDto
+        // must keep the owner's real email/phone redacted (see its own comment on why that flag is
+        // mandatory at every call site). useCache: true reuses the same entry GetViabilityPreview
+        // populates — a visitor who already loaded the live page and then clicks "Descargar PDF"
+        // moments later shouldn't pay for a second DENUE fan-out.
+        var pdfBytes = await GenerateViabilityReportPdfAsync(listing, isAuthenticated: false, useCache: true, cancellationToken);
+        _logger.LogInformation("Anonymous viability-report PDF downloaded for listing {ListingId}", id);
+        return File(pdfBytes, "application/pdf", $"viabilidad-comercial-{listing.Id}.pdf");
+    }
+
+    private async Task<Listing?> LoadViabilityEligibleListingAsync(Guid id, CancellationToken cancellationToken)
+    {
+        var listing = await _db.Listings
+            .AsNoTracking()
+            .Include(l => l.Address)
+            .Include(l => l.Images)
+            .Include(l => l.Owner)
+            .Include(l => l.LandUseCategory)
+            .FirstOrDefaultAsync(l => l.Id == id, cancellationToken);
+        return listing is not null && ViabilityEligiblePropertyTypes.Contains(listing.PropertyType) ? listing : null;
+    }
+
+    // Shared by GetViabilityReportPdf (above) and RequestViabilityReport (below) so the
+    // cache/map/PDF-generate sequence can't drift out of sync between the two copies. useCache
+    // mirrors each endpoint's own pre-existing behavior rather than unifying it: the anonymous GET
+    // reuses GetViabilityPreview's cache entry (a free instant follow-up to a page the visitor
+    // already loaded), while the gated POST keeps computing a fresh analysis every time, as it
+    // always has — changing that would be a real behavior change to an already-shipped, lead-
+    // capturing flow, not something this refactor should introduce on its own.
+    private async Task<byte[]> GenerateViabilityReportPdfAsync(Listing listing, bool isAuthenticated, bool useCache, CancellationToken cancellationToken)
+    {
+        var analysis = useCache
+            ? await _cache.GetOrCreateAsync(ViabilityPreviewCacheKey(listing.Id), async entry =>
+              {
+                  entry.AbsoluteExpirationRelativeToNow = ViabilityPreviewCacheDuration;
+                  return await _viabilityAnalysis.AnalyzeAsync(listing.Latitude, listing.Longitude, BuildLotContext(listing), cancellationToken);
+              })
+            : await _viabilityAnalysis.AnalyzeAsync(listing.Latitude, listing.Longitude, BuildLotContext(listing), cancellationToken);
+
+        var mapImage = await _staticMap.GetStaticMapAsync(listing.Latitude, listing.Longitude, BuildMapMarkers(analysis), cancellationToken);
+        return _viabilityReportPdf.Generate(listing.ToDto(isAuthenticated: isAuthenticated), analysis, mapImage);
+    }
+
     private static ViabilityLotContext BuildLotContext(Listing listing) => new(
         FrontageMeters: (double?)listing.FrontageWidthMeters,
         LotSizeSqm: (double?)listing.LotSizeSqm,
@@ -449,14 +503,8 @@ public class ListingsController : ControllerBase
         if (string.IsNullOrWhiteSpace(dto.Name) || string.IsNullOrWhiteSpace(dto.Email))
             return BadRequest(new { message = "Name and email are required." });
 
-        var listing = await _db.Listings
-            .Include(l => l.Address)
-            .Include(l => l.Images)
-            .Include(l => l.Owner)
-            .Include(l => l.LandUseCategory)
-            .FirstOrDefaultAsync(l => l.Id == id, cancellationToken);
+        var listing = await LoadViabilityEligibleListingAsync(id, cancellationToken);
         if (listing is null) return NotFound();
-        if (!ViabilityEligiblePropertyTypes.Contains(listing.PropertyType)) return NotFound();
 
         _db.Inquiries.Add(new Inquiry
         {
@@ -469,11 +517,7 @@ public class ListingsController : ControllerBase
         });
         await _db.SaveChangesAsync(cancellationToken);
 
-        var analysis = await _viabilityAnalysis.AnalyzeAsync(listing.Latitude, listing.Longitude, BuildLotContext(listing), cancellationToken);
-        var mapImage = await _staticMap.GetStaticMapAsync(listing.Latitude, listing.Longitude, BuildMapMarkers(analysis), cancellationToken);
-
-        var listingDto = listing.ToDto(isAuthenticated: true);
-        var pdfBytes = _viabilityReportPdf.Generate(listingDto, analysis, mapImage);
+        var pdfBytes = await GenerateViabilityReportPdfAsync(listing, isAuthenticated: true, useCache: false, cancellationToken);
 
         // Best-effort, same reasoning as SendFactSheetPdfAsync: the lead is already captured
         // (the Inquiry above) and the PDF is returned to the caller regardless, so a failure
