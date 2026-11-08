@@ -207,6 +207,7 @@ builder.Services
 
 builder.Services.AddAuthorization();
 builder.Services.AddScoped<ITokenService, TokenService>();
+builder.Services.AddScoped<IRefreshTokenService, RefreshTokenService>();
 
 // ---- Rate limiting (anonymous public endpoints that trigger an external side effect) ----
 builder.Services.AddRateLimiter(options =>
@@ -241,6 +242,17 @@ builder.Services.AddRateLimiter(options =>
         {
             PermitLimit = 10,
             Window = TimeSpan.FromMinutes(15),
+            QueueLimit = 0
+        }));
+    // Per-IP: refresh fires automatically/silently from the frontend interceptor whenever the
+    // access token expires, not from a user typing — generous budget is fine, this just bounds a
+    // runaway client (e.g. a retry loop bug) from hammering the endpoint.
+    options.AddPolicy("refresh-token", httpContext => RateLimitPartition.GetFixedWindowLimiter(
+        partitionKey: httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+        factory: _ => new FixedWindowRateLimiterOptions
+        {
+            PermitLimit = 30,
+            Window = TimeSpan.FromMinutes(5),
             QueueLimit = 0
         }));
     // Per-IP: forgot-password sends a real email per request and deliberately always returns

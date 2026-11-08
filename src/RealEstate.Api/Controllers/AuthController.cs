@@ -21,6 +21,7 @@ public class AuthController : ControllerBase
     private readonly RoleManager<IdentityRole<Guid>> _roleManager;
     private readonly RealEstateDbContext _ownersDb;
     private readonly ITokenService _tokenService;
+    private readonly IRefreshTokenService _refreshTokenService;
     private readonly IEmailService _emailService;
     private readonly ILogger<AuthController> _logger;
     private readonly IGoogleTokenValidator _googleTokenValidator;
@@ -34,6 +35,7 @@ public class AuthController : ControllerBase
         RoleManager<IdentityRole<Guid>> roleManager,
         RealEstateDbContext ownersDb,
         ITokenService tokenService,
+        IRefreshTokenService refreshTokenService,
         IEmailService emailService,
         ILogger<AuthController> logger,
         IGoogleTokenValidator googleTokenValidator,
@@ -46,6 +48,7 @@ public class AuthController : ControllerBase
         _roleManager = roleManager;
         _ownersDb = ownersDb;
         _tokenService = tokenService;
+        _refreshTokenService = refreshTokenService;
         _emailService = emailService;
         _logger = logger;
         _googleTokenValidator = googleTokenValidator;
@@ -504,14 +507,93 @@ public class AuthController : ControllerBase
         return await BuildAuthResponse(user);
     }
 
-    private async Task<AuthResponseDto> BuildAuthResponse(ApplicationUser user)
+    // Silent re-auth: the frontend calls this whenever an access token has expired (see
+    // auth.interceptor.ts), not in response to the user doing anything — that's what keeps a
+    // session alive for weeks without ever showing a login screen, Facebook-style. Anonymous on
+    // purpose: the whole point is the bearer access token may already be dead.
+    // How recently a token must have been consumed for a reuse attempt to be treated as a benign
+    // race (two requests presenting the same token at nearly the same moment — e.g. two browser
+    // tabs both refreshing around the same time) rather than an actual replayed/stolen token.
+    // Short enough that a real attacker replaying a token they captured earlier almost never
+    // lands inside it, long enough to absorb realistic request-timing jitter.
+    private static readonly TimeSpan ReuseGraceWindow = TimeSpan.FromSeconds(10);
+
+    [EnableRateLimiting("refresh-token")]
+    [HttpPost("refresh")]
+    public async Task<ActionResult<AuthResponseDto>> Refresh(RefreshRequestDto dto)
     {
+        var existing = await _refreshTokenService.FindAnyAsync(dto.RefreshToken);
+        if (existing is null || existing.ExpiresAt <= DateTime.UtcNow)
+            return Unauthorized();
+
+        if (existing.RevokedAt is not null)
+        {
+            // Already consumed. A rotation that happened moments ago is almost certainly a
+            // sibling request racing the same stored token, not theft — reject just this one
+            // exchange. Only escalate to killing every other live session for this user when the
+            // token being replayed was consumed well outside that window, which looks like a
+            // stolen, already-used token being replayed rather than an ordinary race.
+            if (existing.RevokedAt <= DateTime.UtcNow - ReuseGraceWindow)
+                await _refreshTokenService.RevokeAllForUserAsync(existing.UserId);
+            return Unauthorized();
+        }
+
+        if (!await _refreshTokenService.TryClaimAsync(existing))
+        {
+            // Lost the atomic claim to a concurrent request for this exact token — the same
+            // benign race as above, just caught a moment earlier (before RevokedAt had even been
+            // written yet when we first read `existing`). Treat it identically: reject this one
+            // exchange, never escalate.
+            return Unauthorized();
+        }
+
+        var user = await _userManager.FindByIdAsync(existing.UserId.ToString());
+        if (user is null) return Unauthorized();
+
         var roles = await _userManager.GetRolesAsync(user);
         var (token, expiresAt) = _tokenService.CreateToken(user, roles);
+        var (rawRefreshToken, newRefreshToken) = await _refreshTokenService.CreateAsync(user.Id, ClientIp());
+        await _refreshTokenService.LinkReplacementAsync(existing.Id, newRefreshToken.Id);
+
         return new AuthResponseDto
         {
             Token = token,
             ExpiresAt = expiresAt,
+            RefreshToken = rawRefreshToken,
+            User = ToUserDto(user, roles)
+        };
+    }
+
+    // Best-effort — same "always resolves" shape as ForgotPassword, since an already-invalid
+    // refresh token (or none at all) shouldn't block the client from clearing its local session.
+    // Anonymous: a logout can legitimately happen after the access token already expired.
+    [HttpPost("logout")]
+    public async Task<IActionResult> Logout(LogoutRequestDto dto)
+    {
+        var token = await _refreshTokenService.FindValidAsync(dto.RefreshToken);
+        if (token is not null) await _refreshTokenService.RevokeAsync(token);
+        return NoContent();
+    }
+
+    private Task<AuthResponseDto> BuildAuthResponse(ApplicationUser user) =>
+        BuildAuthResponse(user, ClientIp());
+
+    // ControllerContext isn't populated outside a real HTTP request (e.g. a controller-level unit
+    // test that never sets it), so this has to tolerate a null HttpContext — unlike the rest of
+    // this controller's request data, the caller's IP is a nice-to-have audit field, not something
+    // worth failing the whole login/refresh flow over.
+    private string? ClientIp() => ControllerContext?.HttpContext?.Connection?.RemoteIpAddress?.ToString();
+
+    private async Task<AuthResponseDto> BuildAuthResponse(ApplicationUser user, string? ip)
+    {
+        var roles = await _userManager.GetRolesAsync(user);
+        var (token, expiresAt) = _tokenService.CreateToken(user, roles);
+        var (refreshToken, _) = await _refreshTokenService.CreateAsync(user.Id, ip);
+        return new AuthResponseDto
+        {
+            Token = token,
+            ExpiresAt = expiresAt,
+            RefreshToken = refreshToken,
             User = ToUserDto(user, roles)
         };
     }

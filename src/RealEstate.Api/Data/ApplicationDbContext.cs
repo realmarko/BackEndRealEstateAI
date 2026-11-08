@@ -32,6 +32,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, IdentityR
     public DbSet<SaleProcess> SaleProcesses => Set<SaleProcess>();
     public DbSet<SaleProcessDocument> SaleProcessDocuments => Set<SaleProcessDocument>();
     public DbSet<SaleProcessTask> SaleProcessTasks => Set<SaleProcessTask>();
+    public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -484,6 +485,20 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, IdentityR
             entity.HasOne(t => t.SaleProcess)
                   .WithMany(s => s.Tasks)
                   .HasForeignKey(t => t.SaleProcessId)
+                  .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        builder.Entity<RefreshToken>(entity =>
+        {
+            entity.Property(t => t.TokenHash).HasMaxLength(64).IsRequired();
+            // Every lookup is by hash (refresh/logout); UserId backs "revoke all for this user"
+            // on reuse detection.
+            entity.HasIndex(t => t.TokenHash).IsUnique();
+            entity.HasIndex(t => t.UserId);
+
+            entity.HasOne(t => t.User)
+                  .WithMany()
+                  .HasForeignKey(t => t.UserId)
                   .OnDelete(DeleteBehavior.Cascade);
         });
     }

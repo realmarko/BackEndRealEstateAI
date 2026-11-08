@@ -29,6 +29,19 @@ public class AuthControllerTests
         return new Mock<RoleManager<IdentityRole<Guid>>>(store.Object, null!, null!, null!, null!);
     }
 
+    // Default stub so every BuildAuthResponse call (every existing test exercises one) has a real
+    // tuple to deconstruct instead of relying on Moq's implicit default(Task<T>) behavior.
+    private static Mock<IRefreshTokenService> MakeRefreshTokenService(Mock<IRefreshTokenService>? refreshTokenService)
+    {
+        if (refreshTokenService is not null) return refreshTokenService;
+        var mock = new Mock<IRefreshTokenService>();
+        mock.Setup(s => s.CreateAsync(It.IsAny<Guid>(), It.IsAny<string?>()))
+            .ReturnsAsync((Guid userId, string? ip) => (
+                "test-refresh-token",
+                new RefreshToken { Id = Guid.NewGuid(), UserId = userId, TokenHash = "test-hash", ExpiresAt = DateTime.UtcNow.AddDays(60) }));
+        return mock;
+    }
+
     // A fresh in-memory RealEstateDbContext per call (unique database name) — AuthController only
     // uses it for ClaimOwnerProfileIfMatchingAsync's ExecuteUpdateAsync, which (like any
     // IQueryable extension method) Moq can't intercept on a mocked DbSet, so a real EF Core
@@ -45,6 +58,7 @@ public class AuthControllerTests
         Mock<UserManager<ApplicationUser>> userManager,
         Mock<IEmailService>? emailService = null,
         Mock<ITokenService>? tokenService = null,
+        Mock<IRefreshTokenService>? refreshTokenService = null,
         Mock<IGoogleTokenValidator>? googleTokenValidator = null,
         Mock<IFacebookTokenValidator>? facebookTokenValidator = null,
         string frontendBaseUrl = "https://dev.espacial.com.mx",
@@ -55,6 +69,7 @@ public class AuthControllerTests
             MockRoleManager().Object,
             MakeOwnersDb(),
             (tokenService ?? new Mock<ITokenService>()).Object,
+            MakeRefreshTokenService(refreshTokenService).Object,
             (emailService ?? new Mock<IEmailService>()).Object,
             NullLogger<AuthController>.Instance,
             (googleTokenValidator ?? new Mock<IGoogleTokenValidator>()).Object,
