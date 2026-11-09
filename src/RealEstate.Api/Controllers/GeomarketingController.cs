@@ -143,6 +143,42 @@ public class GeomarketingController : ControllerBase
         }
     }
 
+    // GET /api/geomarketing/appreciation-potential-at-point?lat=19.04&lng=-98.20 — same AGEB
+    // lookup as population-density above, but returns the 2-year appreciation-potential score
+    // instead of population/socioeconomic data. Single-point counterpart to the bbox
+    // appreciation-potential endpoint below, for callers (like the listing-comparison page) that
+    // only need one property's location, not a whole map viewport. Shares the "geomarketing"
+    // policy, not "population-density": same reasoning as the bbox endpoint — ScoreAgebAsync can
+    // trigger a live Overpass call internally, unlike population-density's pure-Postgres lookup.
+    [HttpGet("appreciation-potential-at-point")]
+    [EnableRateLimiting("geomarketing")]
+    public async Task<ActionResult<AppreciationPotentialAtPointDto>> GetAppreciationPotentialAtPoint(
+        [FromQuery] double lat,
+        [FromQuery] double lng,
+        CancellationToken cancellationToken)
+    {
+        var latLngError = GeoValidation.ValidateLatLng(lat, lng);
+        if (latLngError is not null) return BadRequest(new { message = latLngError });
+
+        try
+        {
+            var point = GeoFactory.Instance.CreatePoint(new Coordinate(lng, lat));
+            var ageb = await _db.AgebPopulations.AsNoTracking()
+                .FirstOrDefaultAsync(a => a.Boundary.Contains(point), cancellationToken);
+
+            if (ageb is null)
+                return NotFound(new { message = "No appreciation data covers this location yet." });
+
+            var scored = await ScoreAgebSafelyAsync(ageb, cancellationToken);
+            return Ok(new AppreciationPotentialAtPointDto { Score = scored.Score, Explanations = scored.Explanations });
+        }
+        catch (Exception ex) when (ex is NpgsqlException or InvalidOperationException)
+        {
+            _logger.LogError(ex, "Appreciation-potential-at-point lookup failed at {Lat},{Lng}", lat, lng);
+            return StatusCode(StatusCodes.Status500InternalServerError, new { message = "Could not look up appreciation potential right now." });
+        }
+    }
+
     // GET /api/geomarketing/municipalities — small, static-ish list (217 rows for Puebla today),
     // meant for a client-side dropdown/autocomplete — the frontend fetches this once and caches
     // it, so no pagination.

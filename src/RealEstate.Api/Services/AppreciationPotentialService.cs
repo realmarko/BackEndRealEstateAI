@@ -50,6 +50,10 @@ public class AppreciationPotentialService : IAppreciationPotentialService
     // signal here when its underlying data is too thin to mean anything.
     private const int MinListingsPerHalfForMomentum = 3;
 
+    // Higher bar than MinListingsPerHalfForMomentum (3): a favorites count is noisier than an
+    // averaged price — a 1→2 swing would otherwise read as a misleading "+100%".
+    private const int MinFavoritesPerHalfForDemand = 5;
+
     private static readonly TimeSpan CacheDuration = TimeSpan.FromHours(6);
 
     // Process-wide (static, not per-request), not per-request: GeomarketingController can fire up
@@ -122,6 +126,7 @@ public class AppreciationPotentialService : IAppreciationPotentialService
         await AddConnectivitySignalAsync(lat, lng, signals, cancellationToken);
         await AddMarketMomentumSignalAsync(db, ageb, signals, cancellationToken);
         await AddInfrastructureSignalAsync(db, lat, lng, signals, cancellationToken);
+        await AddPlatformDemandSignalAsync(db, ageb, signals, cancellationToken);
 
         double? finalScore = null;
         if (signals.Count > 0)
@@ -310,5 +315,37 @@ public class AppreciationPotentialService : IAppreciationPotentialService
             : $"{nearby.Count} proyectos de infraestructura dentro de {InfrastructureProjectProximity.DefaultRadiusMeters:N0} m, el más cercano \"{closest.Name}\" a {closest.DistanceMeters:N0} m.";
 
         signals.Add((score, 15, explanation));
+    }
+
+    // Weight 10: the cheapest signal to compute (no external call, no admin data entry) but also
+    // the weakest — it only reflects interest in THIS platform's own listings, not market demand
+    // generally. Same 12-month/6-month trend window as AddMarketMomentumSignalAsync, reusing the
+    // same Location.Within(ageb.Boundary) join that method already uses.
+    private async Task AddPlatformDemandSignalAsync(ApplicationDbContext db, AgebPopulation ageb, List<(double Score, double Weight, string Explanation)> signals, CancellationToken cancellationToken)
+    {
+        var cutoff = DateTime.UtcNow.AddMonths(-12);
+        var midpoint = DateTime.UtcNow.AddMonths(-6);
+
+        var favoritedAt = await db.Favorites.AsNoTracking()
+            .Where(f => f.CreatedAt >= cutoff)
+            // Active only, same as AddMarketMomentumSignalAsync's own Listing filter — a Sold/
+            // Inactive listing's past favorites shouldn't keep inflating a zone's "current demand"
+            // score indefinitely just because the listing itself was never deleted.
+            .Where(f => f.Listing!.Status == ListingStatus.Active && f.Listing.Location != null && f.Listing.Location.Within(ageb.Boundary))
+            .Select(f => f.CreatedAt)
+            .ToListAsync(cancellationToken);
+
+        var older = favoritedAt.Count(d => d < midpoint);
+        var recent = favoritedAt.Count(d => d >= midpoint);
+        if (older < MinFavoritesPerHalfForDemand || recent < MinFavoritesPerHalfForDemand) return;
+
+        var pctChange = (double)(recent - older) / older;
+        // Unlike market-momentum's ±25%→0-100 mapping (well-calibrated for price, which rarely
+        // swings that much), a raw favorites count at its 5-per-half floor realistically swings
+        // far more — a bare 5→7 is already +40%. Scaled to ±100% instead, so a double-or-nothing
+        // swing (5→10) saturates, not a single-digit blip.
+        var score = Math.Clamp(50 + pctChange * 50, 0, 100);
+
+        signals.Add((score, 10, $"Favoritos de listings en la zona {(pctChange >= 0 ? "subieron" : "bajaron")} {Math.Abs(pctChange):P0} en los últimos 6 meses vs. los 6 anteriores ({older + recent} favoritos)."));
     }
 }

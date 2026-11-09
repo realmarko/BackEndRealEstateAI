@@ -61,6 +61,15 @@ public class AppreciationPotentialDto
     public List<string> Explanations { get; set; } = new();
 }
 
+// Single-point counterpart to AppreciationPotentialDto — same Score/Explanations, no
+// Cvegeo/Boundary (the caller already knows which point it asked about, and a full AGEB polygon
+// is wasted payload for a single-property lookup like the comparison page).
+public class AppreciationPotentialAtPointDto
+{
+    public double? Score { get; set; }
+    public List<string> Explanations { get; set; } = new();
+}
+
 public class PopulationDensityDto
 {
     public int Population { get; set; }
