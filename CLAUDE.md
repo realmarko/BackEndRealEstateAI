@@ -14,6 +14,9 @@ Solution `RealEstate.sln` at the repo root contains a single project, `src/RealE
 - `AuthController.Register`'s `role` field is case-sensitive PascalCase (`"Owner"`, `"Agent"`) — anything else falls through to `Buyer`.
 - Some write endpoints require `[Authorize]` even where anonymous access might seem natural (e.g. `POST /api/inquiries`) — check the controller attribute before assuming a 401 is a bug.
 
+## PII redaction
+- `ListingExtensions.ToDto` takes `isAuthenticated` as a required (no-default) bool param specifically so an anonymous endpoint can't forget to redact: `OwnerEmail`/`OwnerContactEmail`/`OwnerContactPhone` come back as placeholder strings (`•••••••@•••••.com`, `••• ••• ••••`) unless the caller is signed in. Address fields now come from a separate 1:1 `Address` navigation (`ListingAddress` entity: `Street`/`Colonia`/`City`/`State`/`ZipCode`/`Country`), not flat columns on `Listing` — null-safe-default to `string.Empty` when `Address` isn't loaded/doesn't exist for that row. When adding a new listing-returning endpoint, thread `isAuthenticated` through from `User.Identity?.IsAuthenticated` rather than hardcoding `true`.
+
 ## JSON / enums
 - No `JsonStringEnumConverter` is configured. Enums (`FundingMethod`, `PurchaseTimeline`, `ListingType`, etc.) must be sent as **raw integers** in request bodies, not PascalCase or camelCase strings.
 
