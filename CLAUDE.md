@@ -14,6 +14,9 @@ Solution `RealEstate.sln` at the repo root contains a single project, `src/RealE
 - `AuthController.Register`'s `role` field is case-sensitive PascalCase (`"Owner"`, `"Agent"`) — anything else falls through to `Buyer`.
 - Some write endpoints require `[Authorize]` even where anonymous access might seem natural (e.g. `POST /api/inquiries`) — check the controller attribute before assuming a 401 is a bug.
 
+## PII redaction
+- `ListingExtensions.ToDto` takes `isAuthenticated` as a required (no-default) bool param specifically so an anonymous endpoint can't forget to redact: `OwnerEmail`/`OwnerContactEmail`/`OwnerContactPhone` come back as placeholder strings (`•••••••@•••••.com`, `••• ••• ••••`) unless the caller is signed in. Address fields now come from a separate 1:1 `Address` navigation (`ListingAddress` entity: `Street`/`Colonia`/`City`/`State`/`ZipCode`/`Country`), not flat columns on `Listing` — null-safe-default to `string.Empty` when `Address` isn't loaded/doesn't exist for that row. When adding a new listing-returning endpoint, thread `isAuthenticated` through from `User.Identity?.IsAuthenticated` rather than hardcoding `true`.
+
 ## JSON / enums
 - No `JsonStringEnumConverter` is configured. Enums (`FundingMethod`, `PurchaseTimeline`, `ListingType`, etc.) must be sent as **raw integers** in request bodies, not PascalCase or camelCase strings.
 
@@ -29,3 +32,14 @@ Solution `RealEstate.sln` at the repo root contains a single project, `src/RealE
 - `dotnet test RealEstate.sln` — run the `tests/RealEstate.Api.Tests` suite (xUnit + Moq).
 - From `backend/`: `dotnet ef migrations add <Name> --project src/RealEstate.Api --startup-project src/RealEstate.Api` and `dotnet ef database update --project src/RealEstate.Api --startup-project src/RealEstate.Api` for migrations. The repo has two `DbContext`s (`ApplicationDbContext` for Identity/most entities, `RealEstateDbContext` for owners) — pass `--context <Name>` when the EF CLI reports more than one found.
 - CI (`.github/workflows`) runs `dotnet build` and `dotnet test` on every push and pull request.
+
+## Deploy
+- `deploy-dev.yml` triggers on push to **`develop`** (not `main`) and deploys to AWS Elastic Beanstalk (`EB_ENV_NAME: realestateapp-dev`); `deploy-prod.yml` is the prod counterpart. Both run `dotnet build`/`dotnet test` as a `test` job the `deploy` job depends on, so a failing test blocks that deploy.
+- Migrations against the real EB database are applied by the app itself on boot when the `RunMigrationsOnStartup` config value is `true` (see `Program.cs`) — EB sets this so the deploy pipeline doesn't need direct network access to RDS. Separately, `Program.cs` also auto-migrates both DbContexts whenever `ASPNETCORE_ENVIRONMENT=Development`, so a local/dev DB self-heals from "column ... does not exist" drift without anyone running `dotnet ef database update` by hand.
+
+## Known loose end
+- `.github/workflows/tests.yml` still pins `dotnet-version: 8.0.x` while `ci.yml`/`deploy-dev.yml` use `10.0.x`, and it duplicates `ci.yml`'s build+test on the same push/PR events — worth consolidating into one workflow and bumping it to match the repo's actual TFM (`net10.0`).
+
+## Working in this repo as Claude Code (recurring facts across sessions)
+- This sandbox's base container does not always come with `dotnet` preinstalled. If `dotnet` is missing and apt's `noble-updates`/`security` mirrors 404 on `dotnet-sdk-8.0`/`dotnet-sdk-10.0` packages, pin the install to the `noble/main` channel's older point release instead (e.g. `apt-cache madison dotnet-sdk-10.0` to find one, then `apt-get install -y dotnet-sdk-10.0=<version> dotnet-runtime-10.0=<version> aspnetcore-runtime-10.0=<version> dotnet-host-10.0=<version> dotnet-hostfxr-10.0=<version> ...` — pin every related package, not just the SDK, or apt fails pulling in the newer unavailable ones as dependencies). No Docker daemon is available in this sandbox either, so a `mcr.microsoft.com/dotnet/sdk` container isn't a fallback here.
+- This project's designated Claude Code branch is `claude/pensive-lamport-q0d6bs`. Once its PR merges, the next session's work restarts that same branch name from the latest `origin/main` (`git checkout -B claude/pensive-lamport-q0d6bs origin/main`) rather than branching again — don't assume the branch's old commits are still what's live.
