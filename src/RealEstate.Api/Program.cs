@@ -96,6 +96,10 @@ builder.Services.AddScoped<IViabilityAnalysisService, ViabilityAnalysisService>(
 // /map's "potencial de plusvalía" layer — reuses IRoadNetworkService above, no extra HttpClient.
 builder.Services.AddScoped<IAppreciationPotentialService, AppreciationPotentialService>();
 builder.Services.AddScoped<IViabilityReportPdfService, ViabilityReportPdfService>();
+// House/apartment counterpart to the viability analysis above — reuses the same
+// IPopulationDensityService/IAppreciationPotentialService, no new HttpClient needed.
+builder.Services.AddScoped<IResidentialAnalysisService, ResidentialAnalysisService>();
+builder.Services.AddScoped<IResidentialAnalysisPdfService, ResidentialAnalysisPdfService>();
 
 // A server-side Google Maps key (separate from the browser-exposed one) just for embedding a
 // static map image in the viability-report PDF — see GoogleMapsOptions for why it has to be a

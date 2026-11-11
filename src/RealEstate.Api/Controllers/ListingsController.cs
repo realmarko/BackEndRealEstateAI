@@ -29,6 +29,8 @@ public class ListingsController : ControllerBase
     private readonly IFactSheetBuilderService _factSheetBuilder;
     private readonly IViabilityAnalysisService _viabilityAnalysis;
     private readonly IViabilityReportPdfService _viabilityReportPdf;
+    private readonly IResidentialAnalysisService _residentialAnalysis;
+    private readonly IResidentialAnalysisPdfService _residentialAnalysisPdf;
     private readonly IStaticMapService _staticMap;
     private readonly IListingDraftParsingService _listingDraftParsing;
     private readonly IGoogleMapsLinkResolverService _mapsLinkResolver;
@@ -46,6 +48,12 @@ public class ListingsController : ControllerBase
 
     private static string ViabilityPreviewCacheKey(Guid listingId) => $"viability-preview:{listingId}";
 
+    // Same reasoning/duration as ViabilityPreviewCacheDuration above — avoids redoing the
+    // comparables/population/appreciation lookups on every repeat page load of the same listing.
+    private static readonly TimeSpan ResidentialAnalysisCacheDuration = TimeSpan.FromHours(6);
+
+    private static string ResidentialAnalysisCacheKey(Guid listingId) => $"residential-analysis:{listingId}";
+
     public ListingsController(
         ApplicationDbContext db,
         RealEstateDbContext agentsDb,
@@ -55,6 +63,8 @@ public class ListingsController : ControllerBase
         IFactSheetBuilderService factSheetBuilder,
         IViabilityAnalysisService viabilityAnalysis,
         IViabilityReportPdfService viabilityReportPdf,
+        IResidentialAnalysisService residentialAnalysis,
+        IResidentialAnalysisPdfService residentialAnalysisPdf,
         IStaticMapService staticMap,
         IListingDraftParsingService listingDraftParsing,
         IGoogleMapsLinkResolverService mapsLinkResolver,
@@ -69,6 +79,8 @@ public class ListingsController : ControllerBase
         _factSheetBuilder = factSheetBuilder;
         _viabilityAnalysis = viabilityAnalysis;
         _viabilityReportPdf = viabilityReportPdf;
+        _residentialAnalysis = residentialAnalysis;
+        _residentialAnalysisPdf = residentialAnalysisPdf;
         _staticMap = staticMap;
         _listingDraftParsing = listingDraftParsing;
         _mapsLinkResolver = mapsLinkResolver;
@@ -94,6 +106,17 @@ public class ListingsController : ControllerBase
         PropertyType.IndustrialStorage,
         PropertyType.IndustrialWarehouse,
         PropertyType.ShoppingPlaza
+    };
+
+    // Property types the "Reporte de Análisis Residencial" applies to — mirrors the frontend's
+    // own HOUSE_OR_APARTMENT_PROPERTY_TYPES (listing.model.ts) exactly, same reasoning as
+    // ViabilityEligiblePropertyTypes above: eligibility can't drift between the page deciding
+    // whether to show the section and this endpoint deciding whether to serve it.
+    private static readonly HashSet<PropertyType> ResidentialEligiblePropertyTypes = new()
+    {
+        PropertyType.House,
+        PropertyType.Apartment,
+        PropertyType.Condo
     };
 
     // GET /api/listings?city=Austin&listingType=Sale&minPrice=100000&...
@@ -439,6 +462,57 @@ public class ListingsController : ControllerBase
 
         var mapImage = await _staticMap.GetStaticMapAsync(listing.Latitude, listing.Longitude, BuildMapMarkers(analysis), cancellationToken);
         return _viabilityReportPdf.Generate(listing.ToDto(isAuthenticated: isAuthenticated), analysis, mapImage);
+    }
+
+    // GET /api/listings/5/residential-analysis-preview — the house/apartment counterpart to
+    // GetViabilityPreview above: free, ungated, anonymous. Reuses the "viability" rate-limit
+    // policy (same cost profile — a handful of DB queries plus an AGEB/Overpass-backed
+    // appreciation lookup per request).
+    [EnableRateLimiting("viability")]
+    [HttpGet("{id:guid}/residential-analysis-preview")]
+    public async Task<ActionResult<ResidentialAnalysisDto>> GetResidentialAnalysisPreview(Guid id, CancellationToken cancellationToken)
+    {
+        var listing = await LoadResidentialEligibleListingAsync(id, cancellationToken);
+        if (listing is null) return NotFound();
+
+        var analysis = await _cache.GetOrCreateAsync(ResidentialAnalysisCacheKey(id), async entry =>
+        {
+            entry.AbsoluteExpirationRelativeToNow = ResidentialAnalysisCacheDuration;
+            return await _residentialAnalysis.AnalyzeAsync(listing, cancellationToken);
+        });
+
+        return Ok(analysis);
+    }
+
+    // GET /api/listings/5/residential-analysis-pdf — same no-lead-capture pattern as
+    // GetViabilityReportPdf above.
+    [EnableRateLimiting("fact-sheet")]
+    [HttpGet("{id:guid}/residential-analysis-pdf")]
+    public async Task<IActionResult> GetResidentialAnalysisPdf(Guid id, CancellationToken cancellationToken)
+    {
+        var listing = await LoadResidentialEligibleListingAsync(id, cancellationToken);
+        if (listing is null) return NotFound();
+
+        var analysis = await _cache.GetOrCreateAsync(ResidentialAnalysisCacheKey(id), async entry =>
+        {
+            entry.AbsoluteExpirationRelativeToNow = ResidentialAnalysisCacheDuration;
+            return await _residentialAnalysis.AnalyzeAsync(listing, cancellationToken);
+        });
+
+        var pdfBytes = _residentialAnalysisPdf.Generate(listing.ToDto(isAuthenticated: false), analysis);
+        _logger.LogInformation("Anonymous residential-analysis PDF downloaded for listing {ListingId}", id);
+        return File(pdfBytes, "application/pdf", $"analisis-residencial-{listing.Id}.pdf");
+    }
+
+    private async Task<Listing?> LoadResidentialEligibleListingAsync(Guid id, CancellationToken cancellationToken)
+    {
+        var listing = await _db.Listings
+            .AsNoTracking()
+            .Include(l => l.Address)
+            .Include(l => l.Images)
+            .Include(l => l.Owner)
+            .FirstOrDefaultAsync(l => l.Id == id, cancellationToken);
+        return listing is not null && ResidentialEligiblePropertyTypes.Contains(listing.PropertyType) ? listing : null;
     }
 
     private static ViabilityLotContext BuildLotContext(Listing listing) => new(
