@@ -66,6 +66,12 @@ Requires the `AddTrafficCountStations` migration to already be applied. Safe to 
 `import.sql` truncates and reloads the whole table from the CSV each time rather than
 accumulating duplicate rows.
 
+**Status:** loaded in local dev (native Postgres) and RDS dev (`realestate`) since the migration
+landed; **RDS prod (`realestate_prod`) was missing this table's data entirely until 2026-11-15** —
+unlike the other three data-imports folders, this one isn't per-state, so it had simply never been
+run there (not a gap specific to any one state). Loaded there now: 6,818 rows (national, same
+count as dev — this is one dataset for the whole country, not something to re-run per state).
+
 ## Refreshing with a newer year
 
 SICT republishes this dataset periodically. To refresh: download the current "Datos viales (…)"

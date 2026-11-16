@@ -29,7 +29,7 @@ already populated by the original population import), and computed:
 
 INEGI masks small-count cells for privacy (`*`, `N/D`); those become empty (NULL), not zero —
 ~10% of Puebla's 2503 AGEB rows have at least one masked field (Tlaxcala, added later: 58 of 668,
-~8.7%, a similar rate).
+~8.7%, a similar rate; Querétaro, added later still: 29 of 891, ~3.3%).
 
 The `awk` command actually used (Tlaxcala, state code `29` — adjust the column-index lookups'
 input file and the `2900...` prefix isn't hardcoded, it reads `ENTIDAD` from the file itself):
