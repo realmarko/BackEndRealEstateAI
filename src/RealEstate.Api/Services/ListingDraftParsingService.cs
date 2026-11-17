@@ -189,6 +189,14 @@ public class ListingDraftParsingService : IListingDraftParsingService
           el estado a partir de eso si el texto no los dice.
         - Si el anuncio da varios precios (p. ej. "valor de avalúo" y "valor de venta"), usa
           siempre el precio de VENTA/renta, nunca el avalúo ni un precio tachado/anterior.
+        - Si el precio está dado POR METRO CUADRADO en vez de como precio total (p. ej. "$9,800 x
+          M2", "$3,800/m2", "$2,500 por metro"), "price" NUNCA es ese número tal cual — es ese
+          precio por m² MULTIPLICADO por el área en m² a la que aplica (el terreno si el anuncio
+          habla de un lote/terreno, la construcción si habla de una casa/depto ya construidos).
+          Ejemplo: "$9,800 x M2" sobre un terreno de 160 m² → price = 1568000 (9800 × 160), no 9800.
+          Si el anuncio ofrece varios lotes con áreas distintas al mismo precio por m² (p. ej. dos
+          terrenos de 160 m² y 144 m²), usa el área del primero que mencione para este cálculo y dejas
+          claro en "title" que hay más de uno (el dueño revisará el resto a mano).
         - "bedrooms"/"bathrooms"/"parkingSpaces"/"floors"/"yearBuilt" son números enteros;
           "price"/"areaSqm"/"lotSizeSqm"/"bathrooms" admiten decimales cuando el texto los da.
         - Los campos "hasX" son true solo si el texto confirma esa característica, false solo si
