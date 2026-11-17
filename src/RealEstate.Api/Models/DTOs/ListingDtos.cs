@@ -281,6 +281,29 @@ public class PricePerSqmStatDto
     public decimal MedianPricePerSqm { get; set; }
 }
 
+// Admin-only (ListingsController.GetPricePerSqmComparison) — one listing's own price/m² against
+// same-ListingType comparables at four zone levels, broadest to narrowest. Count == 0 means no
+// comparable exists at that level (Comparison is then null, not "equal").
+public class ZonePriceComparisonDto
+{
+    public string Label { get; set; } = string.Empty;
+    public int Count { get; set; }
+    public decimal? AvgPricePerSqm { get; set; }
+    public decimal? MedianPricePerSqm { get; set; }
+    // "above" | "below" | "equal" | null (null when Count == 0 or the subject has no price/m²
+    // of its own — see ListingsController.GetPricePerSqmComparison).
+    public string? Comparison { get; set; }
+}
+
+public class ListingPriceComparisonDto
+{
+    public decimal? SubjectPricePerSqm { get; set; }
+    public ZonePriceComparisonDto ZipCode { get; set; } = new();
+    public ZonePriceComparisonDto Colonia { get; set; } = new();
+    public ZonePriceComparisonDto City { get; set; } = new();
+    public ZonePriceComparisonDto State { get; set; } = new();
+}
+
 // Admin-only (ListingsController.UpdateOwnerContact) — lets an admin swap a listing's public
 // contact card from the agent who posted it to the real property owner's own free-text info.
 public class UpdateListingOwnerContactDto

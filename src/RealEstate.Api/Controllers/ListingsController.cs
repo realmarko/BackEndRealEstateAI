@@ -366,6 +366,86 @@ public class ListingsController : ControllerBase
         return Ok(stats);
     }
 
+    // GET /api/listings/{id}/price-per-sqm-comparison — admin-only. Compares one listing's own
+    // price/m² against same-ListingType comparables at four zone levels, narrowest to broadest.
+    // The listing itself is excluded from every level's stats (l.Id != id), same convention
+    // ResidentialAnalysisService.FindComparablesAsync uses to keep a subject from inflating its
+    // own comparison. Comparison is against the average, not the median — matches how the
+    // adjacent price-per-sqm-stats admin page already frames "the zone" to this same admin.
+    [HttpGet("{id:guid}/price-per-sqm-comparison")]
+    [Authorize(Roles = "Admin")]
+    public async Task<ActionResult<ListingPriceComparisonDto>> GetPricePerSqmComparison(Guid id)
+    {
+        var listing = await _db.Listings.Include(l => l.Address).FirstOrDefaultAsync(l => l.Id == id);
+        if (listing is null || listing.Address is null) return NotFound();
+
+        decimal? subjectPricePerSqm = !listing.PriceOnRequest && listing.Price > 0 && listing.AreaSqFt > 0
+            ? listing.Price / (listing.AreaSqFt * ResidentialAnalysisService.SqmPerSqFt)
+            : null;
+
+        var address = listing.Address;
+        var comparableListings = _db.Listings
+            .Include(l => l.Address)
+            .Where(l => l.Id != id
+                && l.Status == ListingStatus.Active
+                && !l.PriceOnRequest
+                && l.Price > 0
+                && l.AreaSqFt > 0
+                && l.ListingType == listing.ListingType);
+
+        var zipCode = await BuildZoneComparisonAsync(
+            comparableListings.Where(l => l.Address!.ZipCode == address.ZipCode),
+            address.ZipCode,
+            subjectPricePerSqm);
+
+        var colonia = await BuildZoneComparisonAsync(
+            comparableListings.Where(l => l.Address!.State == address.State && l.Address.City == address.City && l.Address.Colonia == address.Colonia),
+            address.Colonia,
+            subjectPricePerSqm);
+
+        var city = await BuildZoneComparisonAsync(
+            comparableListings.Where(l => l.Address!.State == address.State && l.Address.City == address.City),
+            address.City,
+            subjectPricePerSqm);
+
+        var state = await BuildZoneComparisonAsync(
+            comparableListings.Where(l => l.Address!.State == address.State),
+            address.State,
+            subjectPricePerSqm);
+
+        return Ok(new ListingPriceComparisonDto
+        {
+            SubjectPricePerSqm = subjectPricePerSqm is { } sp ? Math.Round(sp, 0) : null,
+            ZipCode = zipCode,
+            Colonia = colonia,
+            City = city,
+            State = state
+        });
+    }
+
+    // Shared by GetPricePerSqmComparison's four zone levels — each call's `query` is already
+    // filtered down to that one level's comparables, so this only has to price, sort and label them.
+    private static async Task<ZonePriceComparisonDto> BuildZoneComparisonAsync(IQueryable<Listing> query, string label, decimal? subjectPricePerSqm)
+    {
+        var prices = await query
+            .Select(l => l.Price / (l.AreaSqFt * ResidentialAnalysisService.SqmPerSqFt))
+            .ToListAsync();
+
+        if (prices.Count == 0) return new ZonePriceComparisonDto { Label = label, Count = 0 };
+
+        prices.Sort();
+        var avg = Math.Round(prices.Average(), 0);
+
+        return new ZonePriceComparisonDto
+        {
+            Label = label,
+            Count = prices.Count,
+            AvgPricePerSqm = avg,
+            MedianPricePerSqm = Math.Round(MedianOf(prices), 0),
+            Comparison = subjectPricePerSqm is { } sp ? (sp > avg ? "above" : sp < avg ? "below" : "equal") : null
+        };
+    }
+
     // Brokerage/company and the agent's own profile photo aren't Listing fields, so the "show
     // properties by brokerage" filter and the listing-detail contact card need them attached
     // here. Resolution/caching lives in OwnerAgentLookupService, shared with InquiriesController.
