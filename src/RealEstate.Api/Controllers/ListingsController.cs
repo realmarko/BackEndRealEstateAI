@@ -319,6 +319,19 @@ public class ListingsController : ControllerBase
         return sorted.Count % 2 == 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
     }
 
+    // Shared by GetPricePerSqmStats and GetPricePerSqmComparison. AreaSqFt (house/apartment
+    // construction area) is 0 on a pure land/commercial listing — those store their area in
+    // LotSizeSqm (already m²) instead. Falling back to it here means a land listing's price/m²
+    // no longer silently drops out of both admin price-per-sqm features — land is this site's
+    // core property type (see the land-flipping-niche zone-analysis pages), so excluding it was
+    // excluding most of what an admin would actually want this comparison for.
+    private static decimal? EffectiveAreaSqm(int areaSqFt, decimal? lotSizeSqm)
+    {
+        if (areaSqFt > 0) return areaSqFt * ResidentialAnalysisService.SqmPerSqFt;
+        if (lotSizeSqm is { } lot && lot > 0) return lot;
+        return null;
+    }
+
     // GET /api/listings/price-per-sqm-stats — admin-only, not surfaced anywhere public. Rolls up
     // price/m² by State/City/Colonia, split by ListingType (Sale vs Rent price/m² are different
     // units — a monthly rent and a sale price can't share one average). Grouped in memory rather
@@ -331,24 +344,26 @@ public class ListingsController : ControllerBase
     {
         var rows = await _db.Listings
             .Include(l => l.Address)
-            .Where(l => l.Status == ListingStatus.Active && !l.PriceOnRequest && l.Price > 0 && l.AreaSqFt > 0)
+            .Where(l => l.Status == ListingStatus.Active && !l.PriceOnRequest && l.Price > 0)
             .Select(l => new
             {
                 State = l.Address!.State,
                 City = l.Address.City,
                 Colonia = l.Address.Colonia,
                 l.ListingType,
-                // Same conversion ResidentialAnalysisService uses, so this and the per-listing
-                // residential-analysis numbers are directly comparable.
-                PricePerSqm = l.Price / (l.AreaSqFt * ResidentialAnalysisService.SqmPerSqFt)
+                l.Price,
+                l.AreaSqFt,
+                l.LotSizeSqm
             })
             .ToListAsync();
 
         var stats = rows
+            .Select(r => new { r.State, r.City, r.Colonia, r.ListingType, r.Price, Area = EffectiveAreaSqm(r.AreaSqFt, r.LotSizeSqm) })
+            .Where(r => r.Area is { } area && area > 0)
             .GroupBy(r => (r.State, r.City, r.Colonia, r.ListingType))
             .Select(g =>
             {
-                var prices = g.Select(r => r.PricePerSqm).OrderBy(p => p).ToList();
+                var prices = g.Select(r => r.Price / r.Area!.Value).OrderBy(p => p).ToList();
                 return new PricePerSqmStatDto
                 {
                     State = g.Key.State,
@@ -379,8 +394,9 @@ public class ListingsController : ControllerBase
         var listing = await _db.Listings.Include(l => l.Address).FirstOrDefaultAsync(l => l.Id == id);
         if (listing is null || listing.Address is null) return NotFound();
 
-        decimal? subjectPricePerSqm = !listing.PriceOnRequest && listing.Price > 0 && listing.AreaSqFt > 0
-            ? listing.Price / (listing.AreaSqFt * ResidentialAnalysisService.SqmPerSqFt)
+        var subjectArea = EffectiveAreaSqm(listing.AreaSqFt, listing.LotSizeSqm);
+        decimal? subjectPricePerSqm = !listing.PriceOnRequest && listing.Price > 0 && subjectArea is { } sa
+            ? listing.Price / sa
             : null;
 
         var address = listing.Address;
@@ -390,7 +406,6 @@ public class ListingsController : ControllerBase
                 && l.Status == ListingStatus.Active
                 && !l.PriceOnRequest
                 && l.Price > 0
-                && l.AreaSqFt > 0
                 && l.ListingType == listing.ListingType);
 
         var zipCode = await BuildZoneComparisonAsync(
@@ -424,12 +439,18 @@ public class ListingsController : ControllerBase
     }
 
     // Shared by GetPricePerSqmComparison's four zone levels — each call's `query` is already
-    // filtered down to that one level's comparables, so this only has to price, sort and label them.
+    // filtered down to that one level's comparables, so this only has to price, sort and label
+    // them. Pulls raw Price/AreaSqFt/LotSizeSqm rather than a computed price/m² so EffectiveAreaSqm
+    // (house-vs-land area) can run in memory, then drops rows with neither area field set.
     private static async Task<ZonePriceComparisonDto> BuildZoneComparisonAsync(IQueryable<Listing> query, string label, decimal? subjectPricePerSqm)
     {
-        var prices = await query
-            .Select(l => l.Price / (l.AreaSqFt * ResidentialAnalysisService.SqmPerSqFt))
-            .ToListAsync();
+        var rows = await query.Select(l => new { l.Price, l.AreaSqFt, l.LotSizeSqm }).ToListAsync();
+
+        var prices = rows
+            .Select(r => EffectiveAreaSqm(r.AreaSqFt, r.LotSizeSqm) is { } area && area > 0 ? r.Price / area : (decimal?)null)
+            .Where(p => p is not null)
+            .Select(p => p!.Value)
+            .ToList();
 
         if (prices.Count == 0) return new ZonePriceComparisonDto { Label = label, Count = 0 };
 
