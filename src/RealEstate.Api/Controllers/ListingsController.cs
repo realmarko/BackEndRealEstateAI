@@ -1,9 +1,11 @@
 using System.Net.Mail;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
+using Microsoft.Extensions.Options;
 using NetTopologySuite.Geometries;
 using RealEstate.Api.Data;
 using RealEstate.Api.Extensions;
@@ -34,6 +36,9 @@ public class ListingsController : ControllerBase
     private readonly IStaticMapService _staticMap;
     private readonly IListingDraftParsingService _listingDraftParsing;
     private readonly IGoogleMapsLinkResolverService _mapsLinkResolver;
+    private readonly IProdSyncService _prodSync;
+    private readonly ProdSyncOptions _prodSyncOptions;
+    private readonly UserManager<ApplicationUser> _userManager;
     private readonly IMemoryCache _cache;
     private readonly ILogger<ListingsController> _logger;
 
@@ -68,6 +73,9 @@ public class ListingsController : ControllerBase
         IStaticMapService staticMap,
         IListingDraftParsingService listingDraftParsing,
         IGoogleMapsLinkResolverService mapsLinkResolver,
+        IProdSyncService prodSync,
+        IOptions<ProdSyncOptions> prodSyncOptions,
+        UserManager<ApplicationUser> userManager,
         IMemoryCache cache,
         ILogger<ListingsController> logger)
     {
@@ -84,6 +92,9 @@ public class ListingsController : ControllerBase
         _staticMap = staticMap;
         _listingDraftParsing = listingDraftParsing;
         _mapsLinkResolver = mapsLinkResolver;
+        _prodSync = prodSync;
+        _prodSyncOptions = prodSyncOptions.Value;
+        _userManager = userManager;
         _cache = cache;
         _logger = logger;
     }
@@ -465,6 +476,190 @@ public class ListingsController : ControllerBase
             MedianPricePerSqm = Math.Round(MedianOf(prices), 0),
             Comparison = subjectPricePerSqm is { } sp ? (sp > avg ? "above" : sp < avg ? "below" : "equal") : null
         };
+    }
+
+    // POST /api/listings/{id}/send-to-prod — "Enviar a producción" admin button on the listing
+    // detail page. Admin-only, and only does anything where ProdSync:TargetApiUrl is configured
+    // (dev only — see ProdSyncOptions). Create-only by design: alreadyExists=true means nothing
+    // was touched, on this or any previous call for the same listing.
+    [HttpPost("{id:guid}/send-to-prod")]
+    [Authorize(Roles = "Admin")]
+    public async Task<IActionResult> SendToProd(Guid id)
+    {
+        var result = await _prodSync.SendToProdAsync(id);
+        if (result.AlreadyExists) return Ok(new { alreadyExists = true });
+        if (!result.Success) return BadRequest(new { message = result.ErrorMessage ?? "No se pudo enviar a producción." });
+        return Ok(new { alreadyExists = false });
+    }
+
+    // Shared by the two prod-sync endpoints below. No [Authorize]: dev and prod are separate
+    // Identity databases, so a dev admin's JWT proves nothing here — ProdSyncOptions.SharedSecret
+    // (identical in both environments' user-secrets) stands in for auth instead. Also refuses the
+    // placeholder value so an environment that never configured a real secret can't be synced
+    // into by guessing/omitting the header.
+    private bool HasValidProdSyncSecret()
+    {
+        var configured = _prodSyncOptions.SharedSecret;
+        if (string.IsNullOrWhiteSpace(configured) || configured.StartsWith("CHANGE_ME", StringComparison.Ordinal)) return false;
+        return Request.Headers.TryGetValue("X-Prod-Sync-Secret", out var provided) && provided == configured;
+    }
+
+    // GET /api/listings/prod-sync/{id}/exists — lets ProdSyncService (running on dev) check
+    // before transferring any photos whether this listing was already sent.
+    [HttpGet("prod-sync/{id:guid}/exists")]
+    public async Task<ActionResult<ProdSyncExistsDto>> ProdSyncExists(Guid id)
+    {
+        if (!HasValidProdSyncSecret()) return Unauthorized();
+        var exists = await _db.Listings.AnyAsync(l => l.Id == id);
+        return Ok(new ProdSyncExistsDto { Exists = exists });
+    }
+
+    // POST /api/listings/prod-sync/import — receiving half of "Enviar a producción". Create-only:
+    // a listing with this Id already present means a previous (or concurrent) call already
+    // imported it, so this returns 409 and changes nothing, rather than overwriting whatever is
+    // already live — the admin explicitly wants a one-way, one-time copy, never an overwrite of
+    // edits made directly in this environment afterwards.
+    [HttpPost("prod-sync/import")]
+    public async Task<ActionResult<ListingDto>> ProdSyncImport([FromForm] ProdSyncImportDto dto)
+    {
+        if (!HasValidProdSyncSecret()) return Unauthorized();
+
+        if (!dto.PriceOnRequest && dto.Price <= 0)
+        {
+            return BadRequest(new { message = "Price must be greater than 0, or mark the listing as price-on-request." });
+        }
+
+        if (await _db.Listings.AnyAsync(l => l.Id == dto.Id))
+        {
+            return Conflict(new { message = "This listing already exists in this environment; prod-sync import is create-only." });
+        }
+
+        var owner = string.IsNullOrWhiteSpace(dto.OwnerEmail) ? null : await _userManager.FindByEmailAsync(dto.OwnerEmail);
+        if (owner is null)
+        {
+            // No matching account here (common: a dev-only test owner/agent) — assign to this
+            // environment's own Admin instead of refusing outright or fabricating a new account
+            // for someone who never asked for one here.
+            var admins = await _userManager.GetUsersInRoleAsync("Admin");
+            owner = admins.FirstOrDefault();
+            if (owner is null)
+            {
+                return StatusCode(500, new { message = "No Admin account exists in this environment to assign ownership to." });
+            }
+        }
+
+        var (imageUrls, uploadError) = await BuildImageUrlsAsync(dto.ExistingImageUrls, dto.Photos, $"listings/{dto.Id}");
+        if (uploadError is not null) return uploadError;
+
+        var listing = new Listing
+        {
+            Id = dto.Id,
+            OwnerId = owner.Id,
+            Title = dto.Title,
+            Description = dto.Description,
+            ListingType = dto.ListingType,
+            PropertyType = dto.PropertyType,
+            Status = dto.Status,
+            Price = dto.Price,
+            PriceOnRequest = dto.PriceOnRequest,
+            Currency = dto.Currency,
+            Address = new ListingAddress
+            {
+                Street = dto.Street,
+                Colonia = dto.Colonia ?? string.Empty,
+                City = dto.City,
+                State = dto.State,
+                ZipCode = dto.ZipCode ?? string.Empty,
+                Country = dto.Country
+            },
+            Latitude = dto.Latitude,
+            Longitude = dto.Longitude,
+            Bedrooms = dto.Bedrooms,
+            Bathrooms = dto.Bathrooms,
+            AreaSqFt = dto.AreaSqFt,
+            YearBuilt = dto.YearBuilt,
+            ParkingSpaces = dto.ParkingSpaces,
+            ParkingIsCovered = dto.ParkingIsCovered,
+            Floors = dto.Floors,
+            LotSizeSqm = dto.LotSizeSqm,
+            GardenSizeSqm = dto.GardenSizeSqm,
+            HasHeatingCooling = dto.HasHeatingCooling,
+            HasRoofGarden = dto.HasRoofGarden,
+            HoaFee = dto.HoaFee,
+            VideoTourUrl = dto.VideoTourUrl,
+            ConstructionCondition = dto.ConstructionCondition,
+            FacadeOrientation = dto.FacadeOrientation,
+            HasNaturalGas = dto.HasNaturalGas,
+            HasLpGas = dto.HasLpGas,
+            HasCistern = dto.HasCistern,
+            CisternCapacityLiters = dto.CisternCapacityLiters,
+            HasWell = dto.HasWell,
+            HasKitchen = dto.HasKitchen,
+            HasLivingRoom = dto.HasLivingRoom,
+            HasDiningRoom = dto.HasDiningRoom,
+            HasPool = dto.HasPool,
+            HasTerrace = dto.HasTerrace,
+            HasBalcony = dto.HasBalcony,
+            HasServiceRoom = dto.HasServiceRoom,
+            HasLaundryArea = dto.HasLaundryArea,
+            HasStorageRoom = dto.HasStorageRoom,
+            HasGym = dto.HasGym,
+            HasSecurity = dto.HasSecurity,
+            HasElevator = dto.HasElevator,
+            HasBbqArea = dto.HasBbqArea,
+            LandUseZoning = dto.LandUseZoning,
+            LandUseCategoryId = dto.LandUseCategoryId,
+            LandTenure = dto.LandTenure,
+            HasEjidalCertificate = dto.HasEjidalCertificate,
+            CosCoefficient = dto.CosCoefficient,
+            CusCoefficient = dto.CusCoefficient,
+            MaxHeightMeters = dto.MaxHeightMeters,
+            IsFreeOfLiens = dto.IsFreeOfLiens,
+            HasPropertyTaxDebt = dto.HasPropertyTaxDebt,
+            HasWaterDebt = dto.HasWaterDebt,
+            FrontageWidthMeters = dto.FrontageWidthMeters,
+            FrontageDepthMeters = dto.FrontageDepthMeters,
+            CommercialUnitCount = dto.CommercialUnitCount,
+            HasApartmentUnit = dto.HasApartmentUnit,
+            HasPotableWater = dto.HasPotableWater,
+            HasDrainage = dto.HasDrainage,
+            HasElectricity = dto.HasElectricity,
+            HasThreePhaseElectricity = dto.HasThreePhaseElectricity,
+            HasTelecomService = dto.HasTelecomService,
+            HasVehicleAccess = dto.HasVehicleAccess,
+            HasPavedStreet = dto.HasPavedStreet,
+            HasNearbyUTurn = dto.HasNearbyUTurn,
+            IsCornerLot = dto.IsCornerLot,
+            StreetFrontageCount = dto.StreetFrontageCount,
+            PrimaryVialidadType = dto.PrimaryVialidadType,
+            LotShape = dto.LotShape,
+            Topography = dto.Topography,
+            IsFloodRiskZone = dto.IsFloodRiskZone,
+            CadastralValue = dto.CadastralValue,
+            Images = imageUrls.Select((url, idx) => new ListingImage
+            {
+                Url = url,
+                IsPrimary = idx == 0,
+                SortOrder = idx
+            }).ToList()
+        };
+
+        listing.PriceHistory.Add(new ListingPriceHistory
+        {
+            ListingId = listing.Id,
+            Price = listing.Price,
+            Currency = listing.Currency,
+            RecordedAt = listing.CreatedAt
+        });
+
+        _db.Listings.Add(listing);
+        await _db.SaveChangesAsync();
+
+        var created = await _db.Listings
+            .Include(l => l.Images).Include(l => l.Owner).Include(l => l.Address)
+            .FirstAsync(l => l.Id == listing.Id);
+
+        return Ok(created.ToDto(isAuthenticated: true));
     }
 
     // Brokerage/company and the agent's own profile photo aren't Listing fields, so the "show

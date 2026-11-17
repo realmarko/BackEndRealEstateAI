@@ -110,6 +110,23 @@ public class ListingUpdateDto : ListingCreateDto
     public ListingStatus Status { get; set; }
 }
 
+// POST /api/listings/prod-sync/import's body (ListingsController.ProdSyncImport) — every field
+// ListingUpdateDto already has (title/price/address/amenities/...), plus Id (reused as-is from
+// the source environment, so re-sending the same listing is detectable instead of duplicating
+// it — see ProdSyncService's "never overwrite" check) and OwnerEmail (the source environment's
+// owner, resolved to a real account in THIS environment by email; falls back to an Admin account
+// here if no match — see ListingsController.ProdSyncImport).
+public class ProdSyncImportDto : ListingUpdateDto
+{
+    public Guid Id { get; set; }
+    [MaxLength(320)] public string OwnerEmail { get; set; } = string.Empty;
+}
+
+public class ProdSyncExistsDto
+{
+    public bool Exists { get; set; }
+}
+
 public class ListingTransferDto
 {
     public int AgentId { get; set; }

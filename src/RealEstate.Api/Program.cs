@@ -122,6 +122,12 @@ builder.Services.AddHttpClient<IListingDraftParsingService, ListingDraftParsingS
 // alongside the Anthropic call above in ListingsController.ParseDraft.
 builder.Services.AddHttpClient<IGoogleMapsLinkResolverService, GoogleMapsLinkResolverService>(client => client.Timeout = TimeSpan.FromSeconds(10));
 
+// ---- Dev-only "Enviar a producción" admin button (ListingsController.SendToProd) — see
+// ProdSyncOptions for why TargetApiUrl is only ever set in dev's secrets. 60s timeout: a listing
+// with several photos means downloading and forwarding each one in the same request.
+builder.Services.Configure<ProdSyncOptions>(builder.Configuration.GetSection("ProdSync"));
+builder.Services.AddHttpClient<IProdSyncService, ProdSyncService>(client => client.Timeout = TimeSpan.FromSeconds(60));
+
 // ---- In-process cache (single EB instance, no shared/distributed cache needed) — for static
 // reference data that's expensive to refetch on every request but changes rarely, if ever:
 // land-use categories, states, municipalities (see those controllers for cache keys/TTLs).
