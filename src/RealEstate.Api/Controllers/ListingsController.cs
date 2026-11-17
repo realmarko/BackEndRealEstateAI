@@ -319,6 +319,53 @@ public class ListingsController : ControllerBase
         return sorted.Count % 2 == 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
     }
 
+    // GET /api/listings/price-per-sqm-stats — admin-only, not surfaced anywhere public. Rolls up
+    // price/m² by State/City/Colonia, split by ListingType (Sale vs Rent price/m² are different
+    // units — a monthly rent and a sale price can't share one average). Grouped in memory rather
+    // than via EF's GroupBy-to-SQL: MedianOf needs a materialized, sorted List<decimal> per
+    // group, which doesn't translate, and the site's current listing volume (dozens, not
+    // thousands) makes pulling every active, priced row into memory once per request cheap.
+    [HttpGet("price-per-sqm-stats")]
+    [Authorize(Roles = "Admin")]
+    public async Task<ActionResult<List<PricePerSqmStatDto>>> GetPricePerSqmStats()
+    {
+        var rows = await _db.Listings
+            .Include(l => l.Address)
+            .Where(l => l.Status == ListingStatus.Active && !l.PriceOnRequest && l.Price > 0 && l.AreaSqFt > 0)
+            .Select(l => new
+            {
+                State = l.Address!.State,
+                City = l.Address.City,
+                Colonia = l.Address.Colonia,
+                l.ListingType,
+                // Same conversion ResidentialAnalysisService uses, so this and the per-listing
+                // residential-analysis numbers are directly comparable.
+                PricePerSqm = l.Price / (l.AreaSqFt * ResidentialAnalysisService.SqmPerSqFt)
+            })
+            .ToListAsync();
+
+        var stats = rows
+            .GroupBy(r => (r.State, r.City, r.Colonia, r.ListingType))
+            .Select(g =>
+            {
+                var prices = g.Select(r => r.PricePerSqm).OrderBy(p => p).ToList();
+                return new PricePerSqmStatDto
+                {
+                    State = g.Key.State,
+                    City = g.Key.City,
+                    Colonia = g.Key.Colonia,
+                    ListingType = g.Key.ListingType.ToString(),
+                    Count = prices.Count,
+                    AvgPricePerSqm = Math.Round(prices.Average(), 0),
+                    MedianPricePerSqm = Math.Round(MedianOf(prices), 0)
+                };
+            })
+            .OrderBy(s => s.State).ThenBy(s => s.City).ThenBy(s => s.Colonia).ThenBy(s => s.ListingType)
+            .ToList();
+
+        return Ok(stats);
+    }
+
     // Brokerage/company and the agent's own profile photo aren't Listing fields, so the "show
     // properties by brokerage" filter and the listing-detail contact card need them attached
     // here. Resolution/caching lives in OwnerAgentLookupService, shared with InquiriesController.

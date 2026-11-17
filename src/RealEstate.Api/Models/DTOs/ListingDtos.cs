@@ -266,6 +266,21 @@ public class CmaResultDto
     public List<ListingDto> Comparables { get; set; } = new();
 }
 
+// Admin-only (ListingsController.GetPricePerSqmStats) — price/m² rolled up by State/City/Colonia,
+// split by ListingType since sale and rent price/m² aren't comparable units. Deliberately not
+// exposed to the public: with the site's current listing volume most buckets are 1-2 rows, which
+// would read as a credible market average while actually being noise.
+public class PricePerSqmStatDto
+{
+    public string State { get; set; } = string.Empty;
+    public string City { get; set; } = string.Empty;
+    public string Colonia { get; set; } = string.Empty;
+    public string ListingType { get; set; } = string.Empty;
+    public int Count { get; set; }
+    public decimal AvgPricePerSqm { get; set; }
+    public decimal MedianPricePerSqm { get; set; }
+}
+
 // Admin-only (ListingsController.UpdateOwnerContact) — lets an admin swap a listing's public
 // contact card from the agent who posted it to the real property owner's own free-text info.
 public class UpdateListingOwnerContactDto
