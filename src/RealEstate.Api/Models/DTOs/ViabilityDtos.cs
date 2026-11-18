@@ -19,11 +19,13 @@ public class BusinessTypeCriteriaDto
     public string Notes { get; set; } = string.Empty;
 }
 
-// Deliberately excludes Key/DisplayName/DenueSearchTerm/GooglePlacesType — those wire the row to
-// its DENUE/Places lookup and frontend label; only the numeric thresholds and Notes are meant to
-// be tuned at runtime (see BusinessTypeCriteria's own doc comment).
+// Deliberately excludes Key/DenueSearchTerm/GooglePlacesType — those wire the row to its
+// DENUE/Places lookup, so changing them would break the competitor search; only DisplayName
+// (purely cosmetic — the viability report's visible label) plus the numeric thresholds and
+// Notes are meant to be tuned at runtime (see BusinessTypeCriteria's own doc comment).
 public class BusinessTypeCriteriaUpdateDto
 {
+    public string DisplayName { get; set; } = string.Empty;
     public double MinFrontageMeters { get; set; }
     public double MinLotSizeSqm { get; set; }
     public bool? PrefersCornerLot { get; set; }

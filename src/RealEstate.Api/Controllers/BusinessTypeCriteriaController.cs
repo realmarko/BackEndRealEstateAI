@@ -47,6 +47,7 @@ public class BusinessTypeCriteriaController : ControllerBase
         var criterion = await _db.BusinessTypeCriteria.FindAsync(id);
         if (criterion is null) return NotFound();
 
+        if (!string.IsNullOrWhiteSpace(dto.DisplayName)) criterion.DisplayName = dto.DisplayName;
         criterion.MinFrontageMeters = dto.MinFrontageMeters;
         criterion.MinLotSizeSqm = dto.MinLotSizeSqm;
         criterion.PrefersCornerLot = dto.PrefersCornerLot;
