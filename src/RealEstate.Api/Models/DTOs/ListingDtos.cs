@@ -293,6 +293,7 @@ public class PricePerSqmStatDto
     public string City { get; set; } = string.Empty;
     public string Colonia { get; set; } = string.Empty;
     public string ListingType { get; set; } = string.Empty;
+    public string PropertyType { get; set; } = string.Empty;
     public int Count { get; set; }
     public decimal AvgPricePerSqm { get; set; }
     public decimal MedianPricePerSqm { get; set; }

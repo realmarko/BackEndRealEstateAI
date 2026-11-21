@@ -345,10 +345,12 @@ public class ListingsController : ControllerBase
 
     // GET /api/listings/price-per-sqm-stats — admin-only, not surfaced anywhere public. Rolls up
     // price/m² by State/City/Colonia, split by ListingType (Sale vs Rent price/m² are different
-    // units — a monthly rent and a sale price can't share one average). Grouped in memory rather
-    // than via EF's GroupBy-to-SQL: MedianOf needs a materialized, sorted List<decimal> per
-    // group, which doesn't translate, and the site's current listing volume (dozens, not
-    // thousands) makes pulling every active, priced row into memory once per request cheap.
+    // units — a monthly rent and a sale price can't share one average) AND PropertyType (land's
+    // price/m² has nothing in common with a house's, so mixing them into one average would make
+    // it meaningless). Grouped in memory rather than via EF's GroupBy-to-SQL: MedianOf needs a
+    // materialized, sorted List<decimal> per group, which doesn't translate, and the site's
+    // current listing volume (dozens, not thousands) makes pulling every active, priced row into
+    // memory once per request cheap.
     [HttpGet("price-per-sqm-stats")]
     [Authorize(Roles = "Admin")]
     public async Task<ActionResult<List<PricePerSqmStatDto>>> GetPricePerSqmStats()
@@ -362,6 +364,7 @@ public class ListingsController : ControllerBase
                 City = l.Address.City,
                 Colonia = l.Address.Colonia,
                 l.ListingType,
+                l.PropertyType,
                 l.Price,
                 l.AreaSqFt,
                 l.LotSizeSqm
@@ -369,9 +372,9 @@ public class ListingsController : ControllerBase
             .ToListAsync();
 
         var stats = rows
-            .Select(r => new { r.State, r.City, r.Colonia, r.ListingType, r.Price, Area = EffectiveAreaSqm(r.AreaSqFt, r.LotSizeSqm) })
+            .Select(r => new { r.State, r.City, r.Colonia, r.ListingType, r.PropertyType, r.Price, Area = EffectiveAreaSqm(r.AreaSqFt, r.LotSizeSqm) })
             .Where(r => r.Area is { } area && area > 0)
-            .GroupBy(r => (r.State, r.City, r.Colonia, r.ListingType))
+            .GroupBy(r => (r.State, r.City, r.Colonia, r.ListingType, r.PropertyType))
             .Select(g =>
             {
                 var prices = g.Select(r => r.Price / r.Area!.Value).OrderBy(p => p).ToList();
@@ -381,19 +384,22 @@ public class ListingsController : ControllerBase
                     City = g.Key.City,
                     Colonia = g.Key.Colonia,
                     ListingType = g.Key.ListingType.ToString(),
+                    PropertyType = g.Key.PropertyType.ToString(),
                     Count = prices.Count,
                     AvgPricePerSqm = Math.Round(prices.Average(), 0),
                     MedianPricePerSqm = Math.Round(MedianOf(prices), 0)
                 };
             })
-            .OrderBy(s => s.State).ThenBy(s => s.City).ThenBy(s => s.Colonia).ThenBy(s => s.ListingType)
+            .OrderBy(s => s.State).ThenBy(s => s.City).ThenBy(s => s.Colonia).ThenBy(s => s.ListingType).ThenBy(s => s.PropertyType)
             .ToList();
 
         return Ok(stats);
     }
 
     // GET /api/listings/{id}/price-per-sqm-comparison — admin-only. Compares one listing's own
-    // price/m² against same-ListingType comparables at four zone levels, narrowest to broadest.
+    // price/m² against comparables of the same ListingType AND PropertyType at four zone levels,
+    // narrowest to broadest — mixing property types (e.g. land vs. house) would make the average
+    // meaningless, since built property prices per m² dwarf raw land.
     // The listing itself is excluded from every level's stats (l.Id != id), same convention
     // ResidentialAnalysisService.FindComparablesAsync uses to keep a subject from inflating its
     // own comparison. Comparison is against the average, not the median — matches how the
@@ -417,7 +423,8 @@ public class ListingsController : ControllerBase
                 && l.Status == ListingStatus.Active
                 && !l.PriceOnRequest
                 && l.Price > 0
-                && l.ListingType == listing.ListingType);
+                && l.ListingType == listing.ListingType
+                && l.PropertyType == listing.PropertyType);
 
         var zipCode = await BuildZoneComparisonAsync(
             comparableListings.Where(l => l.Address!.ZipCode == address.ZipCode),
