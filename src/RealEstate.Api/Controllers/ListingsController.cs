@@ -1056,6 +1056,19 @@ public class ListingsController : ControllerBase
     {
         var (used, startOfMonth) = await GetListingsUsedThisMonthAsync(User.GetUserId());
 
+        // Admins aren't subject to the monthly cap (see Create below) — report it as unlimited
+        // rather than a count against a limit that will never actually block them.
+        if (User.IsInRole("Admin"))
+        {
+            return Ok(new ListingQuotaDto
+            {
+                Limit = int.MaxValue,
+                Used = used,
+                Remaining = int.MaxValue,
+                ResetsAt = startOfMonth.AddMonths(1)
+            });
+        }
+
         return Ok(new ListingQuotaDto
         {
             Limit = MaxListingsPerMonth,
@@ -1105,10 +1118,13 @@ public class ListingsController : ControllerBase
         }
 
         var userId = User.GetUserId();
-        var (listingsThisMonth, _) = await GetListingsUsedThisMonthAsync(userId);
-        if (listingsThisMonth >= MaxListingsPerMonth)
+        if (!User.IsInRole("Admin"))
         {
-            return BadRequest(new { message = $"You've reached the limit of {MaxListingsPerMonth} listings per month. Try again next month." });
+            var (listingsThisMonth, _) = await GetListingsUsedThisMonthAsync(userId);
+            if (listingsThisMonth >= MaxListingsPerMonth)
+            {
+                return BadRequest(new { message = $"You've reached the limit of {MaxListingsPerMonth} listings per month. Try again next month." });
+            }
         }
 
         // Generated up front so newly uploaded photos can be namespaced under this listing's
