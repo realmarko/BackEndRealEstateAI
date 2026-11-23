@@ -37,6 +37,8 @@ public class ListingDraftParseResultDto
     // ListingCreateDto.AreaSqFt, no unit conversion is needed on the way into the form.
     public decimal? AreaSqm { get; set; }
     public decimal? LotSizeSqm { get; set; }
+    public decimal? FrontageWidthMeters { get; set; }
+    public decimal? FrontageDepthMeters { get; set; }
     public int? ParkingSpaces { get; set; }
     public int? Floors { get; set; }
     public int? YearBuilt { get; set; }

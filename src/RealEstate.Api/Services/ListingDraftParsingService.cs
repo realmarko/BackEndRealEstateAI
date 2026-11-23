@@ -102,6 +102,8 @@ public class ListingDraftParsingService : IListingDraftParsingService
             Bathrooms = GetDecimal(input, "bathrooms"),
             AreaSqm = GetDecimal(input, "areaSqm"),
             LotSizeSqm = GetDecimal(input, "lotSizeSqm"),
+            FrontageWidthMeters = GetDecimal(input, "frontageWidthMeters"),
+            FrontageDepthMeters = GetDecimal(input, "frontageDepthMeters"),
             ParkingSpaces = GetInt(input, "parkingSpaces"),
             Floors = GetInt(input, "floors"),
             YearBuilt = GetInt(input, "yearBuilt"),
@@ -199,6 +201,10 @@ public class ListingDraftParsingService : IListingDraftParsingService
           claro en "title" que hay más de uno (el dueño revisará el resto a mano).
         - "bedrooms"/"bathrooms"/"parkingSpaces"/"floors"/"yearBuilt" son números enteros;
           "price"/"areaSqm"/"lotSizeSqm"/"bathrooms" admiten decimales cuando el texto los da.
+        - Si el anuncio da el frente y el fondo del terreno (p. ej. "37 m de frente x 180 m de
+          fondo", "frente 9m, fondo 18m"), llena "frontageWidthMeters" (frente, el lado sobre la
+          calle) y "frontageDepthMeters" (fondo) con esos valores. Si además NO da una superficie
+          total en m² por separado, calcula "lotSizeSqm" como frente × fondo (37 × 180 = 6660).
         - Los campos "hasX" son true solo si el texto confirma esa característica, false solo si
           el texto dice explícitamente que NO la tiene; si el texto no la menciona, no llenes el
           campo (ni true ni false).
@@ -239,6 +245,8 @@ public class ListingDraftParsingService : IListingDraftParsingService
                 ["bathrooms"] = new { type = "number" },
                 ["areaSqm"] = new { type = "number", description = "Área de construcción en m²." },
                 ["lotSizeSqm"] = new { type = "number", description = "Área de terreno en m²." },
+                ["frontageWidthMeters"] = new { type = "number", description = "Frente del terreno/lote en metros (el lado sobre la calle)." },
+                ["frontageDepthMeters"] = new { type = "number", description = "Fondo del terreno/lote en metros." },
                 ["parkingSpaces"] = new { type = "integer" },
                 ["floors"] = new { type = "integer" },
                 ["yearBuilt"] = new { type = "integer" },
