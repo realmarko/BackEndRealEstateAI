@@ -39,16 +39,23 @@ public class ListingDraftParseResultDto
     public decimal? LotSizeSqm { get; set; }
     public decimal? FrontageWidthMeters { get; set; }
     public decimal? FrontageDepthMeters { get; set; }
+    public decimal? GardenSizeSqm { get; set; }
     public int? ParkingSpaces { get; set; }
+    public bool? ParkingIsCovered { get; set; }
     public int? Floors { get; set; }
     public int? YearBuilt { get; set; }
     public string? ConstructionCondition { get; set; }
+    public bool? HasKitchen { get; set; }
+    public bool? HasLivingRoom { get; set; }
+    public bool? HasDiningRoom { get; set; }
     public bool? HasPool { get; set; }
     public bool? HasRoofGarden { get; set; }
     public bool? HasTerrace { get; set; }
+    public bool? HasBalcony { get; set; }
     public bool? HasLaundryArea { get; set; }
     public bool? HasCistern { get; set; }
     public decimal? CisternCapacityLiters { get; set; }
+    public bool? HasWell { get; set; }
     public bool? HasNaturalGas { get; set; }
     public bool? HasLpGas { get; set; }
     public bool? HasSecurity { get; set; }
@@ -58,6 +65,13 @@ public class ListingDraftParseResultDto
     public bool? HasServiceRoom { get; set; }
     public bool? HasStorageRoom { get; set; }
     public bool? HasPropertyTaxDebt { get; set; }
+    // Land/commercial services + street checklist — same "almost every WhatsApp land ad lists
+    // these" reasoning as the comment above, just for lots/terrenos instead of a house's rooms.
+    public bool? HasPotableWater { get; set; }
+    public bool? HasDrainage { get; set; }
+    public bool? HasElectricity { get; set; }
+    public bool? HasPavedStreet { get; set; }
+    public bool? IsCornerLot { get; set; }
 
     // Resolved separately from everything else above (see GoogleMapsLinkResolverService) when
     // the pasted text includes a Google Maps link — not something the AI extraction itself can
