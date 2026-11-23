@@ -52,6 +52,10 @@ public class ResidentialAnalysisPdfService : IResidentialAnalysisPdfService
                     {
                         column.Item().Element(c => ComposeRentalYield(c, yield));
                     }
+                    if (analysis.NearbyAmenities.Count > 0)
+                    {
+                        column.Item().Element(c => ComposeNearbyAmenities(c, analysis));
+                    }
                 });
 
                 page.Footer().PaddingTop(12).Text(text =>
@@ -160,6 +164,23 @@ public class ResidentialAnalysisPdfService : IResidentialAnalysisPdfService
             col.Item().PaddingTop(3).Text(
                 $"Basado en {yield.NearbyRentCount} propiedades en renta cercanas con renta promedio de ${yield.AvgMonthlyRent:N0}/mes, " +
                 $"el rendimiento anual estimado es de {yield.EstimatedAnnualYieldPct:N1}%.").FontSize(9);
+        });
+    }
+
+    private static void ComposeNearbyAmenities(IContainer container, ResidentialAnalysisDto analysis)
+    {
+        container.Border(1).BorderColor(Colors.Grey.Lighten2).Padding(10).Column(col =>
+        {
+            col.Item().Text("Qué hay alrededor").FontSize(11).Bold().FontColor(Navy);
+            foreach (var amenity in analysis.NearbyAmenities)
+            {
+                col.Item().PaddingTop(3).Row(row =>
+                {
+                    row.RelativeItem(3).Text(amenity.Name).FontSize(9);
+                    row.RelativeItem(2).Text(amenity.Category).FontSize(9).FontColor(Colors.Grey.Darken1);
+                    row.ConstantItem(60).AlignRight().Text($"{amenity.DistanceMeters} m").FontSize(9);
+                });
+            }
         });
     }
 }

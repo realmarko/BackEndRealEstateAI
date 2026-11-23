@@ -38,20 +38,39 @@ public class ResidentialAnalysisService : IResidentialAnalysisService
     // rather than show a number built on almost nothing (see ResidentialAnalysisDto.RentalYield).
     private const int MinRentListingsForYield = 3;
 
+    // What people search for around a home, roughly in the order it affects a buying decision —
+    // mirrors ViabilityAnalysisService.TrafficGeneratorSearches's shape but with categories
+    // chosen for liveability instead of business foot traffic.
+    private static readonly (string SearchTerm, string Category, int RadiusMeters)[] AmenitySearches =
+    {
+        ("escuela", "Escuela", 1000),
+        ("supermercado", "Supermercado", 1200),
+        ("farmacia", "Farmacia", 800),
+        ("hospital", "Hospital", 2000),
+        ("parque", "Parque", 1000),
+        ("gimnasio", "Gimnasio", 1200)
+    };
+    // Same per-category cap reasoning as ViabilityAnalysisService.MaxTrafficGeneratorsPerCategory:
+    // otherwise a zone with 5 nearby schools and no park in range reads as "we only check schools".
+    private const int MaxAmenitiesPerCategory = 2;
+
     private readonly ApplicationDbContext _db;
     private readonly IPopulationDensityService _populationDensityService;
     private readonly IAppreciationPotentialService _appreciationPotentialService;
+    private readonly IDenueService _denueService;
     private readonly ILogger<ResidentialAnalysisService> _logger;
 
     public ResidentialAnalysisService(
         ApplicationDbContext db,
         IPopulationDensityService populationDensityService,
         IAppreciationPotentialService appreciationPotentialService,
+        IDenueService denueService,
         ILogger<ResidentialAnalysisService> logger)
     {
         _db = db;
         _populationDensityService = populationDensityService;
         _appreciationPotentialService = appreciationPotentialService;
+        _denueService = denueService;
         _logger = logger;
     }
 
@@ -89,6 +108,7 @@ public class ResidentialAnalysisService : IResidentialAnalysisService
 
         var (appreciationScore, appreciationExplanations) = await ScoreAppreciationAsync(lat, lng, cancellationToken);
         var rentalYield = await EstimateRentalYieldAsync(listing, subjectPricePerSqm, cancellationToken);
+        var (nearbyAmenities, amenitiesDataUnavailable) = await FindNearbyAmenitiesAsync(lat, lng, cancellationToken);
 
         return new ResidentialAnalysisDto
         {
@@ -105,8 +125,45 @@ public class ResidentialAnalysisService : IResidentialAnalysisService
             SocioeconomicScore = population?.SocioeconomicScore,
             AppreciationScore = appreciationScore,
             AppreciationExplanations = appreciationExplanations,
-            RentalYield = rentalYield
+            RentalYield = rentalYield,
+            NearbyAmenities = nearbyAmenities,
+            NearbyAmenitiesDataUnavailable = amenitiesDataUnavailable
         };
+    }
+
+    // Same DENUE-per-category-with-cap shape as ViabilityAnalysisService.FindTrafficGeneratorsAsync,
+    // minus the transit/road lookups — those answer "is this a good business location", not
+    // "is this a good place to live", so they're left out here.
+    private async Task<(List<TrafficGeneratorDto> Amenities, bool DataUnavailable)> FindNearbyAmenitiesAsync(double lat, double lng, CancellationToken cancellationToken)
+    {
+        var searches = AmenitySearches.Select(async s =>
+        {
+            try
+            {
+                var establishments = await _denueService.ListNearbyAsync(s.SearchTerm, lat, lng, s.RadiusMeters, cancellationToken);
+                var amenities = establishments
+                    .Select(e => new TrafficGeneratorDto
+                    {
+                        Name = e.Name,
+                        DistanceMeters = (int)Math.Round(GeoFactory.DistanceMeters(lat, lng, e.Lat, e.Lng)),
+                        Category = s.Category,
+                        Lat = e.Lat,
+                        Lng = e.Lng
+                    })
+                    .OrderBy(a => a.DistanceMeters)
+                    .Take(MaxAmenitiesPerCategory);
+                return (Amenities: amenities, Failed: false);
+            }
+            catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or System.Text.Json.JsonException or InvalidOperationException)
+            {
+                _logger.LogWarning(ex, "DENUE amenity lookup failed for {Category} at {Lat},{Lng}", s.Category, lat, lng);
+                return (Amenities: Enumerable.Empty<TrafficGeneratorDto>(), Failed: true);
+            }
+        });
+
+        var results = await Task.WhenAll(searches);
+        var combined = results.SelectMany(r => r.Amenities).OrderBy(a => a.DistanceMeters).ToList();
+        return (combined, results.Any(r => r.Failed));
     }
 
     // Same AGEB-containment lookup GeomarketingController.GetAppreciationPotentialAtPoint uses —

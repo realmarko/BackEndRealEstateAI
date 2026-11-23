@@ -30,6 +30,14 @@ public class ResidentialAnalysisDto
     // Null (never a fabricated/zero estimate) when too few real nearby rentals of the same
     // property type exist to base a yield on — see ResidentialAnalysisService.MinRentListingsForYield.
     public RentalYieldEstimateDto? RentalYield { get; set; }
+
+    // What a home buyer actually cares about nearby — schools, supermarkets, pharmacies,
+    // hospitals, parks, gyms — sourced from DENUE the same way ViabilityAnalysisService's
+    // TrafficGenerators are, but with categories chosen for "is this a good place to live"
+    // instead of "will this location drive foot traffic to a business". Reuses TrafficGeneratorDto
+    // since the shape (name/category/distance/lat/lng) is identical.
+    public List<TrafficGeneratorDto> NearbyAmenities { get; set; } = new();
+    public bool NearbyAmenitiesDataUnavailable { get; set; }
 }
 
 public class RentalYieldEstimateDto
