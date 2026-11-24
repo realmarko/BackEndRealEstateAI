@@ -38,6 +38,12 @@ public class ResidentialAnalysisDto
     // since the shape (name/category/distance/lat/lng) is identical.
     public List<TrafficGeneratorDto> NearbyAmenities { get; set; } = new();
     public bool NearbyAmenitiesDataUnavailable { get; set; }
+
+    // Real mapped highways/avenues near the point (OpenStreetMap) — same data ViabilityAnalysisDto
+    // surfaces, relevant here for noise/connectivity rather than business foot traffic. Reuses
+    // NearbyRoadDto since the shape is identical.
+    public List<NearbyRoadDto> NearbyRoads { get; set; } = new();
+    public bool RoadsDataUnavailable { get; set; }
 }
 
 public class RentalYieldEstimateDto

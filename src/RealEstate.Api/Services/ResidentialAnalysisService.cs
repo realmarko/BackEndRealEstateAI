@@ -54,10 +54,17 @@ public class ResidentialAnalysisService : IResidentialAnalysisService
     // otherwise a zone with 5 nearby schools and no park in range reads as "we only check schools".
     private const int MaxAmenitiesPerCategory = 2;
 
+    // Same radius/cap as ViabilityAnalysisService.RoadSearchRadiusMeters/MaxNearbyRoads — a buyer
+    // cares about the same "what's the nearest major road" question a business does, just for
+    // noise/connectivity instead of foot traffic.
+    private const int RoadSearchRadiusMeters = 1500;
+    private const int MaxNearbyRoads = 3;
+
     private readonly ApplicationDbContext _db;
     private readonly IPopulationDensityService _populationDensityService;
     private readonly IAppreciationPotentialService _appreciationPotentialService;
     private readonly IDenueService _denueService;
+    private readonly IRoadNetworkService _roadNetworkService;
     private readonly ILogger<ResidentialAnalysisService> _logger;
 
     public ResidentialAnalysisService(
@@ -65,12 +72,14 @@ public class ResidentialAnalysisService : IResidentialAnalysisService
         IPopulationDensityService populationDensityService,
         IAppreciationPotentialService appreciationPotentialService,
         IDenueService denueService,
+        IRoadNetworkService roadNetworkService,
         ILogger<ResidentialAnalysisService> logger)
     {
         _db = db;
         _populationDensityService = populationDensityService;
         _appreciationPotentialService = appreciationPotentialService;
         _denueService = denueService;
+        _roadNetworkService = roadNetworkService;
         _logger = logger;
     }
 
@@ -78,6 +87,13 @@ public class ResidentialAnalysisService : IResidentialAnalysisService
     {
         var lat = listing.Latitude;
         var lng = listing.Longitude;
+
+        // Started immediately, awaited only once everything else is ready: neither touches _db
+        // (EF Core's DbContext isn't thread-safe, unlike these two — both go straight to their own
+        // external HTTP clients), so there's no reason to make their network latency sit on top of
+        // the DB-bound work below instead of running the whole way alongside it.
+        var amenitiesTask = FindNearbyAmenitiesAsync(lat, lng, cancellationToken);
+        var roadsTask = FindNearbyRoadsAsync(lat, lng, cancellationToken);
 
         var saleComparables = await FindComparablesAsync(listing, ListingType.Sale, cancellationToken);
 
@@ -108,7 +124,10 @@ public class ResidentialAnalysisService : IResidentialAnalysisService
 
         var (appreciationScore, appreciationExplanations) = await ScoreAppreciationAsync(lat, lng, cancellationToken);
         var rentalYield = await EstimateRentalYieldAsync(listing, subjectPricePerSqm, cancellationToken);
-        var (nearbyAmenities, amenitiesDataUnavailable) = await FindNearbyAmenitiesAsync(lat, lng, cancellationToken);
+
+        await Task.WhenAll(amenitiesTask, roadsTask);
+        var (nearbyAmenities, amenitiesDataUnavailable) = amenitiesTask.Result;
+        var (nearbyRoads, roadsDataUnavailable) = roadsTask.Result;
 
         return new ResidentialAnalysisDto
         {
@@ -127,7 +146,9 @@ public class ResidentialAnalysisService : IResidentialAnalysisService
             AppreciationExplanations = appreciationExplanations,
             RentalYield = rentalYield,
             NearbyAmenities = nearbyAmenities,
-            NearbyAmenitiesDataUnavailable = amenitiesDataUnavailable
+            NearbyAmenitiesDataUnavailable = amenitiesDataUnavailable,
+            NearbyRoads = nearbyRoads,
+            RoadsDataUnavailable = roadsDataUnavailable
         };
     }
 
@@ -164,6 +185,35 @@ public class ResidentialAnalysisService : IResidentialAnalysisService
         var results = await Task.WhenAll(searches);
         var combined = results.SelectMany(r => r.Amenities).OrderBy(a => a.DistanceMeters).ToList();
         return (combined, results.Any(r => r.Failed));
+    }
+
+    // Same shape as ViabilityAnalysisService.FindNearbyRoadsAsync — real mapped highways/avenues
+    // (OpenStreetMap/Overpass), not DENUE.
+    private async Task<(List<NearbyRoadDto> Roads, bool Failed)> FindNearbyRoadsAsync(double lat, double lng, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var roads = await _roadNetworkService.FindMajorRoadsNearbyAsync(lat, lng, RoadSearchRadiusMeters, cancellationToken);
+            var result = roads
+                .Select(r => new NearbyRoadDto
+                {
+                    Name = r.Name,
+                    Classification = r.Classification,
+                    DistanceMeters = (int)Math.Round(GeoFactory.DistanceMeters(lat, lng, r.Lat, r.Lng)),
+                    Lat = r.Lat,
+                    Lng = r.Lng,
+                    Geometry = (r.Geometry ?? Array.Empty<(double Lat, double Lng)>()).Select(p => new LatLngDto { Lat = p.Lat, Lng = p.Lng }).ToList()
+                })
+                .OrderBy(r => r.DistanceMeters)
+                .Take(MaxNearbyRoads)
+                .ToList();
+            return (result, false);
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or System.Text.Json.JsonException or InvalidOperationException)
+        {
+            _logger.LogWarning(ex, "Overpass road lookup failed during residential analysis at {Lat},{Lng}", lat, lng);
+            return (new List<NearbyRoadDto>(), true);
+        }
     }
 
     // Same AGEB-containment lookup GeomarketingController.GetAppreciationPotentialAtPoint uses —
