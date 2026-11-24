@@ -38,6 +38,10 @@ public class OverpassRoadNetworkService : IRoadNetworkService
         "https://overpass.openstreetmap.fr/api/interpreter"
     };
 
+    // How long a mirror gets to answer before FetchAsync hedges by also starting the next one —
+    // see FetchAsync's own comment for why this is hedging, not a bare race or sequential retry.
+    private static readonly TimeSpan HedgeDelay = TimeSpan.FromSeconds(2);
+
     // Road networks don't change day to day — same reasoning as DenueService's cache.
     private static readonly TimeSpan CacheDuration = TimeSpan.FromHours(24);
     private const int CoordinatePrecision = 3;
@@ -113,21 +117,72 @@ public class OverpassRoadNetworkService : IRoadNetworkService
         // of relying on the server's "center", so this works the same across every mirror.
         var query = $"[out:json][timeout:10];{overpassBody}out tags geom;";
 
+        // Hedged mirror requests, not a bare sequential retry and NOT a naive always-race-all-3
+        // either (an earlier version of this fix did that — reviewed and reverted: it triples
+        // Overpass load on every single lookup, even the common case where the first mirror
+        // answers fine, which is exactly the kind of extra load that trips these mirrors'
+        // documented "at capacity" throttling in the first place). Instead: start with just ONE
+        // mirror — same request volume as before this change in the common/healthy case — and
+        // only reach for the next mirror if the current one hasn't answered within HedgeDelay.
+        // Sequential-with-full-timeout-per-mirror (the old behavior) could let a single slow
+        // mirror eat its entire ~10s HttpClient timeout before the next one even got a chance,
+        // easily blowing past AppreciationPotentialService.ConnectivitySignalTimeout's budget for
+        // the WHOLE connectivity signal — confirmed live 2026-11-24: an AGEB's connectivity
+        // signal was excluded despite real major roads existing at that point, purely because the
+        // first-tried mirror was slow that day. Hedging bounds the cost of a slow mirror to
+        // HedgeDelay instead of its full timeout, without paying 3x load for every lookup.
+        using var raceCts = new CancellationTokenSource();
+        using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, raceCts.Token);
+
+        var fetches = new List<Task<List<NearbyRoad>>>();
+        var mirrorsLaunched = 0;
         Exception? lastError = null;
-        foreach (var baseUrl in BaseUrls)
+
+        void LaunchNextMirror()
         {
+            fetches.Add(FetchFromAsync(BaseUrls[mirrorsLaunched], query, lat, lng, classify, linkedCts.Token));
+            mirrorsLaunched++;
+        }
+
+        LaunchNextMirror();
+
+        while (true)
+        {
+            if (fetches.Count == 0)
+            {
+                // Every launched mirror has already failed. Hedge immediately rather than waiting
+                // out a full HedgeDelay with nothing in flight — only reachable when a mirror
+                // fails fast (e.g. DNS/connection refused), not when one is merely slow.
+                if (mirrorsLaunched >= BaseUrls.Length)
+                    throw lastError ?? new InvalidOperationException("No Overpass mirrors configured.");
+                LaunchNextMirror();
+                continue;
+            }
+
+            Task? hedgeTimer = mirrorsLaunched < BaseUrls.Length ? Task.Delay(HedgeDelay, linkedCts.Token) : null;
+            var toWaitOn = hedgeTimer is null ? fetches.Cast<Task>() : fetches.Cast<Task>().Append(hedgeTimer);
+            var winner = await Task.WhenAny(toWaitOn);
+
+            if (winner == hedgeTimer)
+            {
+                LaunchNextMirror();
+                continue;
+            }
+
+            var completedFetch = fetches.First(f => f == winner);
+            fetches.Remove(completedFetch);
             try
             {
-                return await FetchFromAsync(baseUrl, query, lat, lng, classify, cancellationToken);
+                var result = await completedFetch;
+                raceCts.Cancel(); // Any other in-flight mirror request is no longer needed.
+                return result;
             }
             catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
             {
                 lastError = ex;
-                _logger.LogWarning(ex, "Overpass mirror {BaseUrl} failed, trying next if any", baseUrl);
+                _logger.LogWarning(ex, "An Overpass mirror failed, hedging to the next one if any remain");
             }
         }
-
-        throw lastError ?? new InvalidOperationException("No Overpass mirrors configured.");
     }
 
     private async Task<List<NearbyRoad>> FetchFromAsync(string baseUrl, string query, double lat, double lng, Func<JsonElement, string> classify, CancellationToken cancellationToken)

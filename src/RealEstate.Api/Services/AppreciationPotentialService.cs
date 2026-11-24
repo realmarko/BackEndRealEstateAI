@@ -34,16 +34,24 @@ public class AppreciationPotentialService : IAppreciationPotentialService
     // further than that judgment call.
     private const double InfrastructureSignalSaturationCount = 2.0;
 
-    // IRoadNetworkService retries across 3 Overpass mirrors on failure, each with its own 10s
-    // HttpClient timeout (see RoadNetworkService.cs) — worst case ~30s for ONE of roads/transit if
-    // every mirror is slow that day. Both api-dev and api sit behind CloudFront with a 30-60s
-    // OriginReadTimeout, and GeomarketingController scores up to MaxAppreciationPotentialAgebs
-    // AGEBs through an 8-wide semaphore, so several AGEBs each eating a ~30s worst case would blow
-    // well past that budget. This bounds the WHOLE connectivity signal (both roads and transit
-    // together, already run in parallel) to a hard ceiling, independent of RoadNetworkService's
-    // own per-mirror retry budget — past this, the signal is simply excluded (see the catch below),
-    // same as any other signal with insufficient data.
-    private static readonly TimeSpan ConnectivitySignalTimeout = TimeSpan.FromSeconds(6);
+    // IRoadNetworkService now hedges across its 3 Overpass mirrors — starts with one, only
+    // reaches for the next if the current one hasn't answered within its own HedgeDelay — rather
+    // than trying them one at a time with each getting its full ~10s HttpClient timeout before
+    // the next gets a chance (see RoadNetworkService.cs's FetchAsync for why: that old behavior
+    // could let a single slow mirror eat the WHOLE budget below before a healthy mirror ever got
+    // tried). Both api-dev and api sit behind CloudFront with a 30-60s OriginReadTimeout, and
+    // GeomarketingController scores up to MaxAppreciationPotentialAgebs AGEBs through an 8-wide
+    // semaphore (2 waves of 8 at this cap), so even every AGEB in a batch hitting this signal's
+    // full ceiling stays comfortably under that budget. This bounds the WHOLE connectivity signal
+    // (both roads and transit together, already run in parallel) to a hard ceiling, independent
+    // of RoadNetworkService's own per-mirror timeout — past this, the signal is simply excluded
+    // (see the catch below), same as any other signal with insufficient data. Raised from 6s to
+    // 8s once hedging replaced the old sequential-full-timeout retry — the common case (a healthy
+    // mirror answers in well under a second) is unaffected either way; this only buys a bit more
+    // room for the case where the first mirror or two are having a slow day (confirmed live
+    // 2026-11-24: this signal was excluded despite real road data existing, because the
+    // first-tried mirror alone ate the entire old 6s budget before even trying the others).
+    private static readonly TimeSpan ConnectivitySignalTimeout = TimeSpan.FromSeconds(8);
 
     // Below this many Active listings inside the AGEB's own boundary in the trailing 12 months,
     // a price/sqft trend is noise, not a signal — excluded (not scored as 0) same as every other
