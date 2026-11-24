@@ -42,10 +42,10 @@ public class OwnerAgentLookupService : IOwnerAgentLookupService
         if (missingIds.Count > 0)
         {
             // ToDictionaryAsync's key/value selectors run against already-materialized Agent
-            // entities, not translated to SQL, so Company (sourced from Brokerage.Name) needs the
-            // navigation eager-loaded here or it would read back null for every agent.
+            // entities, not translated to SQL, so Company (sourced from AgentBrokerages) needs
+            // the navigation eager-loaded here or it would read back null for every agent.
             var agents = await _agentsDb.Agents
-                .Include(a => a.Brokerage)
+                .Include(a => a.AgentBrokerages).ThenInclude(ab => ab.Brokerage)
                 .Where(a => a.UserId != null && missingIds.Contains(a.UserId.Value))
                 .ToDictionaryAsync(a => a.UserId!.Value, a => (a.Company, a.PhotoUrl));
 

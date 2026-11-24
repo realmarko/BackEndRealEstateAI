@@ -1283,6 +1283,10 @@ namespace RealEstate.Api.Migrations
                         .HasColumnType("integer")
                         .HasColumnName("bedrooms");
 
+                    b.Property<int?>("BrokerageId")
+                        .HasColumnType("integer")
+                        .HasColumnName("brokerage_id");
+
                     b.Property<decimal?>("CadastralValue")
                         .HasColumnType("numeric")
                         .HasColumnName("cadastral_value");

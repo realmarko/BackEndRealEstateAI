@@ -27,6 +27,11 @@ public class ListingCreateDto
     // and the frontend form leaves this optional too.
     [MaxLength(20)] public string? ZipCode { get; set; }
     [MaxLength(100)] public string Country { get; set; } = "México";
+
+    // Which of the caller's own brokerages (AgentBrokerages) to publish this listing under —
+    // null for an independent agent, or an agent who belongs to none/hasn't picked one yet.
+    // Validated in ListingsController.Create/Update: must be one the caller actually belongs to.
+    public int? BrokerageId { get; set; }
     public double Latitude { get; set; }
     public double Longitude { get; set; }
     public int Bedrooms { get; set; }
@@ -167,6 +172,7 @@ public class ListingDto
     public string State { get; set; } = string.Empty;
     public string ZipCode { get; set; } = string.Empty;
     public string Country { get; set; } = string.Empty;
+    public int? BrokerageId { get; set; }
     public bool HideAgentContact { get; set; }
     public string? OwnerContactName { get; set; }
     public string? OwnerContactPhone { get; set; }

@@ -89,7 +89,7 @@ public class AgentsController : ControllerBase
                 query = query.Where(a => a.Specialties.Any(s => s.ToLower().Contains(q.Specialty!.ToLower())));
 
             if (!string.IsNullOrWhiteSpace(q.Company))
-                query = query.Where(a => a.Brokerage != null && a.Brokerage.Name.ToLower().Contains(q.Company!.ToLower()));
+                query = query.Where(a => a.AgentBrokerages.Any(ab => ab.Brokerage.Name.ToLower().Contains(q.Company!.ToLower())));
 
             if (q.MinRating.HasValue)
                 query = query.Where(a => a.Reviews.Any() && a.Reviews.Average(r => (double)r.Rating) >= q.MinRating.Value);
@@ -110,7 +110,10 @@ public class AgentsController : ControllerBase
                     a.Name,
                     a.Email,
                     a.Phone,
-                    Company = a.Brokerage != null ? a.Brokerage.Name : null,
+                    Companies = a.AgentBrokerages
+                        .OrderByDescending(ab => ab.IsPrimary).ThenBy(ab => ab.JoinedAt)
+                        .Select(ab => ab.Brokerage.Name)
+                        .ToList(),
                     a.IsIndependent,
                     a.PhotoUrl,
                     a.Bio,
@@ -142,7 +145,8 @@ public class AgentsController : ControllerBase
                 Name = a.Name,
                 Email = a.Email,
                 Phone = a.Phone,
-                Company = a.Company,
+                Company = a.Companies.FirstOrDefault(),
+                Companies = a.Companies,
                 IsIndependent = a.IsIndependent,
                 PhotoUrl = a.PhotoUrl,
                 Bio = a.Bio,
@@ -192,7 +196,10 @@ public class AgentsController : ControllerBase
                     a.Name,
                     a.Email,
                     a.Phone,
-                    Company = a.Brokerage != null ? a.Brokerage.Name : null,
+                    Companies = a.AgentBrokerages
+                        .OrderByDescending(ab => ab.IsPrimary).ThenBy(ab => ab.JoinedAt)
+                        .Select(ab => ab.Brokerage.Name)
+                        .ToList(),
                     a.IsIndependent,
                     a.PhotoUrl,
                     a.Bio,
@@ -212,7 +219,8 @@ public class AgentsController : ControllerBase
                 Name = agent.Name,
                 Email = agent.Email,
                 Phone = agent.Phone,
-                Company = agent.Company,
+                Company = agent.Companies.FirstOrDefault(),
+                Companies = agent.Companies,
                 IsIndependent = agent.IsIndependent,
                 PhotoUrl = agent.PhotoUrl,
                 Bio = agent.Bio,
@@ -318,11 +326,11 @@ public class AgentsController : ControllerBase
         }
 
         // An independent agent has no brokerage, regardless of what was typed before checking the box.
-        var company = dto.IsIndependent || string.IsNullOrWhiteSpace(dto.Company) ? null : dto.Company.Trim();
-        // Resolved/created before the agent so the FK has a real row to point at — a concurrent
+        var companies = dto.IsIndependent ? new List<string>() : ParseCompanies(dto.Companies);
+        // Resolved/created before the agent so each FK has a real row to point at — a concurrent
         // signup racing to add the same brand-new brokerage name hits its own unique index,
         // handled inside the helper, and never rolls back the agent below.
-        var brokerage = await ResolveOrCreateBrokerageAsync(company);
+        var brokerages = await ResolveOrCreateBrokeragesAsync(companies);
 
         var agent = new Agent
         {
@@ -330,12 +338,17 @@ public class AgentsController : ControllerBase
             Name = $"{User.FindFirstValue("firstName")} {User.FindFirstValue("lastName")}".Trim(),
             Email = User.TryGetEmail() ?? string.Empty,
             Phone = dto.Phone,
-            Brokerage = brokerage,
             IsIndependent = dto.IsIndependent,
             PhotoUrl = photoUrl,
             Bio = dto.Bio,
             Specialties = ParseSpecialties(dto.Specialties)
         };
+        agent.AgentBrokerages = brokerages.Select((b, idx) => new AgentBrokerage
+        {
+            Agent = agent,
+            Brokerage = b,
+            IsPrimary = idx == 0
+        }).ToList();
 
         // No seeded review here on purpose — a fabricated 5-star "Agente Real Estate" review
         // used to be added automatically for every new agent. Real ratings only, even if that
@@ -368,11 +381,11 @@ public class AgentsController : ControllerBase
     public async Task<ActionResult<AgentDto>> GetMine()
     {
         var userId = User.GetUserId();
-        // ToDtoAsync reads a.Reviews/a.Company (via a.Brokerage) in memory, so they must be
-        // eager-loaded here — unlike Search/GetById, which project straight to SQL.
+        // ToDtoAsync reads a.Reviews/a.Company/a.Companies (via a.AgentBrokerages) in memory, so
+        // both must be eager-loaded here — unlike Search/GetById, which project straight to SQL.
         var agent = await _db.Agents
             .Include(a => a.Reviews)
-            .Include(a => a.Brokerage)
+            .Include(a => a.AgentBrokerages).ThenInclude(ab => ab.Brokerage)
             .FirstOrDefaultAsync(a => a.UserId == userId);
         return agent is null ? NotFound() : Ok(await ToDtoAsync(agent, isOwnProfile: true));
     }
@@ -385,13 +398,10 @@ public class AgentsController : ControllerBase
     {
         var userId = User.GetUserId();
         // Same reasoning as GetMine: ToDtoAsync's review count needs Reviews eager-loaded, and
-        // Brokerage must be loaded too — assigning agent.Brokerage below only updates the FK
-        // correctly if EF has a prior snapshot of that navigation to compare against; on a
-        // not-yet-loaded reference navigation, EF's change tracker can't tell "changed to null"
-        // from "was already null", and BrokerageId would silently keep its old database value.
+        // AgentBrokerages/Brokerage must be loaded too so the diff below sees the current set.
         var agent = await _db.Agents
             .Include(a => a.Reviews)
-            .Include(a => a.Brokerage)
+            .Include(a => a.AgentBrokerages).ThenInclude(ab => ab.Brokerage)
             .FirstOrDefaultAsync(a => a.UserId == userId);
         if (agent is null) return NotFound();
 
@@ -403,24 +413,38 @@ public class AgentsController : ControllerBase
         }
 
         // An independent agent has no brokerage, regardless of what was typed before checking the box.
-        var company = dto.IsIndependent || string.IsNullOrWhiteSpace(dto.Company) ? null : dto.Company.Trim();
+        var companies = dto.IsIndependent ? new List<string>() : ParseCompanies(dto.Companies);
 
         agent.Phone = dto.Phone;
         agent.IsIndependent = dto.IsIndependent;
         agent.Bio = dto.Bio;
         agent.Specialties = ParseSpecialties(dto.Specialties);
 
-        // Skip the lookup/insert entirely when the company text didn't actually change —
-        // otherwise every profile save (even one only touching Bio or Phone) pays for a
-        // Brokerages round trip. Case-insensitive, matching ResolveOrCreateBrokerageAsync itself.
-        if (!string.Equals(company, agent.Brokerage?.Name, StringComparison.OrdinalIgnoreCase))
+        // Skip the lookup/insert entirely when the submitted set is identical to what's already
+        // there — otherwise every profile save (even one only touching Bio or Phone) pays for a
+        // Brokerages round trip. Case-insensitive, matching ResolveOrCreateBrokeragesAsync itself.
+        var currentNames = agent.AgentBrokerages.Select(ab => ab.Brokerage.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        if (!currentNames.SetEquals(companies))
         {
-            // Resolved last, and only the navigation is set: Brokerage is loaded above, so EF's
-            // normal change-tracking correctly derives the BrokerageId update from it. Resolving
-            // after the scalar fields above means a brand-new-brokerage insert's own SaveChanges
-            // (inside the helper) persists those fields as a side effect before the FK is set, so
-            // a crash between the two only ever leaves Brokerage stale — never Phone/Bio/etc.
-            agent.Brokerage = await ResolveOrCreateBrokerageAsync(company);
+            var brokerages = await ResolveOrCreateBrokeragesAsync(companies);
+            // Preserve IsPrimary across the diff where the name survived unchanged, instead of
+            // always resetting to "first wins" — an agent reordering/adding a second brokerage
+            // shouldn't silently swap which one their public profile shows as primary.
+            var previousPrimaryName = agent.AgentBrokerages.FirstOrDefault(ab => ab.IsPrimary)?.Brokerage.Name;
+
+            agent.AgentBrokerages.Clear();
+            agent.AgentBrokerages.AddRange(brokerages.Select((b, idx) => new AgentBrokerage
+            {
+                AgentId = agent.Id,
+                Agent = agent,
+                Brokerage = b,
+                IsPrimary = previousPrimaryName is not null
+                    ? string.Equals(b.Name, previousPrimaryName, StringComparison.OrdinalIgnoreCase)
+                    : idx == 0
+            }));
+            // If the previous primary was removed entirely, fall back to the first remaining one.
+            if (agent.AgentBrokerages.Count > 0 && !agent.AgentBrokerages.Any(ab => ab.IsPrimary))
+                agent.AgentBrokerages[0].IsPrimary = true;
         }
 
         await _db.SaveChangesAsync();
@@ -441,16 +465,32 @@ public class AgentsController : ControllerBase
         return Ok(await ToDtoAsync(agent, isOwnProfile: true));
     }
 
-    // Resolves an existing brokerage by name (case-insensitive, so "Century 21" and "century 21"
-    // always land on the same row instead of silently forking the catalog) or creates one.
-    // Saved in its own SaveChangesAsync, before the caller's own agent create/update, so the FK
-    // has a row to point at; a concurrent request racing to insert the same brand-new name hits
-    // its own unique index here, which must not be mistaken for — or roll back — anything the
-    // caller does afterwards. Shared by Create and UpdateMine.
-    private async Task<Brokerage?> ResolveOrCreateBrokerageAsync(string? company)
-    {
-        if (company is null) return null;
+    // Comma-separated, same convention as ParseSpecialties — trimmed, empty entries dropped, and
+    // de-duplicated case-insensitively (typing "Century 21, century 21" shouldn't create two
+    // memberships to the same resolved brokerage row).
+    private static List<string> ParseCompanies(string? raw) =>
+        string.IsNullOrWhiteSpace(raw)
+            ? new List<string>()
+            : raw.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
 
+    // Resolves each name to an existing brokerage (case-insensitive, so "Century 21" and
+    // "century 21" always land on the same row instead of silently forking the catalog) or
+    // creates it. Each insert is saved in its own SaveChangesAsync, before the caller's own agent
+    // create/update, so every FK has a row to point at; a concurrent request racing to insert the
+    // same brand-new name hits its own unique index here, which must not be mistaken for — or
+    // roll back — anything the caller does afterwards. Shared by Create and UpdateMine.
+    private async Task<List<Brokerage>> ResolveOrCreateBrokeragesAsync(List<string> companies)
+    {
+        var result = new List<Brokerage>();
+        foreach (var company in companies)
+            result.Add(await ResolveOrCreateBrokerageAsync(company));
+        return result;
+    }
+
+    private async Task<Brokerage> ResolveOrCreateBrokerageAsync(string company)
+    {
         var existing = await _db.Brokerages.FirstOrDefaultAsync(b => b.Name.ToLower() == company.ToLower());
         if (existing is not null) return existing;
 
@@ -709,6 +749,7 @@ public class AgentsController : ControllerBase
         public string Email { get; set; } = string.Empty;
         public string Phone { get; set; } = string.Empty;
         public string? Company { get; set; }
+        public List<string> Companies { get; set; } = new();
         public bool IsIndependent { get; set; }
         public string? PhotoUrl { get; set; }
         public string? Bio { get; set; }
@@ -748,6 +789,7 @@ public class AgentsController : ControllerBase
         Email = isAuthenticated ? cached.Email : RedactedEmail,
         Phone = isAuthenticated ? cached.Phone : RedactedPhone,
         Company = cached.Company,
+        Companies = cached.Companies,
         IsIndependent = cached.IsIndependent,
         PhotoUrl = cached.PhotoUrl,
         Bio = cached.Bio,
@@ -766,6 +808,7 @@ public class AgentsController : ControllerBase
         Email = a.Email,
         Phone = a.Phone,
         Company = a.Company,
+        Companies = a.Companies,
         IsIndependent = a.IsIndependent,
         PhotoUrl = a.PhotoUrl,
         Bio = a.Bio,

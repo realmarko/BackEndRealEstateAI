@@ -38,6 +38,7 @@ public static class ListingExtensions
         State = l.Address?.State ?? string.Empty,
         ZipCode = l.Address?.ZipCode ?? string.Empty,
         Country = l.Address?.Country ?? string.Empty,
+        BrokerageId = l.BrokerageId,
         HideAgentContact = l.HideAgentContact,
         OwnerContactName = l.OwnerContactName,
         OwnerContactPhone = isAuthenticated || l.OwnerContactPhone is null ? l.OwnerContactPhone : RedactedOwnerContactPhone,

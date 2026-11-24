@@ -32,5 +32,5 @@ public class Brokerage
     // here, never used in a query (unlike, say, Listing's enum fields).
     public string? WorkingHours { get; set; }
 
-    public List<Agent> Agents { get; set; } = new();
+    public List<AgentBrokerage> AgentBrokerages { get; set; } = new();
 }

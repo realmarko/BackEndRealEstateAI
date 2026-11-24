@@ -8,6 +8,13 @@ public class Listing
     public Guid OwnerId { get; set; }
     public ApplicationUser? Owner { get; set; }
 
+    // Which of the owning agent's brokerages this listing is published under — null for an
+    // independent agent, or an agent who hasn't picked one. No EF-enforced FK: Brokerage lives in
+    // RealEstateDbContext, Listing lives here (ApplicationDbContext), same cross-context
+    // limitation as OwnerId's relationship to Agent. Validated against the caller's own
+    // AgentBrokerages in ListingsController.Create/Update instead.
+    public int? BrokerageId { get; set; }
+
     public string Title { get; set; } = string.Empty;
     public string Description { get; set; } = string.Empty;
 

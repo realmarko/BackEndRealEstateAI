@@ -12,13 +12,30 @@ public class Agent
     public string Email { get; set; } = string.Empty;
     public string Phone { get; set; } = string.Empty;
 
-    public int? BrokerageId { get; set; }
-    public Brokerage? Brokerage { get; set; }
+    public List<AgentBrokerage> AgentBrokerages { get; set; } = new();
 
-    // Not a mapped column (no setter, so EF Core's default conventions skip it) — the
-    // brokerage name is only ever stored once, on Brokerage.Name, and read through here so
-    // every existing caller that read Agent.Company keeps working unchanged.
-    public string? Company => Brokerage?.Name;
+    // Not a mapped column (no setter, so EF Core's default conventions skip it) — only
+    // evaluated in-memory against an already-loaded AgentBrokerages (same requirement as the
+    // old Brokerage-nav version of this property: callers must Include it first). Picks the
+    // row marked IsPrimary, falling back to the oldest membership if none is (shouldn't
+    // happen once AgentsController always keeps exactly one IsPrimary, but a brand-new agent
+    // created before that invariant existed could still have none). Every existing caller that
+    // read this single-string Company keeps working unchanged; see Companies below for the
+    // full list.
+    public string? Company => AgentBrokerages
+        .OrderByDescending(ab => ab.IsPrimary)
+        .ThenBy(ab => ab.JoinedAt)
+        .Select(ab => ab.Brokerage?.Name)
+        .FirstOrDefault();
+
+    // Every brokerage this agent belongs to, primary first — used where showing just one name
+    // (Company above) would be misleading (agent-detail, the signup/edit form).
+    public List<string> Companies => AgentBrokerages
+        .OrderByDescending(ab => ab.IsPrimary)
+        .ThenBy(ab => ab.JoinedAt)
+        .Select(ab => ab.Brokerage?.Name ?? string.Empty)
+        .Where(name => name.Length > 0)
+        .ToList();
 
     public bool IsIndependent { get; set; }
     public string? PhotoUrl { get; set; }

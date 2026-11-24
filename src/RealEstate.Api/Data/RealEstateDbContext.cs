@@ -10,6 +10,7 @@ public class RealEstateDbContext : DbContext
     public DbSet<Property> Properties => Set<Property>();
     public DbSet<PropertyImage> PropertyImages => Set<PropertyImage>();
     public DbSet<Agent> Agents => Set<Agent>();
+    public DbSet<AgentBrokerage> AgentBrokerages => Set<AgentBrokerage>();
     public DbSet<AgentReview> AgentReviews => Set<AgentReview>();
     public DbSet<Owner> Owners => Set<Owner>();
     public DbSet<Brokerage> Brokerages => Set<Brokerage>();
@@ -23,13 +24,25 @@ public class RealEstateDbContext : DbContext
         {
             entity.HasIndex(a => a.UserId).IsUnique().HasFilter("user_id IS NOT NULL");
             entity.Property(a => a.Specialties).HasDefaultValueSql("'{}'");
+        });
 
-            // SetNull (not Restrict/Cascade): a brokerage being removed from the catalog should
-            // fall the agent back to independent, not block the deletion or delete the agent.
-            entity.HasOne(a => a.Brokerage)
-                  .WithMany(b => b.Agents)
-                  .HasForeignKey(a => a.BrokerageId)
-                  .OnDelete(DeleteBehavior.SetNull);
+        builder.Entity<AgentBrokerage>(entity =>
+        {
+            entity.HasKey(ab => new { ab.AgentId, ab.BrokerageId });
+
+            // Restrict (not Cascade): deleting a brokerage from the catalog while agents still
+            // belong to it should fail loudly, not silently orphan/delete those agents — unlike
+            // the old single-FK version, there's no "fall back to independent" here since an
+            // agent can still have other memberships left.
+            entity.HasOne(ab => ab.Agent)
+                  .WithMany(a => a.AgentBrokerages)
+                  .HasForeignKey(ab => ab.AgentId)
+                  .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(ab => ab.Brokerage)
+                  .WithMany(b => b.AgentBrokerages)
+                  .HasForeignKey(ab => ab.BrokerageId)
+                  .OnDelete(DeleteBehavior.Restrict);
         });
 
         builder.Entity<Owner>(entity =>

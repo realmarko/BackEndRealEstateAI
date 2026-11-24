@@ -55,10 +55,6 @@ namespace RealEstate.Api.Migrations.RealEstate
                         .HasColumnType("text")
                         .HasColumnName("bio");
 
-                    b.Property<int?>("BrokerageId")
-                        .HasColumnType("integer")
-                        .HasColumnName("brokerage_id");
-
                     b.Property<DateTime?>("DeletedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("deleted_at");
@@ -108,15 +104,39 @@ namespace RealEstate.Api.Migrations.RealEstate
                     b.HasKey("Id")
                         .HasName("pk_agents");
 
-                    b.HasIndex("BrokerageId")
-                        .HasDatabaseName("ix_agents_brokerage_id");
-
                     b.HasIndex("UserId")
                         .IsUnique()
                         .HasDatabaseName("ix_agents_user_id")
                         .HasFilter("user_id IS NOT NULL");
 
                     b.ToTable("agents", (string)null);
+                });
+
+            modelBuilder.Entity("RealEstate.Api.Models.Entities.AgentBrokerage", b =>
+                {
+                    b.Property<int>("AgentId")
+                        .HasColumnType("integer")
+                        .HasColumnName("agent_id");
+
+                    b.Property<int>("BrokerageId")
+                        .HasColumnType("integer")
+                        .HasColumnName("brokerage_id");
+
+                    b.Property<bool>("IsPrimary")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_primary");
+
+                    b.Property<DateTime>("JoinedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("joined_at");
+
+                    b.HasKey("AgentId", "BrokerageId")
+                        .HasName("pk_agent_brokerages");
+
+                    b.HasIndex("BrokerageId")
+                        .HasDatabaseName("ix_agent_brokerages_brokerage_id");
+
+                    b.ToTable("agent_brokerages", (string)null);
                 });
 
             modelBuilder.Entity("RealEstate.Api.Models.Entities.AgentReview", b =>
@@ -498,13 +518,23 @@ namespace RealEstate.Api.Migrations.RealEstate
                         .HasConstraintName("fk_property_amenities_properties_properties_id");
                 });
 
-            modelBuilder.Entity("RealEstate.Api.Models.Entities.Agent", b =>
+            modelBuilder.Entity("RealEstate.Api.Models.Entities.AgentBrokerage", b =>
                 {
+                    b.HasOne("RealEstate.Api.Models.Entities.Agent", "Agent")
+                        .WithMany("AgentBrokerages")
+                        .HasForeignKey("AgentId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_agent_brokerages_agents_agent_id");
+
                     b.HasOne("RealEstate.Api.Models.Entities.Brokerage", "Brokerage")
-                        .WithMany("Agents")
+                        .WithMany("AgentBrokerages")
                         .HasForeignKey("BrokerageId")
-                        .OnDelete(DeleteBehavior.SetNull)
-                        .HasConstraintName("fk_agents_brokerages_brokerage_id");
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_agent_brokerages_brokerages_brokerage_id");
+
+                    b.Navigation("Agent");
 
                     b.Navigation("Brokerage");
                 });
@@ -547,12 +577,14 @@ namespace RealEstate.Api.Migrations.RealEstate
 
             modelBuilder.Entity("RealEstate.Api.Models.Entities.Agent", b =>
                 {
+                    b.Navigation("AgentBrokerages");
+
                     b.Navigation("Reviews");
                 });
 
             modelBuilder.Entity("RealEstate.Api.Models.Entities.Brokerage", b =>
                 {
-                    b.Navigation("Agents");
+                    b.Navigation("AgentBrokerages");
                 });
 
             modelBuilder.Entity("RealEstate.Api.Models.Entities.Property", b =>

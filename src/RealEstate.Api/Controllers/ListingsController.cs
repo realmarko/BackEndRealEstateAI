@@ -161,13 +161,7 @@ public class ListingsController : ControllerBase
             query = query.Where(l => l.Bathrooms >= q.MinBathrooms);
 
         if (q.BrokerageId.HasValue)
-        {
-            var agencyUserIds = await _agentsDb.Agents
-                .Where(a => a.BrokerageId == q.BrokerageId && a.UserId != null)
-                .Select(a => a.UserId!.Value)
-                .ToListAsync();
-            query = query.Where(l => agencyUserIds.Contains(l.OwnerId));
-        }
+            query = query.Where(l => l.BrokerageId == q.BrokerageId);
 
         // Google Maps viewport bounding box filter (pan/zoom search)
         if (q.SwLat.HasValue && q.SwLng.HasValue && q.NeLat.HasValue && q.NeLng.HasValue)
@@ -1130,6 +1124,9 @@ public class ListingsController : ControllerBase
             }
         }
 
+        if (dto.BrokerageId.HasValue && !await _agentsDb.Agents.AnyAsync(a => a.UserId == userId && a.AgentBrokerages.Any(ab => ab.BrokerageId == dto.BrokerageId)))
+            return BadRequest(new { message = "You can only publish a listing under a brokerage you belong to." });
+
         // Generated up front so newly uploaded photos can be namespaced under this listing's
         // own id in S3 from the very first upload, rather than a temp/owner-scoped prefix.
         var listingId = Guid.NewGuid();
@@ -1148,6 +1145,7 @@ public class ListingsController : ControllerBase
             Price = dto.Price,
             PriceOnRequest = dto.PriceOnRequest,
             Currency = dto.Currency,
+            BrokerageId = dto.BrokerageId,
             Address = new ListingAddress
             {
                 Street = dto.Street,
@@ -1320,7 +1318,11 @@ public class ListingsController : ControllerBase
 
         var listing = await _db.Listings.Include(l => l.Images).Include(l => l.Address).FirstOrDefaultAsync(l => l.Id == id);
         if (listing is null) return NotFound();
-        if (listing.OwnerId != User.GetUserId()) return Forbid();
+        var userId = User.GetUserId();
+        if (listing.OwnerId != userId) return Forbid();
+
+        if (dto.BrokerageId.HasValue && !await _agentsDb.Agents.AnyAsync(a => a.UserId == userId && a.AgentBrokerages.Any(ab => ab.BrokerageId == dto.BrokerageId)))
+            return BadRequest(new { message = "You can only publish a listing under a brokerage you belong to." });
 
         // Captured before the fields below overwrite them, so RecordPriceChangeIfNeeded can
         // tell whether this edit actually changed the price/currency — an edit that leaves
@@ -1341,6 +1343,7 @@ public class ListingsController : ControllerBase
         listing.Price = dto.Price;
         listing.PriceOnRequest = dto.PriceOnRequest;
         listing.Currency = dto.Currency;
+        listing.BrokerageId = dto.BrokerageId;
         // Every listing gets an Address at creation and the FK is required — same trust level
         // as every other Address access in this controller (no ??= fallback: constructing a
         // fresh ListingAddress here if one were somehow missing would collide with the existing

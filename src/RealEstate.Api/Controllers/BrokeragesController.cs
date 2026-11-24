@@ -241,7 +241,7 @@ public class BrokeragesController : ControllerBase
     [HttpGet("directory")]
     public async Task<ActionResult<PagedResult<BrokerageDto>>> Directory([FromQuery] BrokerageDirectoryQuery q)
     {
-        var callerBrokerageId = await GetCallerBrokerageIdAsync();
+        var callerBrokerageIds = await GetCallerBrokerageIdsAsync();
 
         var cacheKey = DirectoryCacheKey(q);
         var cachedPage = await _cache.GetOrCreateAsync(cacheKey, async entry =>
@@ -273,7 +273,7 @@ public class BrokeragesController : ControllerBase
         });
 
         var items = cachedPage!.Profiles
-            .Select(p => ToPublicDto(p, callerBrokerageId.HasValue && callerBrokerageId.Value == p.Id))
+            .Select(p => ToPublicDto(p, callerBrokerageIds.Contains(p.Id)))
             .ToList();
 
         return Ok(new PagedResult<BrokerageDto>
@@ -289,7 +289,7 @@ public class BrokeragesController : ControllerBase
     [HttpGet("{id:int}")]
     public async Task<ActionResult<BrokerageDto>> GetById(int id)
     {
-        var callerBrokerageId = await GetCallerBrokerageIdAsync();
+        var callerBrokerageIds = await GetCallerBrokerageIdsAsync();
 
         var cachedProfile = await _cache.GetOrCreateAsync(ProfileCacheKey(id), async entry =>
         {
@@ -308,7 +308,7 @@ public class BrokeragesController : ControllerBase
 
         if (cachedProfile is null) return NotFound();
 
-        return Ok(ToPublicDto(cachedProfile, callerBrokerageId.HasValue && callerBrokerageId.Value == cachedProfile.Id));
+        return Ok(ToPublicDto(cachedProfile, callerBrokerageIds.Contains(cachedProfile.Id)));
     }
 
     // GET /api/brokerages/by-slug/some_brokerage_name — resolves a brokerage the same way the
@@ -330,15 +330,87 @@ public class BrokeragesController : ControllerBase
         return await GetById(id.Value);
     }
 
-    // GET /api/brokerages/mine — the caller's own agency, so the "edit my agency" entry point
-    // doesn't need to already know its id. 404 if the agent is independent or has no profile yet.
+    // GET /api/brokerages/mine — every agency the caller belongs to (an agent can now belong to
+    // more than one), so "my agencies" entry points don't need to already know any id. Empty list
+    // for an independent agent or one with no profile yet.
     [Authorize(Roles = "Agent")]
     [HttpGet("mine")]
-    public async Task<ActionResult<BrokerageDto>> Mine()
+    public async Task<ActionResult<List<BrokerageDto>>> Mine()
+    {
+        var brokerageIds = await GetCallerBrokerageIdsAsync();
+        if (brokerageIds.Count == 0) return Ok(new List<BrokerageDto>());
+
+        var results = new List<BrokerageDto>();
+        foreach (var id in brokerageIds)
+        {
+            var result = await GetById(id);
+            if (result.Result is OkObjectResult { Value: BrokerageDto dto }) results.Add(dto);
+        }
+        return Ok(results);
+    }
+
+    // POST /api/brokerages/mine/{id} — the caller joins an existing brokerage (resolved by id,
+    // typically picked from the Search() autocomplete). A no-op (200, not 409) if already a
+    // member, so a double-submit from the frontend never surfaces as an error.
+    [Authorize(Roles = "Agent")]
+    [HttpPost("mine/{id:int}")]
+    public async Task<ActionResult<BrokerageDto>> JoinMine(int id)
     {
         var userId = User.GetUserId();
-        var brokerageId = await _db.Agents.Where(a => a.UserId == userId).Select(a => a.BrokerageId).FirstOrDefaultAsync();
-        return brokerageId is null ? NotFound() : await GetById(brokerageId.Value);
+        var agent = await _db.Agents.Include(a => a.AgentBrokerages).FirstOrDefaultAsync(a => a.UserId == userId);
+        if (agent is null) return NotFound();
+
+        var brokerageExists = await _db.Brokerages.AnyAsync(b => b.Id == id);
+        if (!brokerageExists) return NotFound();
+
+        if (!agent.AgentBrokerages.Any(ab => ab.BrokerageId == id))
+        {
+            agent.AgentBrokerages.Add(new AgentBrokerage
+            {
+                AgentId = agent.Id,
+                BrokerageId = id,
+                // The agent's very first membership becomes primary by default — every other
+                // join leaves the existing primary alone, so there's always exactly one.
+                IsPrimary = agent.AgentBrokerages.Count == 0
+            });
+            agent.IsIndependent = false;
+            await _db.SaveChangesAsync();
+        }
+
+        return await GetById(id);
+    }
+
+    // DELETE /api/brokerages/mine/{id} — the caller leaves a brokerage they belong to. If the one
+    // left was primary, the oldest remaining membership (if any) becomes primary instead, so
+    // Agent.Company never silently goes blank just because the primary one was dropped.
+    [Authorize(Roles = "Agent")]
+    [HttpDelete("mine/{id:int}")]
+    public async Task<IActionResult> LeaveMine(int id)
+    {
+        var userId = User.GetUserId();
+        var agent = await _db.Agents.Include(a => a.AgentBrokerages).FirstOrDefaultAsync(a => a.UserId == userId);
+        if (agent is null) return NotFound();
+
+        var membership = agent.AgentBrokerages.FirstOrDefault(ab => ab.BrokerageId == id);
+        if (membership is null) return NotFound();
+
+        var wasPrimary = membership.IsPrimary;
+        agent.AgentBrokerages.Remove(membership);
+        _db.Set<AgentBrokerage>().Remove(membership);
+
+        if (wasPrimary)
+        {
+            var next = agent.AgentBrokerages.OrderBy(ab => ab.JoinedAt).FirstOrDefault();
+            if (next is not null) next.IsPrimary = true;
+        }
+
+        // Leaving the last membership makes this agent independent again — without this,
+        // IsIndependent stays stale at false (it's only ever set from the edit-profile form's
+        // checkbox, which this endpoint bypasses), even though AgentBrokerages is now empty.
+        if (agent.AgentBrokerages.Count == 0) agent.IsIndependent = true;
+
+        await _db.SaveChangesAsync();
+        return NoContent();
     }
 
     // PUT /api/brokerages/5 — only an agent who belongs to this brokerage may edit its public
@@ -350,7 +422,7 @@ public class BrokeragesController : ControllerBase
     public async Task<ActionResult<BrokerageDto>> Update(int id, [FromForm] UpdateBrokerageProfileDto dto)
     {
         var userId = User.GetUserId();
-        var isMember = await _db.Agents.AnyAsync(a => a.UserId == userId && a.BrokerageId == id);
+        var isMember = await _db.Agents.AnyAsync(a => a.UserId == userId && a.AgentBrokerages.Any(ab => ab.BrokerageId == id));
         if (!isMember) return Forbid();
 
         var brokerage = await _db.Brokerages.FindAsync(id);
@@ -430,11 +502,14 @@ public class BrokeragesController : ControllerBase
         return await GetById(id);
     }
 
-    private async Task<int?> GetCallerBrokerageIdAsync()
+    private async Task<List<int>> GetCallerBrokerageIdsAsync()
     {
         var currentUserId = User.TryGetUserId();
-        if (currentUserId is null) return null;
-        return await _db.Agents.Where(a => a.UserId == currentUserId).Select(a => a.BrokerageId).FirstOrDefaultAsync();
+        if (currentUserId is null) return new List<int>();
+        return await _db.Agents
+            .Where(a => a.UserId == currentUserId)
+            .SelectMany(a => a.AgentBrokerages.Select(ab => ab.BrokerageId))
+            .ToListAsync();
     }
 
     private static string ProfileCacheKey(int id) => $"brokerage-profile:{id}";
@@ -459,8 +534,8 @@ public class BrokeragesController : ControllerBase
         Phone = b.Phone,
         Email = b.Email,
         WorkingHours = b.WorkingHours,
-        AgentsCount = b.Agents.Count(a => !a.IsDeleted),
-        AgentUserIds = b.Agents.Where(a => !a.IsDeleted && a.UserId != null).Select(a => a.UserId!.Value).ToList()
+        AgentsCount = b.AgentBrokerages.Count(ab => !ab.Agent.IsDeleted),
+        AgentUserIds = b.AgentBrokerages.Where(ab => !ab.Agent.IsDeleted && ab.Agent.UserId != null).Select(ab => ab.Agent.UserId!.Value).ToList()
     };
 
     private sealed class BrokerageProjection

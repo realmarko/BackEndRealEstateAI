@@ -6,7 +6,11 @@ namespace RealEstate.Api.Models.DTOs;
 public class CreateAgentDto
 {
     [Required, MaxLength(30)] public string Phone { get; set; } = string.Empty;
-    [MaxLength(200)] public string? Company { get; set; }
+
+    // Comma-separated, same convention as Specialties below — an agent can belong to more than
+    // one brokerage now, so this is no longer a single name (see AgentsController.Create/
+    // UpdateMine's ResolveOrCreateBrokeragesAsync).
+    [MaxLength(1000)] public string? Companies { get; set; }
     public bool IsIndependent { get; set; }
     [MaxLength(2000)] public string? Bio { get; set; }
 
@@ -27,6 +31,7 @@ public class AgentDto
     public string Email { get; set; } = string.Empty;
     public string Phone { get; set; } = string.Empty;
     public string? Company { get; set; }
+    public List<string> Companies { get; set; } = new();
     public bool IsIndependent { get; set; }
     public string? PhotoUrl { get; set; }
     public string? Bio { get; set; }
