@@ -395,14 +395,30 @@ public class ViabilityAnalysisService : IViabilityAnalysisService
 
         if (lot.LotSizeSqm is { } lotSize)
         {
-            var passed = lotSize >= criterion.MinLotSizeSqm;
-            checks.Add(new ViabilityCheckDto
+            // Below the minimum is disqualifying (sizeDisqualifiers, forces the score to 0 — see
+            // its own comment above): the giro simply doesn't fit on a smaller lot. Above the
+            // maximum (when this giro has one at all — see BusinessTypeCriteria.MaxLotSizeSqm) is
+            // treated as an ordinary failed check instead: extra land past what the giro needs is
+            // inefficient, not infeasible, so it lowers the ratio like any other failed check
+            // rather than zeroing the score the way being too SMALL does.
+            var belowMin = lotSize < criterion.MinLotSizeSqm;
+            var aboveMax = criterion.MaxLotSizeSqm is { } maxLotSize && lotSize > maxLotSize;
+            var passed = !belowMin && !aboveMax;
+            string detail;
+            if (belowMin)
             {
-                Label = "Superficie del terreno",
-                Passed = passed,
-                Detail = $"{lotSize:0.#} m² ({(passed ? "cumple" : "no cumple")} el mínimo de {criterion.MinLotSizeSqm:0.#} m²)."
-            });
-            if (!passed) sizeDisqualifiers.Add($"superficie de {lotSize:0.#} m² por debajo del mínimo de {criterion.MinLotSizeSqm:0.#} m²");
+                detail = $"{lotSize:0.#} m² (no cumple el mínimo de {criterion.MinLotSizeSqm:0.#} m²).";
+                sizeDisqualifiers.Add($"superficie de {lotSize:0.#} m² por debajo del mínimo de {criterion.MinLotSizeSqm:0.#} m²");
+            }
+            else if (aboveMax)
+            {
+                detail = $"{lotSize:0.#} m² — excede el máximo recomendado de {criterion.MaxLotSizeSqm:0.#} m² para este giro; gran parte del predio quedaría sin usar.";
+            }
+            else
+            {
+                detail = $"{lotSize:0.#} m² (cumple el mínimo de {criterion.MinLotSizeSqm:0.#} m²).";
+            }
+            checks.Add(new ViabilityCheckDto { Label = "Superficie del terreno", Passed = passed, Detail = detail });
         }
         else
         {

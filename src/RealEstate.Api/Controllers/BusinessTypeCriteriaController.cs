@@ -50,6 +50,7 @@ public class BusinessTypeCriteriaController : ControllerBase
         if (!string.IsNullOrWhiteSpace(dto.DisplayName)) criterion.DisplayName = dto.DisplayName;
         criterion.MinFrontageMeters = dto.MinFrontageMeters;
         criterion.MinLotSizeSqm = dto.MinLotSizeSqm;
+        criterion.MaxLotSizeSqm = dto.MaxLotSizeSqm;
         criterion.PrefersCornerLot = dto.PrefersCornerLot;
         criterion.PrefersPrimaryRoadAccess = dto.PrefersPrimaryRoadAccess;
         criterion.PrefersHighTraffic = dto.PrefersHighTraffic;
@@ -74,6 +75,7 @@ public class BusinessTypeCriteriaController : ControllerBase
         DisplayName = c.DisplayName,
         MinFrontageMeters = c.MinFrontageMeters,
         MinLotSizeSqm = c.MinLotSizeSqm,
+        MaxLotSizeSqm = c.MaxLotSizeSqm,
         PrefersCornerLot = c.PrefersCornerLot,
         PrefersPrimaryRoadAccess = c.PrefersPrimaryRoadAccess,
         PrefersHighTraffic = c.PrefersHighTraffic,

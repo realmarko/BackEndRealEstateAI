@@ -7,6 +7,7 @@ public class BusinessTypeCriteriaDto
     public string DisplayName { get; set; } = string.Empty;
     public double MinFrontageMeters { get; set; }
     public double MinLotSizeSqm { get; set; }
+    public double? MaxLotSizeSqm { get; set; }
     public bool? PrefersCornerLot { get; set; }
     public bool PrefersPrimaryRoadAccess { get; set; }
     public bool? PrefersHighTraffic { get; set; }
@@ -28,6 +29,7 @@ public class BusinessTypeCriteriaUpdateDto
     public string DisplayName { get; set; } = string.Empty;
     public double MinFrontageMeters { get; set; }
     public double MinLotSizeSqm { get; set; }
+    public double? MaxLotSizeSqm { get; set; }
     public bool? PrefersCornerLot { get; set; }
     public bool PrefersPrimaryRoadAccess { get; set; }
     public bool? PrefersHighTraffic { get; set; }

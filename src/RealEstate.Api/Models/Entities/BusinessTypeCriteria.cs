@@ -27,6 +27,17 @@ public class BusinessTypeCriteria
     public double MinFrontageMeters { get; set; }
     public double MinLotSizeSqm { get; set; }
 
+    // Above this, extra lot size stops being an asset and starts meaning most of the predio would
+    // sit unused by this giro (a 2,578 m² lot is not a better fit for a Consultorio than a 150 m²
+    // one — it's the same consultorio, just on land that doesn't help it). Null for a giro that
+    // scales with its lot (Gasolinera, Bodega/nave industrial, Supermercado, Fraccionamiento
+    // Residencial, Edificio de Departamentos — already governed by MinCusRatio, Escuela privada,
+    // Casa Unifamiliar, Plaza Comercial) — bigger is never a downside for those. Unlike
+    // MinLotSizeSqm/MinFrontageMeters, exceeding this is NOT a hard disqualifier (ScoreBusinessAsync
+    // keeps it inside the normal "Superficie del terreno" check, so it lowers the ratio like any
+    // other failed check) — too much land is inefficient, not infeasible.
+    public double? MaxLotSizeSqm { get; set; }
+
     // null = no preference either way; true = prefers a corner lot; false = actively avoids one
     // (e.g. a school prefers a quieter, non-corner, non-primary-road frontage).
     public bool? PrefersCornerLot { get; set; }

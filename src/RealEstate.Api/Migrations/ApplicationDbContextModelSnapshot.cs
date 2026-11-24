@@ -398,6 +398,10 @@ namespace RealEstate.Api.Migrations
                         .HasColumnType("character varying(50)")
                         .HasColumnName("key");
 
+                    b.Property<double?>("MaxLotSizeSqm")
+                        .HasColumnType("double precision")
+                        .HasColumnName("max_lot_size_sqm");
+
                     b.Property<double?>("MinCusRatio")
                         .HasColumnType("double precision")
                         .HasColumnName("min_cus_ratio");
@@ -473,6 +477,7 @@ namespace RealEstate.Api.Migrations
                             DisplayName = "Farmacia",
                             GooglePlacesType = "pharmacy",
                             Key = "pharmacy",
+                            MaxLotSizeSqm = 2000.0,
                             MinFrontageMeters = 10.0,
                             MinLotSizeSqm = 250.0,
                             MinPopulationInRadius = 8000,
@@ -491,6 +496,7 @@ namespace RealEstate.Api.Migrations
                             DisplayName = "Tienda de conveniencia",
                             GooglePlacesType = "convenience_store",
                             Key = "convenience_store",
+                            MaxLotSizeSqm = 2000.0,
                             MinFrontageMeters = 8.0,
                             MinLotSizeSqm = 180.0,
                             Notes = "Estimación. Prioriza tráfico vehicular/peatonal y visibilidad por encima de densidad poblacional.",
@@ -524,6 +530,7 @@ namespace RealEstate.Api.Migrations
                             DisplayName = "Restaurante",
                             GooglePlacesType = "restaurant",
                             Key = "restaurant",
+                            MaxLotSizeSqm = 2000.0,
                             MinFrontageMeters = 12.0,
                             MinLotSizeSqm = 350.0,
                             Notes = "Estimación.",
@@ -557,6 +564,7 @@ namespace RealEstate.Api.Migrations
                             DisplayName = "Sucursal bancaria",
                             GooglePlacesType = "bank",
                             Key = "bank_branch",
+                            MaxLotSizeSqm = 1000.0,
                             MinFrontageMeters = 10.0,
                             MinLotSizeSqm = 250.0,
                             Notes = "Estimación; en la práctica prioriza nivel socioeconómico medio-alto más que población total (nivel socioeconómico aún no se pondera en el score).",
@@ -650,6 +658,7 @@ namespace RealEstate.Api.Migrations
                             DenueSearchTerm = "oficina",
                             DisplayName = "Oficina",
                             Key = "office",
+                            MaxLotSizeSqm = 3000.0,
                             MinFrontageMeters = 12.0,
                             MinLotSizeSqm = 300.0,
                             Notes = "Estimación; prioriza accesibilidad vehicular y visibilidad desde vialidad primaria (clientes y empleados) por encima de densidad poblacional residencial cercana.",
@@ -665,6 +674,7 @@ namespace RealEstate.Api.Migrations
                             DenueSearchTerm = "fraccionadora",
                             DisplayName = "Casa de Interés Social",
                             Key = "social_interest_house",
+                            MaxLotSizeSqm = 180.0,
                             MinFrontageMeters = 6.0,
                             MinLotSizeSqm = 50.0,
                             MinPopulationInRadius = 5000,
@@ -696,6 +706,7 @@ namespace RealEstate.Api.Migrations
                             DisplayName = "Local Comercial",
                             GooglePlacesType = "store",
                             Key = "local_comercial",
+                            MaxLotSizeSqm = 500.0,
                             MinFrontageMeters = 5.0,
                             MinLotSizeSqm = 60.0,
                             Notes = "Estimación; categoría genérica para un local comercial pequeño sin giro específico (60 m²/5 m de frente, por indicación directa del usuario) — para un giro particular, usa la fila específica del catálogo (farmacia, cafetería, etc.) si existe.",
@@ -712,6 +723,7 @@ namespace RealEstate.Api.Migrations
                             DisplayName = "Cafetería",
                             GooglePlacesType = "cafe",
                             Key = "cafeteria",
+                            MaxLotSizeSqm = 400.0,
                             MinFrontageMeters = 6.0,
                             MinLotSizeSqm = 80.0,
                             MinPopulationInRadius = 5000,
@@ -729,6 +741,7 @@ namespace RealEstate.Api.Migrations
                             DisplayName = "Consultorio",
                             GooglePlacesType = "doctor",
                             Key = "consultorio",
+                            MaxLotSizeSqm = 400.0,
                             MinFrontageMeters = 5.0,
                             MinLotSizeSqm = 70.0,
                             MinPopulationInRadius = 6000,
@@ -747,6 +760,7 @@ namespace RealEstate.Api.Migrations
                             DisplayName = "Estética",
                             GooglePlacesType = "beauty_salon",
                             Key = "estetica",
+                            MaxLotSizeSqm = 350.0,
                             MinFrontageMeters = 6.0,
                             MinLotSizeSqm = 70.0,
                             MinPopulationInRadius = 4000,
@@ -765,6 +779,7 @@ namespace RealEstate.Api.Migrations
                             DisplayName = "Spa",
                             GooglePlacesType = "spa",
                             Key = "spa",
+                            MaxLotSizeSqm = 1000.0,
                             MinFrontageMeters = 7.0,
                             MinLotSizeSqm = 100.0,
                             MinPopulationInRadius = 8000,
@@ -783,6 +798,7 @@ namespace RealEstate.Api.Migrations
                             DisplayName = "Tienda de Conveniencia Pequeña",
                             GooglePlacesType = "convenience_store",
                             Key = "small_convenience_store",
+                            MaxLotSizeSqm = 300.0,
                             MinFrontageMeters = 5.0,
                             MinLotSizeSqm = 60.0,
                             Notes = "Estimación; formato compacto distinto de \"Tienda de conveniencia\" (más grande) ya en el catálogo — radio de exclusión más chico porque este formato tolera mayor densidad.",
@@ -800,6 +816,7 @@ namespace RealEstate.Api.Migrations
                             DisplayName = "Boutique",
                             GooglePlacesType = "clothing_store",
                             Key = "boutique",
+                            MaxLotSizeSqm = 400.0,
                             MinFrontageMeters = 5.0,
                             MinLotSizeSqm = 60.0,
                             Notes = "Estimación; depende de tráfico peatonal/visibilidad, típicamente en plaza comercial o corredor comercial.",
