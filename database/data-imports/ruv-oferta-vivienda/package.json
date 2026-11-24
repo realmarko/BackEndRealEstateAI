@@ -1,0 +1,12 @@
+{
+  "name": "ruv-oferta-vivienda-import",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Plan/skeleton importer for the RUV 'Oferta de vivienda' dataset — see README.md",
+  "scripts": {
+    "convert": "node convert.js"
+  },
+  "dependencies": {
+    "csv-parse": "^5.5.6"
+  }
+}
