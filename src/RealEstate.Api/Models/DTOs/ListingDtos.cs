@@ -132,6 +132,14 @@ public class ListingTransferDto
     public int AgentId { get; set; }
 }
 
+// Toggles between Active and SoldOrRented — true marks the listing sold/rented, false reactivates
+// it. Never Pending/Removed: Pending is unused elsewhere in this codebase, and reactivating a
+// soft-deleted (Removed) listing isn't this endpoint's job.
+public class ListingStatusUpdateDto
+{
+    public bool Sold { get; set; }
+}
+
 public class ListingLocationUpdateDto
 {
     // The map's "editar ubicación" banner now accepts typed-in coordinates, not just a

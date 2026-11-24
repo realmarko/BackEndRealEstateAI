@@ -139,7 +139,10 @@ public class ListingsController : ControllerBase
             .Include(l => l.Images)
             .Include(l => l.Owner)
             .Include(l => l.Address)
-            .Where(l => l.Status != ListingStatus.Removed)
+            // Active only: a Removed listing is soft-deleted, and a SoldOrRented one has its own
+            // "Marcar como vendida/rentada" flow (UpdateStatus below) specifically so it drops out
+            // of public search/map results — only the owner's own "mine" list still shows it.
+            .Where(l => l.Status == ListingStatus.Active)
             .AsQueryable();
 
         if (!string.IsNullOrWhiteSpace(q.City))
@@ -1501,6 +1504,35 @@ public class ListingsController : ControllerBase
         listing.UpdatedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync();
         return NoContent();
+    }
+
+    // Owner/Admin toggle between Active and SoldOrRented — the "Marcar como vendida/rentada" /
+    // "Reactivar" buttons on the listing detail page. A SoldOrRented listing is excluded from
+    // Search above (same ListingStatus.Active gate as the price-per-sqm endpoints) so it drops
+    // out of public results and the map, but stays reachable by its own direct link/QR and in the
+    // owner's own listing list — same "keep it, just stop surfacing it" treatment Delete gives a
+    // Removed listing, one step short of actually deleting it.
+    [Authorize(Roles = "Owner,Admin")]
+    [HttpPatch("{id:guid}/status")]
+    public async Task<ActionResult<ListingDto>> UpdateStatus(Guid id, ListingStatusUpdateDto dto)
+    {
+        var listing = await _db.Listings.FindAsync(id);
+        if (listing is null) return NotFound();
+        if (listing.OwnerId != User.GetUserId() && !User.IsInRole("Admin")) return Forbid();
+        if (listing.Status == ListingStatus.Removed) return BadRequest(new { message = "This listing was deleted." });
+
+        listing.Status = dto.Sold ? ListingStatus.SoldOrRented : ListingStatus.Active;
+        listing.UpdatedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
+
+        var updated = await _db.Listings
+            .Include(l => l.Images)
+            .Include(l => l.Owner)
+            .Include(l => l.Address)
+            .FirstAsync(l => l.Id == id);
+        var updatedDto = updated.ToDto(isAuthenticated: true);
+        await AttachOwnerAgentDetailsAsync([updatedDto]);
+        return Ok(updatedDto);
     }
 
     // Admin-only reassignment of a listing's ownership — e.g. correcting a listing entered
