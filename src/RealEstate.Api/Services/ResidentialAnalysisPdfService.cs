@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Options;
 using QuestPDF.Fluent;
 using QuestPDF.Helpers;
 using QuestPDF.Infrastructure;
@@ -18,10 +19,16 @@ public class ResidentialAnalysisPdfService : IResidentialAnalysisPdfService
     private static readonly string Navy = "#1e3a5f";
     private static readonly string Gold = "#c6a15b";
     private const string FontFamily = PdfFonts.FontFamily;
+    private readonly string _siteUrl;
 
     static ResidentialAnalysisPdfService()
     {
         PdfFonts.EnsureRegistered();
+    }
+
+    public ResidentialAnalysisPdfService(IOptions<FrontendOptions> frontendOptions)
+    {
+        _siteUrl = frontendOptions.Value.BaseUrl.TrimEnd('/');
     }
 
     public byte[] Generate(ListingDto listing, ResidentialAnalysisDto analysis)
@@ -34,7 +41,7 @@ public class ResidentialAnalysisPdfService : IResidentialAnalysisPdfService
                 page.Margin(24);
                 page.DefaultTextStyle(x => x.FontFamily(FontFamily).FontSize(10).FontColor(Colors.Grey.Darken3));
 
-                page.Header().Element(c => ComposeHeader(c, listing, analysis));
+                page.Header().Element(c => ComposeHeader(c, listing, analysis, _siteUrl));
 
                 page.Content().PaddingTop(16).Column(column =>
                 {
@@ -69,7 +76,7 @@ public class ResidentialAnalysisPdfService : IResidentialAnalysisPdfService
         return document.GeneratePdf();
     }
 
-    private static void ComposeHeader(IContainer container, ListingDto listing, ResidentialAnalysisDto analysis)
+    private static void ComposeHeader(IContainer container, ListingDto listing, ResidentialAnalysisDto analysis, string siteUrl)
     {
         container.Background(Navy).Padding(16).Row(row =>
         {
@@ -80,6 +87,10 @@ public class ResidentialAnalysisPdfService : IResidentialAnalysisPdfService
                 col.Item().Text($"{listing.Street}, {listing.Colonia}, {listing.City}, {listing.State}").FontSize(9).FontColor(Colors.White);
                 col.Item().Text($"{analysis.Lat:0.00000}, {analysis.Lng:0.00000}").FontSize(8).FontColor(Colors.Grey.Lighten2);
             });
+            row.ConstantItem(140).AlignRight().AlignMiddle()
+                .Hyperlink($"{siteUrl}/listings/{listing.Id}")
+                .Text(siteUrl.Replace("https://", "").Replace("http://", ""))
+                .FontSize(9).Bold().FontColor(Gold);
         });
     }
 

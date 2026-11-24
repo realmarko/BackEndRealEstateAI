@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Options;
 using QuestPDF.Fluent;
 using QuestPDF.Helpers;
 using QuestPDF.Infrastructure;
@@ -28,10 +29,16 @@ public class ViabilityReportPdfService : IViabilityReportPdfService
     // Ranked highest-fit first — leads with the top matches, which is the whole point of the
     // report (not a generic listing walkthrough like the fact sheet).
     private const int MaxBusinessesShown = 9;
+    private readonly string _siteUrl;
 
     static ViabilityReportPdfService()
     {
         PdfFonts.EnsureRegistered();
+    }
+
+    public ViabilityReportPdfService(IOptions<FrontendOptions> frontendOptions)
+    {
+        _siteUrl = frontendOptions.Value.BaseUrl.TrimEnd('/');
     }
 
     public byte[] Generate(ListingDto listing, ViabilityAnalysisDto analysis, byte[]? mapImage = null)
@@ -46,7 +53,7 @@ public class ViabilityReportPdfService : IViabilityReportPdfService
                 page.Margin(24);
                 page.DefaultTextStyle(x => x.FontFamily(FontFamily).FontSize(10).FontColor(Colors.Grey.Darken3));
 
-                page.Header().Element(c => ComposeHeader(c, listing, analysis));
+                page.Header().Element(c => ComposeHeader(c, listing, analysis, _siteUrl));
 
                 var topBusiness = analysis.Businesses.OrderByDescending(b => b.Score).FirstOrDefault();
 
@@ -85,7 +92,7 @@ public class ViabilityReportPdfService : IViabilityReportPdfService
         return document.GeneratePdf();
     }
 
-    private static void ComposeHeader(IContainer container, ListingDto listing, ViabilityAnalysisDto analysis)
+    private static void ComposeHeader(IContainer container, ListingDto listing, ViabilityAnalysisDto analysis, string siteUrl)
     {
         container.Background(Navy).Padding(16).Row(row =>
         {
@@ -99,6 +106,10 @@ public class ViabilityReportPdfService : IViabilityReportPdfService
                 // lets whoever reads the PDF drop these straight into Google Maps to verify.
                 col.Item().Text($"{analysis.Lat:0.00000}, {analysis.Lng:0.00000}").FontSize(8).FontColor(Colors.Grey.Lighten2);
             });
+            row.ConstantItem(140).AlignRight().AlignMiddle()
+                .Hyperlink($"{siteUrl}/listings/{listing.Id}")
+                .Text(siteUrl.Replace("https://", "").Replace("http://", ""))
+                .FontSize(9).Bold().FontColor(Gold);
         });
     }
 
