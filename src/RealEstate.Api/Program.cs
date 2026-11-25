@@ -117,6 +117,9 @@ builder.Services.AddHttpClient<IGoogleTrafficService, GoogleTrafficService>(clie
 // interactive "autofill" button click rather than a background best-effort fetch.
 builder.Services.Configure<AnthropicOptions>(builder.Configuration.GetSection("Anthropic"));
 builder.Services.AddHttpClient<IListingDraftParsingService, ListingDraftParsingService>(client => client.Timeout = TimeSpan.FromSeconds(20));
+// Same Anthropic call shape in the other direction — structured fields -> a drafted description,
+// see ListingDescriptionGenerationService. Same timeout reasoning as the parse-draft client above.
+builder.Services.AddHttpClient<IListingDescriptionGenerationService, ListingDescriptionGenerationService>(client => client.Timeout = TimeSpan.FromSeconds(20));
 // Resolves a Google Maps link pasted in the same ad text into real coordinates (redirect
 // follow + Geocoding API fallback) — same GoogleMapsOptions section (GeocodingApiKey), runs
 // alongside the Anthropic call above in ListingsController.ParseDraft.
@@ -372,9 +375,11 @@ builder.Services.AddRateLimiter(options =>
             Window = TimeSpan.FromMinutes(1),
             QueueLimit = 0
         }));
-    // Per-IP: each call is a paid, per-request Anthropic API call (see ListingDraftParsingService)
-    // — same budget-conscious reasoning as "fact-sheet"/"viability" above, not that this is
-    // abuse-prone (it's Owner-only), just that a buggy client retry loop shouldn't run up a bill.
+    // Per-IP: each call is a paid, per-request Anthropic API call (ListingDraftParsingService's
+    // autofill, and ListingDescriptionGenerationService's description draft — same Owner-only
+    // listing-form AI budget, shared rather than given two near-identical policies) — same
+    // budget-conscious reasoning as "fact-sheet"/"viability" above, not that this is abuse-prone
+    // (it's Owner-only), just that a buggy client retry loop shouldn't run up a bill.
     options.AddPolicy("listing-draft-parse", httpContext => RateLimitPartition.GetFixedWindowLimiter(
         partitionKey: httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
         factory: _ => new FixedWindowRateLimiterOptions

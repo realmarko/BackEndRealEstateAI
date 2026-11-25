@@ -35,6 +35,7 @@ public class ListingsController : ControllerBase
     private readonly IResidentialAnalysisPdfService _residentialAnalysisPdf;
     private readonly IStaticMapService _staticMap;
     private readonly IListingDraftParsingService _listingDraftParsing;
+    private readonly IListingDescriptionGenerationService _listingDescriptionGeneration;
     private readonly IGoogleMapsLinkResolverService _mapsLinkResolver;
     private readonly IProdSyncService _prodSync;
     private readonly ProdSyncOptions _prodSyncOptions;
@@ -72,6 +73,7 @@ public class ListingsController : ControllerBase
         IResidentialAnalysisPdfService residentialAnalysisPdf,
         IStaticMapService staticMap,
         IListingDraftParsingService listingDraftParsing,
+        IListingDescriptionGenerationService listingDescriptionGeneration,
         IGoogleMapsLinkResolverService mapsLinkResolver,
         IProdSyncService prodSync,
         IOptions<ProdSyncOptions> prodSyncOptions,
@@ -91,6 +93,7 @@ public class ListingsController : ControllerBase
         _residentialAnalysisPdf = residentialAnalysisPdf;
         _staticMap = staticMap;
         _listingDraftParsing = listingDraftParsing;
+        _listingDescriptionGeneration = listingDescriptionGeneration;
         _mapsLinkResolver = mapsLinkResolver;
         _prodSync = prodSync;
         _prodSyncOptions = prodSyncOptions.Value;
@@ -1102,6 +1105,28 @@ public class ListingsController : ControllerBase
         {
             _logger.LogWarning(ex, "Listing draft parsing failed");
             return StatusCode(StatusCodes.Status502BadGateway, new { message = "No pudimos autocompletar el formulario en este momento. Llena los campos manualmente." });
+        }
+    }
+
+    // The mirror image of ParseDraft above: drafts a description from whatever structured fields
+    // the owner has already filled in (ListingDescriptionGenerationService), for a "Generar con
+    // IA" button next to the description field. Never saves anything — the owner still reviews
+    // and can edit the result before clicking the normal Create/Update button, same pattern as
+    // every AI-assisted field in this form.
+    [Authorize(Roles = "Owner")]
+    [EnableRateLimiting("listing-draft-parse")]
+    [HttpPost("generate-description")]
+    public async Task<ActionResult<GenerateListingDescriptionResultDto>> GenerateDescription(GenerateListingDescriptionRequestDto dto, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var description = await _listingDescriptionGeneration.GenerateAsync(dto, cancellationToken);
+            return Ok(new GenerateListingDescriptionResultDto { Description = description });
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or System.Text.Json.JsonException or InvalidOperationException)
+        {
+            _logger.LogWarning(ex, "Listing description generation failed");
+            return StatusCode(StatusCodes.Status502BadGateway, new { message = "No pudimos generar una descripción en este momento. Escríbela manualmente." });
         }
     }
 
