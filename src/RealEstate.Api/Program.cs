@@ -120,6 +120,10 @@ builder.Services.AddHttpClient<IListingDraftParsingService, ListingDraftParsingS
 // Same Anthropic call shape in the other direction — structured fields -> a drafted description,
 // see ListingDescriptionGenerationService. Same timeout reasoning as the parse-draft client above.
 builder.Services.AddHttpClient<IListingDescriptionGenerationService, ListingDescriptionGenerationService>(client => client.Timeout = TimeSpan.FromSeconds(20));
+// Natural-language map search (MapSearchParsingService) — same Anthropic call shape, but public/
+// anonymous (anyone browsing /map, not just a logged-in Owner), so see the "map-search-parse"
+// rate-limit policy below for the tighter per-IP budget that difference calls for.
+builder.Services.AddHttpClient<IMapSearchParsingService, MapSearchParsingService>(client => client.Timeout = TimeSpan.FromSeconds(20));
 // Resolves a Google Maps link pasted in the same ad text into real coordinates (redirect
 // follow + Geocoding API fallback) — same GoogleMapsOptions section (GeocodingApiKey), runs
 // alongside the Anthropic call above in ListingsController.ParseDraft.
@@ -385,6 +389,20 @@ builder.Services.AddRateLimiter(options =>
         factory: _ => new FixedWindowRateLimiterOptions
         {
             PermitLimit = 10,
+            Window = TimeSpan.FromMinutes(1),
+            QueueLimit = 0
+        }));
+    // Per-IP: unlike listing-draft-parse above, this endpoint (MapSearchParsingService, /map's
+    // natural-language search) is anonymous — anyone browsing the public map can call it, not just
+    // a logged-in Owner — so it's exactly the same abuse shape as "errors"/"view-count": a scripted
+    // loop could otherwise run up real Anthropic cost with no auth barrier at all. Tighter than
+    // listing-draft-parse's 10/min for that reason, while still generous for a real visitor trying
+    // a few phrasings.
+    options.AddPolicy("map-search-parse", httpContext => RateLimitPartition.GetFixedWindowLimiter(
+        partitionKey: httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+        factory: _ => new FixedWindowRateLimiterOptions
+        {
+            PermitLimit = 8,
             Window = TimeSpan.FromMinutes(1),
             QueueLimit = 0
         }));

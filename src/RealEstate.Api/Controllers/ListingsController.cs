@@ -36,6 +36,7 @@ public class ListingsController : ControllerBase
     private readonly IStaticMapService _staticMap;
     private readonly IListingDraftParsingService _listingDraftParsing;
     private readonly IListingDescriptionGenerationService _listingDescriptionGeneration;
+    private readonly IMapSearchParsingService _mapSearchParsing;
     private readonly IGoogleMapsLinkResolverService _mapsLinkResolver;
     private readonly IProdSyncService _prodSync;
     private readonly ProdSyncOptions _prodSyncOptions;
@@ -74,6 +75,7 @@ public class ListingsController : ControllerBase
         IStaticMapService staticMap,
         IListingDraftParsingService listingDraftParsing,
         IListingDescriptionGenerationService listingDescriptionGeneration,
+        IMapSearchParsingService mapSearchParsing,
         IGoogleMapsLinkResolverService mapsLinkResolver,
         IProdSyncService prodSync,
         IOptions<ProdSyncOptions> prodSyncOptions,
@@ -94,6 +96,7 @@ public class ListingsController : ControllerBase
         _staticMap = staticMap;
         _listingDraftParsing = listingDraftParsing;
         _listingDescriptionGeneration = listingDescriptionGeneration;
+        _mapSearchParsing = mapSearchParsing;
         _mapsLinkResolver = mapsLinkResolver;
         _prodSync = prodSync;
         _prodSyncOptions = prodSyncOptions.Value;
@@ -1127,6 +1130,42 @@ public class ListingsController : ControllerBase
         {
             _logger.LogWarning(ex, "Listing description generation failed");
             return StatusCode(StatusCodes.Status502BadGateway, new { message = "No pudimos generar una descripción en este momento. Escríbela manualmente." });
+        }
+    }
+
+    // Natural-language search box on /map (MapSearchParsingService): turns a free-text query like
+    // "casas en venta en Cholula bajo 3 millones" into the map's existing structured filters.
+    // Public/anonymous on purpose — unlike ParseDraft/GenerateDescription above, this is used by
+    // anyone browsing the public map, not just a logged-in Owner — see the "map-search-parse"
+    // rate-limit policy's own comment for why its budget is tighter. Never touches listing data
+    // itself, same "the frontend applies the result as normal filters, nothing is saved" shape.
+    [AllowAnonymous]
+    [EnableRateLimiting("map-search-parse")]
+    [HttpPost("parse-map-search")]
+    public async Task<ActionResult<MapSearchParseResultDto>> ParseMapSearch(MapSearchParseRequestDto dto, CancellationToken cancellationToken)
+    {
+        var query = dto.Query?.Trim();
+        if (string.IsNullOrEmpty(query))
+        {
+            return Ok(new MapSearchParseResultDto());
+        }
+
+        // Defensive clamp in case a caller bypasses the frontend's own maxlength — bounds the
+        // Anthropic request size regardless, same reasoning as every other free-text AI input here.
+        if (query.Length > 300)
+        {
+            query = query[..300];
+        }
+
+        try
+        {
+            var result = await _mapSearchParsing.ParseAsync(query, cancellationToken);
+            return Ok(result);
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or System.Text.Json.JsonException or InvalidOperationException)
+        {
+            _logger.LogWarning(ex, "Map search parsing failed");
+            return StatusCode(StatusCodes.Status502BadGateway, new { message = "No pudimos interpretar esa búsqueda en este momento. Usa los filtros manuales." });
         }
     }
 

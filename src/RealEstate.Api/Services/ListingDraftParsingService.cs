@@ -60,23 +60,7 @@ public class ListingDraftParsingService : IListingDraftParsingService
 
         using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
         using var document = await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken);
-
-        if (!document.RootElement.TryGetProperty("content", out var contentBlocks))
-        {
-            throw new InvalidOperationException("Anthropic response is missing \"content\".");
-        }
-
-        foreach (var block in contentBlocks.EnumerateArray())
-        {
-            if (block.TryGetProperty("type", out var typeEl) && typeEl.GetString() == "tool_use"
-                && block.TryGetProperty("name", out var nameEl) && nameEl.GetString() == ToolName
-                && block.TryGetProperty("input", out var input))
-            {
-                return MapResult(input);
-            }
-        }
-
-        throw new InvalidOperationException($"Anthropic response had no \"{ToolName}\" tool_use block.");
+        return MapResult(AnthropicToolCallHelpers.ExtractToolInput(document, ToolName));
     }
 
     // Reads every field defensively (TryGetProperty + safe enum parsing) — the model is forced
@@ -90,87 +74,53 @@ public class ListingDraftParsingService : IListingDraftParsingService
             // Max-length clamped defensively even though the system prompt already forbids it —
             // these are the only free-text (non-enum) fields in the schema, so they're the only
             // place a prompt-injected wall of text could land if the model ignored that instruction.
-            Title = GetString(input, "title", maxLength: 200),
-            ListingType = GetEnum<ListingType>(input, "listingType")?.ToString(),
-            PropertyType = GetEnum<PropertyType>(input, "propertyType")?.ToString(),
-            Price = GetDecimal(input, "price"),
-            Currency = GetString(input, "currency"),
-            Colonia = GetString(input, "colonia", maxLength: 150),
-            City = GetString(input, "city", maxLength: 100),
-            State = GetString(input, "state", maxLength: 100),
-            Bedrooms = GetInt(input, "bedrooms"),
-            Bathrooms = GetDecimal(input, "bathrooms"),
-            AreaSqm = GetDecimal(input, "areaSqm"),
-            LotSizeSqm = GetDecimal(input, "lotSizeSqm"),
-            FrontageWidthMeters = GetDecimal(input, "frontageWidthMeters"),
-            FrontageDepthMeters = GetDecimal(input, "frontageDepthMeters"),
-            GardenSizeSqm = GetDecimal(input, "gardenSizeSqm"),
-            ParkingSpaces = GetInt(input, "parkingSpaces"),
-            ParkingIsCovered = GetBool(input, "parkingIsCovered"),
-            Floors = GetInt(input, "floors"),
-            YearBuilt = GetInt(input, "yearBuilt"),
-            ConstructionCondition = GetEnum<ConstructionConditionType>(input, "constructionCondition")?.ToString(),
-            HasKitchen = GetBool(input, "hasKitchen"),
-            HasLivingRoom = GetBool(input, "hasLivingRoom"),
-            HasDiningRoom = GetBool(input, "hasDiningRoom"),
-            HasPool = GetBool(input, "hasPool"),
-            HasRoofGarden = GetBool(input, "hasRoofGarden"),
-            HasTerrace = GetBool(input, "hasTerrace"),
-            HasBalcony = GetBool(input, "hasBalcony"),
-            HasLaundryArea = GetBool(input, "hasLaundryArea"),
-            HasCistern = GetBool(input, "hasCistern"),
-            CisternCapacityLiters = GetDecimal(input, "cisternCapacityLiters"),
-            HasWell = GetBool(input, "hasWell"),
-            HasNaturalGas = GetBool(input, "hasNaturalGas"),
-            HasLpGas = GetBool(input, "hasLpGas"),
-            HasSecurity = GetBool(input, "hasSecurity"),
-            HasElevator = GetBool(input, "hasElevator"),
-            HasGym = GetBool(input, "hasGym"),
-            HasBbqArea = GetBool(input, "hasBbqArea"),
-            HasServiceRoom = GetBool(input, "hasServiceRoom"),
-            HasStorageRoom = GetBool(input, "hasStorageRoom"),
-            HasPropertyTaxDebt = GetBool(input, "hasPropertyTaxDebt"),
-            HasPotableWater = GetBool(input, "hasPotableWater"),
-            HasDrainage = GetBool(input, "hasDrainage"),
-            HasElectricity = GetBool(input, "hasElectricity"),
-            HasPavedStreet = GetBool(input, "hasPavedStreet"),
-            IsCornerLot = GetBool(input, "isCornerLot")
+            Title = AnthropicToolCallHelpers.GetString(input, "title", maxLength: 200),
+            ListingType = AnthropicToolCallHelpers.GetEnum<ListingType>(input, "listingType")?.ToString(),
+            PropertyType = AnthropicToolCallHelpers.GetEnum<PropertyType>(input, "propertyType")?.ToString(),
+            Price = AnthropicToolCallHelpers.GetDecimal(input, "price"),
+            Currency = AnthropicToolCallHelpers.GetString(input, "currency"),
+            Colonia = AnthropicToolCallHelpers.GetString(input, "colonia", maxLength: 150),
+            City = AnthropicToolCallHelpers.GetString(input, "city", maxLength: 100),
+            State = AnthropicToolCallHelpers.GetString(input, "state", maxLength: 100),
+            Bedrooms = AnthropicToolCallHelpers.GetInt(input, "bedrooms"),
+            Bathrooms = AnthropicToolCallHelpers.GetDecimal(input, "bathrooms"),
+            AreaSqm = AnthropicToolCallHelpers.GetDecimal(input, "areaSqm"),
+            LotSizeSqm = AnthropicToolCallHelpers.GetDecimal(input, "lotSizeSqm"),
+            FrontageWidthMeters = AnthropicToolCallHelpers.GetDecimal(input, "frontageWidthMeters"),
+            FrontageDepthMeters = AnthropicToolCallHelpers.GetDecimal(input, "frontageDepthMeters"),
+            GardenSizeSqm = AnthropicToolCallHelpers.GetDecimal(input, "gardenSizeSqm"),
+            ParkingSpaces = AnthropicToolCallHelpers.GetInt(input, "parkingSpaces"),
+            ParkingIsCovered = AnthropicToolCallHelpers.GetBool(input, "parkingIsCovered"),
+            Floors = AnthropicToolCallHelpers.GetInt(input, "floors"),
+            YearBuilt = AnthropicToolCallHelpers.GetInt(input, "yearBuilt"),
+            ConstructionCondition = AnthropicToolCallHelpers.GetEnum<ConstructionConditionType>(input, "constructionCondition")?.ToString(),
+            HasKitchen = AnthropicToolCallHelpers.GetBool(input, "hasKitchen"),
+            HasLivingRoom = AnthropicToolCallHelpers.GetBool(input, "hasLivingRoom"),
+            HasDiningRoom = AnthropicToolCallHelpers.GetBool(input, "hasDiningRoom"),
+            HasPool = AnthropicToolCallHelpers.GetBool(input, "hasPool"),
+            HasRoofGarden = AnthropicToolCallHelpers.GetBool(input, "hasRoofGarden"),
+            HasTerrace = AnthropicToolCallHelpers.GetBool(input, "hasTerrace"),
+            HasBalcony = AnthropicToolCallHelpers.GetBool(input, "hasBalcony"),
+            HasLaundryArea = AnthropicToolCallHelpers.GetBool(input, "hasLaundryArea"),
+            HasCistern = AnthropicToolCallHelpers.GetBool(input, "hasCistern"),
+            CisternCapacityLiters = AnthropicToolCallHelpers.GetDecimal(input, "cisternCapacityLiters"),
+            HasWell = AnthropicToolCallHelpers.GetBool(input, "hasWell"),
+            HasNaturalGas = AnthropicToolCallHelpers.GetBool(input, "hasNaturalGas"),
+            HasLpGas = AnthropicToolCallHelpers.GetBool(input, "hasLpGas"),
+            HasSecurity = AnthropicToolCallHelpers.GetBool(input, "hasSecurity"),
+            HasElevator = AnthropicToolCallHelpers.GetBool(input, "hasElevator"),
+            HasGym = AnthropicToolCallHelpers.GetBool(input, "hasGym"),
+            HasBbqArea = AnthropicToolCallHelpers.GetBool(input, "hasBbqArea"),
+            HasServiceRoom = AnthropicToolCallHelpers.GetBool(input, "hasServiceRoom"),
+            HasStorageRoom = AnthropicToolCallHelpers.GetBool(input, "hasStorageRoom"),
+            HasPropertyTaxDebt = AnthropicToolCallHelpers.GetBool(input, "hasPropertyTaxDebt"),
+            HasPotableWater = AnthropicToolCallHelpers.GetBool(input, "hasPotableWater"),
+            HasDrainage = AnthropicToolCallHelpers.GetBool(input, "hasDrainage"),
+            HasElectricity = AnthropicToolCallHelpers.GetBool(input, "hasElectricity"),
+            HasPavedStreet = AnthropicToolCallHelpers.GetBool(input, "hasPavedStreet"),
+            IsCornerLot = AnthropicToolCallHelpers.GetBool(input, "isCornerLot")
         };
     }
-
-    private static string? GetString(JsonElement element, string property, int? maxLength = null)
-    {
-        if (!element.TryGetProperty(property, out var value) || value.ValueKind != JsonValueKind.String) return null;
-        var text = value.GetString();
-        return maxLength is { } max && text is { Length: > 0 } && text.Length > max ? text[..max] : text;
-    }
-
-    private static bool? GetBool(JsonElement element, string property) =>
-        element.TryGetProperty(property, out var value) && (value.ValueKind is JsonValueKind.True or JsonValueKind.False)
-            ? value.GetBoolean()
-            : null;
-
-    // TryGetInt32 only succeeds for a JSON number token with no fractional part (e.g. "3", not
-    // "3.0") — nothing guarantees the model emits integer-typed fields without a trailing ".0"
-    // just because the tool schema says "integer", so this falls back to rounding a decimal
-    // instead of silently dropping an otherwise-valid value.
-    private static int? GetInt(JsonElement element, string property)
-    {
-        if (!element.TryGetProperty(property, out var value) || value.ValueKind != JsonValueKind.Number) return null;
-        if (value.TryGetInt32(out var i)) return i;
-        return value.TryGetDecimal(out var d) ? (int)Math.Round(d) : null;
-    }
-
-    private static decimal? GetDecimal(JsonElement element, string property) =>
-        element.TryGetProperty(property, out var value) && value.ValueKind == JsonValueKind.Number && value.TryGetDecimal(out var d)
-            ? d
-            : null;
-
-    private static TEnum? GetEnum<TEnum>(JsonElement element, string property) where TEnum : struct, Enum =>
-        element.TryGetProperty(property, out var value) && value.ValueKind == JsonValueKind.String
-        && Enum.TryParse<TEnum>(value.GetString(), ignoreCase: true, out var parsed)
-            ? parsed
-            : null;
 
     // Kept in Spanish, matching the ad text owners actually paste — the model doesn't need the
     // instructions in a different language than the content it's reading.
